@@ -79,4 +79,4 @@ Full documentation: [docs.poli.page](https://docs.poli.page)
 
 ## License
 
-[MIT](LICENSE) © Xavier Pourrier
+[MIT](LICENSE) © Poli Page
