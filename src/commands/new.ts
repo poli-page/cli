@@ -124,7 +124,11 @@ export function registerNewCommand(program: Command) {
 			`Template model (${models.join(', ')})`,
 			'header-main-footer'
 		)
-		.option('--format <format>', 'Page format (A3, A4, A5, Letter)', DEFAULT_FORMAT)
+		.option(
+			'--format <format>',
+			'Page format (A3, A4, A5, A6, B4, B5, Letter, Legal, Tabloid, Executive, Statement, Folio)',
+			DEFAULT_FORMAT,
+		)
 		.option('--orientation <orientation>', 'Page orientation (portrait, landscape)', DEFAULT_ORIENTATION)
 		.action(async (name: string, opts) => {
 			const { default: chalk } = await import('chalk');

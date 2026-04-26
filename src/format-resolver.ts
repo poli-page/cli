@@ -20,6 +20,10 @@ const FORMAT_MAP: Record<string, Record<string, PageFormat>> = {
 		portrait: { name: 'A5', width: 148, height: 210, orientation: 'portrait' },
 		landscape: { name: 'A5', width: 210, height: 148, orientation: 'landscape' },
 	},
+	A6: {
+		portrait: { name: 'A6', width: 105, height: 148, orientation: 'portrait' },
+		landscape: { name: 'A6', width: 148, height: 105, orientation: 'landscape' },
+	},
 	B4: {
 		portrait: { name: 'B4', width: 250, height: 353, orientation: 'portrait' },
 		landscape: { name: 'B4', width: 353, height: 250, orientation: 'landscape' },
