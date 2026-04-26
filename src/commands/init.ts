@@ -54,7 +54,9 @@ export async function executeInit(name: string, options: InitOptions = {}): Prom
 
 	await writeManifest(projectDir, manifest);
 	await mkdir(join(projectDir, 'templates'), { recursive: true });
-	await mkdir(join(projectDir, 'assets'), { recursive: true });
+	await mkdir(join(projectDir, 'partials'), { recursive: true });
+	await mkdir(join(projectDir, 'assets', 'fonts'), { recursive: true });
+	await mkdir(join(projectDir, 'assets', 'images'), { recursive: true });
 	await writeFile(join(projectDir, 'tailwind.css'), TAILWIND_CSS_TEMPLATE, 'utf-8');
 	await writeFile(join(projectDir, '.gitignore'), GITIGNORE_TEMPLATE, 'utf-8');
 

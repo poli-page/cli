@@ -49,6 +49,27 @@ describe('poli init', () => {
 		expect(stats.isDirectory()).toBe(true);
 	});
 
+	it('should create an assets/fonts/ directory', async () => {
+		await executeInit('my-project', { cwd: tempDir });
+		const fontsDir = join(tempDir, 'my-project', 'assets', 'fonts');
+		const stats = await stat(fontsDir);
+		expect(stats.isDirectory()).toBe(true);
+	});
+
+	it('should create an assets/images/ directory', async () => {
+		await executeInit('my-project', { cwd: tempDir });
+		const imagesDir = join(tempDir, 'my-project', 'assets', 'images');
+		const stats = await stat(imagesDir);
+		expect(stats.isDirectory()).toBe(true);
+	});
+
+	it('should create a partials/ directory', async () => {
+		await executeInit('my-project', { cwd: tempDir });
+		const partialsDir = join(tempDir, 'my-project', 'partials');
+		const stats = await stat(partialsDir);
+		expect(stats.isDirectory()).toBe(true);
+	});
+
 	it('should create a tailwind.css file', async () => {
 		await executeInit('my-project', { cwd: tempDir });
 		const tailwindPath = join(tempDir, 'my-project', 'tailwind.css');
