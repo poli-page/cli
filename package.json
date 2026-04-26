@@ -1,6 +1,6 @@
 {
 	"name": "@poli-page/cli",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Poli Page CLI — scaffold projects, create templates, and render PDFs from the command line",
 	"type": "module",
 	"main": "dist/index.js",
