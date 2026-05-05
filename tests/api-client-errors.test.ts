@@ -1,0 +1,160 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+	createApiClient,
+	ApiError,
+	QuotaExceededError,
+	OverageCapError,
+	PaymentRequiredError,
+	OrgCancelledError,
+	OrgPurgedError,
+	OrgMigratingError,
+	InvalidVersionFormatError,
+	InvalidVersionForKeyEnvError,
+	VersionRequiredError,
+	MissingOrgContextError,
+	NotAMemberError,
+} from '../src/api-client.js';
+
+function mockFetchOnce(
+	status: number,
+	body: unknown,
+	headers: Record<string, string> = {}
+) {
+	const response = new Response(typeof body === 'string' ? body : JSON.stringify(body), {
+		status,
+		headers: { 'Content-Type': 'application/json', ...headers },
+	});
+	vi.stubGlobal(
+		'fetch',
+		vi.fn().mockResolvedValue(response)
+	);
+}
+
+describe('api-client error mapping', () => {
+	beforeEach(() => {
+		// Each test sets its own fetch mock
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	function callAnyEndpoint() {
+		const client = createApiClient('https://api.test');
+		return client.getOrganizations('session-token');
+	}
+
+	describe('typed error classes for known API codes', () => {
+		it('maps 429 QUOTA_EXCEEDED → QuotaExceededError + Retry-After', async () => {
+			mockFetchOnce(
+				429,
+				{ error: { code: 'QUOTA_EXCEEDED', message: 'Free plan: 100/mo' } },
+				{ 'Retry-After': '12345' }
+			);
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err).toBeInstanceOf(QuotaExceededError);
+			expect(err).toBeInstanceOf(ApiError);
+			expect(err.code).toBe('QUOTA_EXCEEDED');
+			expect(err.httpStatus).toBe(429);
+			expect(err.retryAfter).toBe(12345);
+			expect(err.message).toMatch(/Free plan/);
+		});
+
+		it('maps 429 OVERAGE_CAP_EXCEEDED → OverageCapError', async () => {
+			mockFetchOnce(429, {
+				error: { code: 'OVERAGE_CAP_EXCEEDED', message: 'cap reached' },
+			});
+			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(OverageCapError);
+		});
+
+		it('maps 402 PAYMENT_REQUIRED → PaymentRequiredError', async () => {
+			mockFetchOnce(402, {
+				error: { code: 'PAYMENT_REQUIRED', message: 'past due' },
+			});
+			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(PaymentRequiredError);
+		});
+
+		it('maps 403 ORGANIZATION_CANCELLED → OrgCancelledError', async () => {
+			mockFetchOnce(403, {
+				error: { code: 'ORGANIZATION_CANCELLED', message: 'cancelled' },
+			});
+			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(OrgCancelledError);
+		});
+
+		it('maps 410 ORGANIZATION_PURGED → OrgPurgedError', async () => {
+			mockFetchOnce(410, {
+				error: { code: 'ORGANIZATION_PURGED', message: 'purged' },
+			});
+			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(OrgPurgedError);
+		});
+
+		it('maps 503 ORGANIZATION_MIGRATING → OrgMigratingError', async () => {
+			mockFetchOnce(503, {
+				error: { code: 'ORGANIZATION_MIGRATING', message: 'migrating' },
+			});
+			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(OrgMigratingError);
+		});
+
+		it('maps 400 INVALID_VERSION_FORMAT → InvalidVersionFormatError', async () => {
+			mockFetchOnce(400, {
+				error: { code: 'INVALID_VERSION_FORMAT', message: 'bad format' },
+			});
+			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(
+				InvalidVersionFormatError
+			);
+		});
+
+		it('maps 400 INVALID_VERSION_FOR_KEY_ENV → InvalidVersionForKeyEnvError', async () => {
+			mockFetchOnce(400, {
+				error: {
+					code: 'INVALID_VERSION_FOR_KEY_ENV',
+					message: 'mismatch',
+				},
+			});
+			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(
+				InvalidVersionForKeyEnvError
+			);
+		});
+
+		it('maps 400 VERSION_REQUIRED → VersionRequiredError', async () => {
+			mockFetchOnce(400, {
+				error: { code: 'VERSION_REQUIRED', message: 'version required' },
+			});
+			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(VersionRequiredError);
+		});
+
+		it('maps 400 MISSING_ORG_CONTEXT → MissingOrgContextError', async () => {
+			mockFetchOnce(400, {
+				error: { code: 'MISSING_ORG_CONTEXT', message: 'no org header' },
+			});
+			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(MissingOrgContextError);
+		});
+
+		it('maps 403 NOT_A_MEMBER → NotAMemberError', async () => {
+			mockFetchOnce(403, {
+				error: { code: 'NOT_A_MEMBER', message: 'no membership' },
+			});
+			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(NotAMemberError);
+		});
+	});
+
+	describe('fallback for unmapped errors', () => {
+		it('throws a generic ApiError when the code is unknown', async () => {
+			mockFetchOnce(500, {
+				error: { code: 'INTERNAL_ERROR', message: 'oops' },
+			});
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err).toBeInstanceOf(ApiError);
+			expect(err.code).toBe('INTERNAL_ERROR');
+			expect(err.httpStatus).toBe(500);
+		});
+
+		it('throws a generic ApiError when the body is not JSON', async () => {
+			mockFetchOnce(500, 'plain text body');
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err).toBeInstanceOf(ApiError);
+			expect(err.httpStatus).toBe(500);
+			expect(err.message).toMatch(/plain text body/);
+		});
+	});
+});

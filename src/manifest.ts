@@ -28,6 +28,8 @@ export interface PoliPageManifest {
 	}>;
 	cloud?: {
 		orgSlug: string;
+		orgId?: string;
+		projectSlug?: string;
 		projectId: string;
 		apiUrl?: string;
 	};

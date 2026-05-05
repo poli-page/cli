@@ -2,6 +2,90 @@ import type { UserInfo } from './credentials.js';
 
 const DEFAULT_API_URL = 'https://api.poli.page';
 
+export class ApiError extends Error {
+	constructor(
+		public readonly code: string,
+		public readonly httpStatus: number,
+		message: string,
+		public readonly retryAfter?: number
+	) {
+		super(message);
+		this.name = new.target.name;
+	}
+}
+
+export class QuotaExceededError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('QUOTA_EXCEEDED', 429, message, retryAfter);
+	}
+}
+export class OverageCapError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('OVERAGE_CAP_EXCEEDED', 429, message, retryAfter);
+	}
+}
+export class PaymentRequiredError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('PAYMENT_REQUIRED', 402, message, retryAfter);
+	}
+}
+export class OrgCancelledError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('ORGANIZATION_CANCELLED', 403, message, retryAfter);
+	}
+}
+export class OrgPurgedError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('ORGANIZATION_PURGED', 410, message, retryAfter);
+	}
+}
+export class OrgMigratingError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('ORGANIZATION_MIGRATING', 503, message, retryAfter);
+	}
+}
+export class InvalidVersionFormatError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('INVALID_VERSION_FORMAT', 400, message, retryAfter);
+	}
+}
+export class InvalidVersionForKeyEnvError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('INVALID_VERSION_FOR_KEY_ENV', 400, message, retryAfter);
+	}
+}
+export class VersionRequiredError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('VERSION_REQUIRED', 400, message, retryAfter);
+	}
+}
+export class MissingOrgContextError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('MISSING_ORG_CONTEXT', 400, message, retryAfter);
+	}
+}
+export class NotAMemberError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('NOT_A_MEMBER', 403, message, retryAfter);
+	}
+}
+
+type TypedErrorCtor = new (message: string, retryAfter?: number) => ApiError;
+
+const TYPED_ERROR_REGISTRY: Record<string, TypedErrorCtor> = {
+	QUOTA_EXCEEDED: QuotaExceededError,
+	OVERAGE_CAP_EXCEEDED: OverageCapError,
+	PAYMENT_REQUIRED: PaymentRequiredError,
+	ORGANIZATION_CANCELLED: OrgCancelledError,
+	ORGANIZATION_PURGED: OrgPurgedError,
+	ORGANIZATION_MIGRATING: OrgMigratingError,
+	INVALID_VERSION_FORMAT: InvalidVersionFormatError,
+	INVALID_VERSION_FOR_KEY_ENV: InvalidVersionForKeyEnvError,
+	VERSION_REQUIRED: VersionRequiredError,
+	MISSING_ORG_CONTEXT: MissingOrgContextError,
+	NOT_A_MEMBER: NotAMemberError,
+};
+
 export interface ApiKeyInfo {
 	key: string;
 	info: { id: string; name: string; environment: string };
@@ -46,6 +130,11 @@ export interface ThumbnailResult {
 	data: string; // base64
 }
 
+export interface RenderPdfResult {
+	pdf: Buffer;
+	environment: 'sandbox' | 'live' | null;
+}
+
 export interface ApiClient {
 	signIn(email: string, password: string): Promise<{ user: UserInfo; session: string }>;
 	signUp(
@@ -77,7 +166,11 @@ export interface ApiClient {
 		name: string,
 		environment: 'test' | 'live'
 	): Promise<ApiKeyInfo>;
-	renderPdf(apiKey: string, payload: Record<string, unknown>): Promise<Buffer>;
+	renderPdf(
+		authorization: string,
+		orgIdHeader: string | undefined,
+		payload: Record<string, unknown>
+	): Promise<RenderPdfResult>;
 	renderThumbnails(
 		apiKey: string,
 		payload: Record<string, unknown>
@@ -95,10 +188,7 @@ export interface ApiClient {
 export function createApiClient(baseUrl?: string): ApiClient {
 	const url = baseUrl ?? process.env.POLI_API_URL ?? DEFAULT_API_URL;
 
-	async function request(
-		path: string,
-		options: RequestInit & { rawResponse?: boolean } = {}
-	): Promise<Response> {
+	async function request(path: string, options: RequestInit = {}): Promise<Response> {
 		const response = await fetch(`${url}${path}`, {
 			...options,
 			headers: {
@@ -108,15 +198,7 @@ export function createApiClient(baseUrl?: string): ApiClient {
 			},
 		});
 		if (!response.ok) {
-			const body = await response.text();
-			let message: string;
-			try {
-				const json = JSON.parse(body);
-				message = json.detail ?? json.message ?? body;
-			} catch {
-				message = body;
-			}
-			throw new Error(`API error (${response.status}): ${message}`);
+			throw await buildApiError(response);
 		}
 		return response;
 	}
@@ -127,7 +209,7 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				method: 'POST',
 				body: JSON.stringify({ email, password }),
 			});
-			const data = await response.json() as { user: UserInfo; token: string };
+			const data = (await response.json()) as { user: UserInfo; token: string };
 			return { user: data.user, session: data.token };
 		},
 
@@ -136,7 +218,7 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				method: 'POST',
 				body: JSON.stringify({ email, password, name }),
 			});
-			const data = await response.json() as { user: UserInfo; token: string };
+			const data = (await response.json()) as { user: UserInfo; token: string };
 			return { user: data.user, session: data.token };
 		},
 
@@ -178,46 +260,48 @@ export function createApiClient(baseUrl?: string): ApiClient {
 		},
 
 		async createProject(session, orgId, payload) {
-			const response = await request(
-				`/api/organizations/${orgId}/projects`,
-				{
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						Authorization: `Bearer ${session}`,
-					},
-					body: JSON.stringify(payload),
-				}
-			);
+			const response = await request(`/api/organizations/${orgId}/projects`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Bearer ${session}`,
+				},
+				body: JSON.stringify(payload),
+			});
 			return response.json() as Promise<{ id: string }>;
 		},
 
 		async createApiKey(session, orgId, name, environment) {
-			const response = await request(
-				`/api/organizations/${orgId}/api-keys`,
-				{
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						Authorization: `Bearer ${session}`,
-					},
-					body: JSON.stringify({ name, environment }),
-				}
-			);
-			return response.json() as Promise<ApiKeyInfo>;
-		},
-
-		async renderPdf(apiKey, payload) {
-			const response = await request('/v1/render/pdf', {
+			const response = await request(`/api/organizations/${orgId}/api-keys`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
-					Authorization: `Bearer ${apiKey}`,
+					Authorization: `Bearer ${session}`,
 				},
+				body: JSON.stringify({ name, environment }),
+			});
+			return response.json() as Promise<ApiKeyInfo>;
+		},
+
+		async renderPdf(authorization, orgIdHeader, payload) {
+			const headers: Record<string, string> = {
+				'Content-Type': 'application/json',
+				Authorization: authorization,
+			};
+			if (orgIdHeader) {
+				headers['X-Poli-Org-Id'] = orgIdHeader;
+			}
+			const response = await request('/v1/render/pdf', {
+				method: 'POST',
+				headers,
 				body: JSON.stringify(payload),
 			});
 			const arrayBuffer = await response.arrayBuffer();
-			return Buffer.from(arrayBuffer);
+			const env = response.headers.get('X-Poli-Environment');
+			return {
+				pdf: Buffer.from(arrayBuffer),
+				environment: env === 'sandbox' || env === 'live' ? env : null,
+			};
 		},
 
 		async renderThumbnails(apiKey, payload) {
@@ -284,4 +368,40 @@ export function createApiClient(baseUrl?: string): ApiClient {
 			return response.json() as Promise<ProjectBundle>;
 		},
 	};
+}
+
+async function buildApiError(response: Response): Promise<ApiError> {
+	const text = await response.text();
+	const retryAfter = parseRetryAfter(response.headers.get('Retry-After'));
+
+	let code: string | undefined;
+	let message = text;
+
+	try {
+		const parsed = JSON.parse(text) as {
+			error?: { code?: string; message?: string };
+			detail?: string;
+			message?: string;
+		};
+		if (parsed.error?.code) {
+			code = parsed.error.code;
+			message = parsed.error.message ?? text;
+		} else {
+			message = parsed.detail ?? parsed.message ?? text;
+		}
+	} catch {
+		// Body is not JSON — fall through with the raw text.
+	}
+
+	if (code && TYPED_ERROR_REGISTRY[code]) {
+		return new TYPED_ERROR_REGISTRY[code](message, retryAfter);
+	}
+
+	return new ApiError(code ?? 'UNKNOWN', response.status, message, retryAfter);
+}
+
+function parseRetryAfter(header: string | null): number | undefined {
+	if (!header) return undefined;
+	const seconds = Number.parseInt(header, 10);
+	return Number.isFinite(seconds) ? seconds : undefined;
 }

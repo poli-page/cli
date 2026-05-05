@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { Command } from 'commander';
 import { registerInitCommand } from './commands/init.js';
 import { registerNewCommand } from './commands/new.js';
-import { registerRenderCommand } from './commands/generate.js';
+import { registerRenderCommand } from './commands/render.js';
 import { registerAuthCommands } from './commands/auth.js';
 import { registerLinkCommands } from './commands/link.js';
 import { registerPublishCommand } from './commands/publish.js';
