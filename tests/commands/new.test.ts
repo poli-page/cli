@@ -1,47 +1,118 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { executeNew, getAvailableModels } from '../../src/commands/new.js';
+import { executeNew } from '../../src/commands/new.js';
 import { executeInit } from '../../src/commands/init.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
+import type { Fetcher, TemplateIndex, TemplateManifest } from '../../src/template-importer.js';
+
+const INDEX: TemplateIndex = {
+	$schema: 'poli-page/templates/v1',
+	collections: {
+		showcase: {
+			title: 'Showcase',
+			description: 'Production templates',
+			templates: [
+				{ name: 'invoice', description: 'Invoice' },
+				{ name: 'report', description: 'Report' },
+			],
+		},
+		structures: {
+			title: 'Layouts',
+			description: 'Empty layouts',
+			templates: [
+				{ name: 'blank', description: 'Empty page' },
+				{ name: 'header-main-footer', description: 'HMF layout' },
+			],
+		},
+	},
+};
+
+const SHOWCASE_INVOICE: TemplateManifest = {
+	template: {
+		name: 'invoice',
+		template: 'invoice.html',
+		mock: 'invoice.json',
+		format: 'A4',
+		orientation: 'portrait',
+	},
+	images: [],
+	fonts: [],
+};
+
+const STRUCTURES_BLANK: TemplateManifest = {
+	template: {
+		name: 'blank',
+		template: 'blank.html',
+		mock: 'blank.json',
+		format: 'A4',
+		orientation: 'portrait',
+	},
+	images: [],
+	fonts: [],
+};
+
+function makeFetcher(files: Record<string, string>): Fetcher {
+	return async (url: string) => {
+		const m = url.match(/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/main\/(.+)$/);
+		if (!m) return new Response('not found', { status: 404 });
+		const content = files[m[1]];
+		if (content === undefined) return new Response('not found', { status: 404 });
+		return new Response(content, { status: 200 });
+	};
+}
+
+const SOURCE_FILES: Record<string, string> = {
+	'index.json': JSON.stringify(INDEX),
+	'showcase/templates/invoice/manifest.json': JSON.stringify(SHOWCASE_INVOICE),
+	'showcase/templates/invoice/invoice.html':
+		'<div class="poli-header">{{ company }}</div><div class="poli-footer"></div>',
+	'showcase/templates/invoice/invoice.json': '{"company":"Acme"}',
+	'showcase/templates/invoice/tailwind-additions.css':
+		'@theme { --color-accent: #e2725b; }',
+	'structures/templates/blank/manifest.json': JSON.stringify(STRUCTURES_BLANK),
+	'structures/templates/blank/blank.html': '<div></div>',
+	'structures/templates/blank/blank.json': '{}',
+	'structures/templates/blank/tailwind-additions.css': '',
+};
 
 describe('poli new', () => {
 	let tempDir: string;
 	let projectDir: string;
+	let fakeHome: string;
 
 	beforeEach(async () => {
 		tempDir = await mkdtemp(join(tmpdir(), 'poli-new-'));
+		fakeHome = await mkdtemp(join(tmpdir(), 'poli-new-home-'));
 		projectDir = await executeInit('test-project', { cwd: tempDir });
 	});
 
 	afterEach(async () => {
 		await rm(tempDir, { recursive: true, force: true });
+		await rm(fakeHome, { recursive: true, force: true });
 	});
 
-	it('should create an HTML template file in templates/', async () => {
-		await executeNew('invoice', { cwd: projectDir });
+	it('imports a template from the source via --from-template', async () => {
+		await executeNew('invoice', {
+			cwd: projectDir,
+			fromTemplate: 'showcase/invoice',
+			homeDir: fakeHome,
+			fetcher: makeFetcher(SOURCE_FILES),
+		});
+
 		const htmlPath = join(projectDir, 'templates', 'invoice', 'invoice.html');
 		const stats = await stat(htmlPath);
 		expect(stats.isFile()).toBe(true);
-	});
 
-	it('should create a mock JSON file in templates/', async () => {
-		await executeNew('invoice', { cwd: projectDir });
-		const jsonPath = join(projectDir, 'templates', 'invoice', 'invoice.json');
-		const content = await readFile(jsonPath, 'utf-8');
-		const data = JSON.parse(content);
-		expect(data).toBeDefined();
-	});
+		const html = await readFile(htmlPath, 'utf-8');
+		expect(html).toContain('poli-header');
 
-	it('should add the template entry to poli-page.json', async () => {
-		await executeNew('invoice', { cwd: projectDir });
 		const manifest = JSON.parse(
 			await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
 		);
-
 		expect(manifest.templates).toHaveLength(1);
-		expect(manifest.templates[0]).toEqual({
+		expect(manifest.templates[0]).toMatchObject({
 			name: 'invoice',
 			template: 'invoice.html',
 			mock: 'invoice.json',
@@ -50,50 +121,44 @@ describe('poli new', () => {
 		});
 	});
 
-	it('should use header-main-footer model by default', async () => {
-		await executeNew('report', { cwd: projectDir });
-		const htmlPath = join(projectDir, 'templates', 'report', 'report.html');
-		const content = await readFile(htmlPath, 'utf-8');
-		expect(content).toContain('poli-header');
-		expect(content).toContain('poli-footer');
+	it('renames the destination via the positional name', async () => {
+		await executeNew('billing', {
+			cwd: projectDir,
+			fromTemplate: 'showcase/invoice',
+			homeDir: fakeHome,
+			fetcher: makeFetcher(SOURCE_FILES),
+		});
+
+		await stat(join(projectDir, 'templates', 'billing', 'invoice.html'));
+		const manifest = JSON.parse(
+			await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
+		);
+		expect(manifest.templates[0].name).toBe('billing');
 	});
 
-	it('should copy content from the templates directory', async () => {
-		await executeNew('report', { cwd: projectDir, model: 'header-main-footer' });
-		const htmlPath = join(projectDir, 'templates', 'report', 'report.html');
-		const content = await readFile(htmlPath, 'utf-8');
-		// Must match the actual structure template, not a generated one
-		expect(content).toContain('poli-header');
-		expect(content).toContain('poli-footer');
-		expect(content).toContain('poli-page-numbers');
-		expect(content).toContain('formatDateTime');
+	it('imports the blank structure (replaces the legacy --model blank flow)', async () => {
+		await executeNew('simple', {
+			cwd: projectDir,
+			fromTemplate: 'structures/blank',
+			homeDir: fakeHome,
+			fetcher: makeFetcher(SOURCE_FILES),
+		});
+		const html = await readFile(
+			join(projectDir, 'templates', 'simple', 'blank.html'),
+			'utf-8'
+		);
+		expect(html).not.toContain('poli-header');
 	});
 
-	it('should support the blank model', async () => {
-		await executeNew('simple', { cwd: projectDir, model: 'blank' });
-		const htmlPath = join(projectDir, 'templates', 'simple', 'simple.html');
-		const content = await readFile(htmlPath, 'utf-8');
-		expect(content).not.toContain('poli-header');
-		expect(content).not.toContain('poli-footer');
-	});
-
-	it('should support sidebar models', async () => {
-		await executeNew('doc', { cwd: projectDir, model: 'header-main-footer-sidebar' });
-		const htmlPath = join(projectDir, 'templates', 'doc', 'doc.html');
-		const content = await readFile(htmlPath, 'utf-8');
-		expect(content).toContain('poli-aside');
-		expect(content).toContain('poli-header');
-		expect(content).toContain('poli-footer');
-	});
-
-	it('should throw for unknown model', async () => {
-		await expect(
-			executeNew('test', { cwd: projectDir, model: 'nonexistent-model' })
-		).rejects.toThrow(/Unknown model/);
-	});
-
-	it('should accept a --format option', async () => {
-		await executeNew('certificate', { cwd: projectDir, format: 'A5', orientation: 'landscape' });
+	it('overrides format and orientation when provided', async () => {
+		await executeNew('certificate', {
+			cwd: projectDir,
+			fromTemplate: 'showcase/invoice',
+			format: 'A5',
+			orientation: 'landscape',
+			homeDir: fakeHome,
+			fetcher: makeFetcher(SOURCE_FILES),
+		});
 		const manifest = JSON.parse(
 			await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
 		);
@@ -101,43 +166,84 @@ describe('poli new', () => {
 		expect(manifest.templates[0].orientation).toBe('landscape');
 	});
 
-	it('should throw if template name already exists in manifest', async () => {
-		await executeNew('invoice', { cwd: projectDir });
-		await expect(executeNew('invoice', { cwd: projectDir })).rejects.toThrow(
-			/already exists/
-		);
+	it('throws if --from-template is omitted (no other source mode exists)', async () => {
+		await expect(
+			executeNew('invoice', {
+				cwd: projectDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher(SOURCE_FILES),
+			})
+		).rejects.toThrow(/from-template/i);
 	});
 
-	it('should throw if no poli-page.json is found', async () => {
+	it('throws if the template ref is malformed', async () => {
+		await expect(
+			executeNew('invoice', {
+				cwd: projectDir,
+				fromTemplate: 'just-one-segment',
+				homeDir: fakeHome,
+				fetcher: makeFetcher(SOURCE_FILES),
+			})
+		).rejects.toThrow(/template reference/i);
+	});
+
+	it('throws if the destination name already exists in the project', async () => {
+		await executeNew('invoice', {
+			cwd: projectDir,
+			fromTemplate: 'showcase/invoice',
+			homeDir: fakeHome,
+			fetcher: makeFetcher(SOURCE_FILES),
+		});
+		await expect(
+			executeNew('invoice', {
+				cwd: projectDir,
+				fromTemplate: 'showcase/invoice',
+				homeDir: fakeHome,
+				fetcher: makeFetcher(SOURCE_FILES),
+			})
+		).rejects.toThrow(/already exists/i);
+	});
+
+	it('throws if no poli-page.json is found', async () => {
 		const emptyDir = await mkdtemp(join(tmpdir(), 'poli-empty-'));
-		await expect(executeNew('invoice', { cwd: emptyDir })).rejects.toThrow(
-			/poli-page\.json/
-		);
+		await expect(
+			executeNew('invoice', {
+				cwd: emptyDir,
+				fromTemplate: 'showcase/invoice',
+				homeDir: fakeHome,
+				fetcher: makeFetcher(SOURCE_FILES),
+			})
+		).rejects.toThrow(/poli-page\.json/i);
 		await rm(emptyDir, { recursive: true, force: true });
 	});
 
-	it('should sanitize template name to kebab-case', async () => {
-		await executeNew('My Invoice', { cwd: projectDir });
+	it('sanitizes the destination name to kebab-case', async () => {
+		await executeNew('My Invoice', {
+			cwd: projectDir,
+			fromTemplate: 'showcase/invoice',
+			homeDir: fakeHome,
+			fetcher: makeFetcher(SOURCE_FILES),
+		});
 		const manifest = JSON.parse(
 			await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
 		);
 		expect(manifest.templates[0].name).toBe('my-invoice');
-
-		const htmlPath = join(projectDir, 'templates', 'my-invoice', 'my-invoice.html');
-		const stats = await stat(htmlPath);
-		expect(stats.isFile()).toBe(true);
+		await stat(join(projectDir, 'templates', 'my-invoice', 'invoice.html'));
 	});
 
-	describe('getAvailableModels', () => {
-		it('should return all 6 structure models', () => {
-			const models = getAvailableModels();
-			expect(models).toContain('blank');
-			expect(models).toContain('header-main-footer');
-			expect(models).toContain('header-main-footer-sidebar');
-			expect(models).toContain('header-main-sidebar-footer');
-			expect(models).toContain('header-sidebar-main-footer');
-			expect(models).toContain('sidebar-header-main-footer');
-			expect(models).toHaveLength(6);
+	it('passes through --source for third-party repos', async () => {
+		const calls: string[] = [];
+		const customFetcher: Fetcher = async (url) => {
+			calls.push(url);
+			return makeFetcher(SOURCE_FILES)(url);
+		};
+		await executeNew('invoice', {
+			cwd: projectDir,
+			fromTemplate: 'showcase/invoice',
+			source: 'github:acme/my-templates',
+			homeDir: fakeHome,
+			fetcher: customFetcher,
 		});
+		expect(calls.some((u) => u.includes('acme/my-templates'))).toBe(true);
 	});
 });

@@ -4,6 +4,53 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeInit } from '../../src/commands/init.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
+import type {
+	Fetcher,
+	TemplateIndex,
+	TemplateManifest,
+} from '../../src/template-importer.js';
+
+const INDEX: TemplateIndex = {
+	$schema: 'poli-page/templates/v1',
+	collections: {
+		showcase: {
+			title: 'Showcase',
+			description: 'Production templates',
+			templates: [{ name: 'invoice', description: 'Invoice' }],
+		},
+	},
+};
+
+const SHOWCASE_INVOICE: TemplateManifest = {
+	template: {
+		name: 'invoice',
+		template: 'invoice.html',
+		mock: 'invoice.json',
+		format: 'A4',
+		orientation: 'portrait',
+	},
+	images: [],
+	fonts: [],
+};
+
+const SOURCE_FILES: Record<string, string> = {
+	'index.json': JSON.stringify(INDEX),
+	'showcase/templates/invoice/manifest.json': JSON.stringify(SHOWCASE_INVOICE),
+	'showcase/templates/invoice/invoice.html': '<div>Invoice</div>',
+	'showcase/templates/invoice/invoice.json': '{"company":"Acme"}',
+	'showcase/templates/invoice/tailwind-additions.css':
+		'@theme { --color-accent: #e2725b; }',
+};
+
+function makeFetcher(files: Record<string, string>): Fetcher {
+	return async (url: string) => {
+		const m = url.match(/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/main\/(.+)$/);
+		if (!m) return new Response('not found', { status: 404 });
+		const content = files[m[1]];
+		if (content === undefined) return new Response('not found', { status: 404 });
+		return new Response(content, { status: 200 });
+	};
+}
 
 describe('poli init', () => {
 	let tempDir: string;
@@ -111,5 +158,98 @@ describe('poli init', () => {
 		const manifest = JSON.parse(content);
 
 		expect(manifest.project.name).toBe(tempDir.split('/').pop());
+	});
+
+	describe('with --with-template', () => {
+		let fakeHome: string;
+
+		beforeEach(async () => {
+			fakeHome = await mkdtemp(join(tmpdir(), 'poli-init-home-'));
+		});
+
+		afterEach(async () => {
+			await rm(fakeHome, { recursive: true, force: true });
+		});
+
+		it('imports the template after scaffolding the project', async () => {
+			const projectDir = await executeInit('billing', {
+				cwd: tempDir,
+				withTemplate: 'showcase/invoice',
+				homeDir: fakeHome,
+				fetcher: makeFetcher(SOURCE_FILES),
+			});
+
+			// Project scaffold
+			const stats = await stat(projectDir);
+			expect(stats.isDirectory()).toBe(true);
+
+			// Imported template directory
+			await stat(join(projectDir, 'templates', 'invoice', 'invoice.html'));
+
+			// Manifest contains the template entry
+			const manifest = JSON.parse(
+				await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
+			);
+			expect(manifest.templates).toHaveLength(1);
+			expect(manifest.templates[0].name).toBe('invoice');
+
+			// Tailwind appended with markers
+			const tw = await readFile(join(projectDir, 'tailwind.css'), 'utf-8');
+			expect(tw).toMatch(/poli-page-additions: showcase\/invoice — start/);
+		});
+
+		it('renames the imported template via --template-name', async () => {
+			const projectDir = await executeInit('billing', {
+				cwd: tempDir,
+				withTemplate: 'showcase/invoice',
+				templateName: 'welcome',
+				homeDir: fakeHome,
+				fetcher: makeFetcher(SOURCE_FILES),
+			});
+
+			await stat(join(projectDir, 'templates', 'welcome', 'invoice.html'));
+			const manifest = JSON.parse(
+				await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
+			);
+			expect(manifest.templates[0].name).toBe('welcome');
+		});
+
+		it('throws if the template ref is malformed', async () => {
+			await expect(
+				executeInit('billing', {
+					cwd: tempDir,
+					withTemplate: 'just-one-segment',
+					homeDir: fakeHome,
+					fetcher: makeFetcher(SOURCE_FILES),
+				})
+			).rejects.toThrow(/template reference/i);
+		});
+
+		it('throws if the template is unknown in the source', async () => {
+			await expect(
+				executeInit('billing', {
+					cwd: tempDir,
+					withTemplate: 'showcase/banana',
+					homeDir: fakeHome,
+					fetcher: makeFetcher(SOURCE_FILES),
+				})
+			).rejects.toThrow(/banana/i);
+		});
+
+		it('passes --source through to a third-party repo', async () => {
+			const calls: string[] = [];
+			const customFetcher: Fetcher = async (url) => {
+				calls.push(url);
+				return makeFetcher(SOURCE_FILES)(url);
+			};
+			await executeInit('billing', {
+				cwd: tempDir,
+				withTemplate: 'showcase/invoice',
+				source: 'github:acme/my-templates',
+				homeDir: fakeHome,
+				fetcher: customFetcher,
+			});
+			expect(calls.some((u) => u.includes('acme/my-templates'))).toBe(true);
+		});
 	});
 });

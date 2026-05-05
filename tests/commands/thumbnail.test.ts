@@ -3,7 +3,7 @@ import { mkdtemp, rm, stat, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeInit } from '../../src/commands/init.js';
-import { executeNew } from '../../src/commands/new.js';
+import { setupTemplate } from '../helpers/setup-template.js';
 import { executeThumbnail } from '../../src/commands/thumbnail.js';
 import { writeCredentials } from '../../src/credentials.js';
 import { writeManifest, readManifest } from '../../src/manifest.js';
@@ -78,7 +78,7 @@ describe('poli thumbnail', () => {
 		tempDir = await mkdtemp(join(tmpdir(), 'poli-thumb-'));
 		fakeHome = await mkdtemp(join(tmpdir(), 'poli-home-'));
 		projectDir = await executeInit('test-project', { cwd: tempDir });
-		await executeNew('invoice', { cwd: projectDir });
+		await setupTemplate(projectDir, 'invoice');
 
 		// Link project
 		const manifest = await readManifest(projectDir);

@@ -3,7 +3,7 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeInit } from '../src/commands/init.js';
-import { executeNew } from '../src/commands/new.js';
+import { setupTemplate } from './helpers/setup-template.js';
 import { loadProject, findTemplate, loadTemplate, loadTailwindCss } from '../src/project-loader.js';
 
 describe('project-loader', () => {
@@ -13,7 +13,7 @@ describe('project-loader', () => {
 	beforeEach(async () => {
 		tempDir = await mkdtemp(join(tmpdir(), 'poli-loader-'));
 		projectDir = await executeInit('test-project', { cwd: tempDir });
-		await executeNew('invoice', { cwd: projectDir });
+		await setupTemplate(projectDir, 'invoice');
 	});
 
 	afterEach(async () => {

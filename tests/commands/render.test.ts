@@ -3,7 +3,7 @@ import { mkdtemp, rm, stat, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeInit } from '../../src/commands/init.js';
-import { executeNew } from '../../src/commands/new.js';
+import { setupTemplate } from '../helpers/setup-template.js';
 import { executeRender } from '../../src/commands/render.js';
 import { writeCredentials } from '../../src/credentials.js';
 import { writeManifest, readManifest } from '../../src/manifest.js';
@@ -81,7 +81,7 @@ describe('poli render', () => {
 		tempDir = await mkdtemp(join(tmpdir(), 'poli-render-'));
 		fakeHome = await mkdtemp(join(tmpdir(), 'poli-home-'));
 		projectDir = await executeInit('test-project', { cwd: tempDir });
-		await executeNew('invoice', { cwd: projectDir });
+		await setupTemplate(projectDir, 'invoice');
 
 		const manifest = await readManifest(projectDir);
 		manifest.cloud = {
