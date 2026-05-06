@@ -135,6 +135,35 @@ export interface RenderPdfResult {
 	environment: 'sandbox' | 'live' | null;
 }
 
+export interface MeResponse {
+	auth: {
+		mode: 'session' | 'api-key';
+		keyType: 'test' | 'live' | 'service' | 'session';
+		environment: 'sandbox' | 'live' | null;
+	};
+	user: {
+		id: string;
+		email: string;
+		name: string;
+		username: string;
+	} | null;
+	key: {
+		id: string;
+		name: string;
+		prefix: string;
+		preview: string;
+		createdAt: string;
+		lastUsedAt: string | null;
+	} | null;
+	org: {
+		id: string;
+		slug: string;
+		name: string;
+		tier: string;
+		lifecycleStatus: string;
+	} | null;
+}
+
 export interface ApiClient {
 	signIn(email: string, password: string): Promise<{ user: UserInfo; session: string }>;
 	signUp(
@@ -171,6 +200,7 @@ export interface ApiClient {
 		orgIdHeader: string | undefined,
 		payload: Record<string, unknown>
 	): Promise<RenderPdfResult>;
+	getMe(authorization: string, orgIdHeader?: string): Promise<MeResponse>;
 	renderThumbnails(
 		apiKey: string,
 		payload: Record<string, unknown>
@@ -281,6 +311,21 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				body: JSON.stringify({ name, environment }),
 			});
 			return response.json() as Promise<ApiKeyInfo>;
+		},
+
+		async getMe(authorization, orgIdHeader) {
+			const headers: Record<string, string> = {
+				'Content-Type': 'application/json',
+				Authorization: authorization,
+			};
+			if (orgIdHeader) {
+				headers['X-Poli-Org-Id'] = orgIdHeader;
+			}
+			const response = await request('/v1/me', {
+				method: 'GET',
+				headers,
+			});
+			return response.json() as Promise<MeResponse>;
 		},
 
 		async renderPdf(authorization, orgIdHeader, payload) {

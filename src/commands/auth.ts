@@ -2,45 +2,11 @@ import { Command } from 'commander';
 import {
 	writeCredentials,
 	clearCredentials,
-	readCredentials,
 	type StoredCredentials,
 } from '../credentials.js';
-import { createApiClient, type ApiClient } from '../api-client.js';
-
-export interface LoginOptions {
-	email: string;
-	password: string;
-	apiClient?: ApiClient;
-	homeDir?: string;
-}
-
-export async function executeLogin(options: LoginOptions): Promise<StoredCredentials> {
-	const client = options.apiClient ?? createApiClient();
-	const { user, session } = await client.signIn(options.email, options.password);
-
-	// Persist the API URL if a non-default one was used
-	const apiUrl = process.env.POLI_API_URL;
-
-	const credentials: StoredCredentials = {
-		...(apiUrl ? { apiUrl } : {}),
-		session,
-		user,
-		orgs: {},
-	};
-
-	// Fetch user's organizations and store them
-	try {
-		const orgs = await client.getOrganizations(session);
-		for (const org of orgs) {
-			credentials.orgs[org.slug] = {};
-		}
-	} catch {
-		// Orgs fetch may fail if user has none — that's ok
-	}
-
-	await writeCredentials(credentials, options.homeDir);
-	return credentials;
-}
+import { readManifest } from '../manifest.js';
+import { resolveAuth } from '../auth.js';
+import { createApiClient, type ApiClient, type MeResponse } from '../api-client.js';
 
 export interface DeviceLoginOptions {
 	apiClient?: ApiClient;
@@ -144,18 +110,47 @@ export async function executeLogout(homeDir?: string): Promise<void> {
 	await clearCredentials(homeDir);
 }
 
-export async function executeWhoami(homeDir?: string): Promise<{
-	user: { name: string; email: string };
-	orgs: string[];
-} | null> {
-	const credentials = await readCredentials(homeDir);
-	if (!credentials) {
-		return null;
+export interface WhoamiOptions {
+	cwd?: string;
+	homeDir?: string;
+	apiClient?: ApiClient;
+}
+
+export interface WhoamiResult {
+	mode: 'session' | 'api-key';
+	payload: MeResponse;
+}
+
+export async function executeWhoami(
+	options: WhoamiOptions = {}
+): Promise<WhoamiResult> {
+	const cwd = options.cwd ?? process.cwd();
+
+	let manifestOrgId: string | undefined;
+	try {
+		const manifest = await readManifest(cwd);
+		manifestOrgId = manifest.cloud?.orgId;
+	} catch {
+		// Not in a Poli Page project — leave orgId undefined; resolveAuth will
+		// throw a friendly error if a session is present but orgId is needed.
 	}
-	return {
-		user: { name: credentials.user.name, email: credentials.user.email },
-		orgs: Object.keys(credentials.orgs),
-	};
+
+	let auth;
+	try {
+		auth = await resolveAuth({ manifestOrgId, homeDir: options.homeDir });
+	} catch (err) {
+		if (err instanceof Error && /isn't linked/i.test(err.message)) {
+			throw new Error(
+				'Run `poli whoami` inside a linked project, or set POLI_PAGE_API_KEY for api-key mode.'
+			);
+		}
+		throw err;
+	}
+
+	const client = options.apiClient ?? createApiClient();
+	const payload = await client.getMe(auth.authorization, auth.orgIdHeader);
+
+	return { mode: auth.mode, payload };
 }
 
 export function registerAuthCommands(program: Command) {
@@ -213,19 +208,36 @@ export function registerAuthCommands(program: Command) {
 
 	program
 		.command('whoami')
-		.description('Show current user and organizations')
-		.action(async () => {
+		.description('Show current identity (session user or API key) and active org')
+		.option('--json', 'Output the raw /v1/me payload as JSON')
+		.action(async (opts) => {
 			const { default: chalk } = await import('chalk');
-			const info = await executeWhoami();
-			if (!info) {
-				console.log(chalk.yellow('Not logged in. Run "poli login" first.'));
-				return;
-			}
-			console.log(`${chalk.bold(info.user.name)} (${info.user.email})`);
-			if (info.orgs.length > 0) {
-				console.log(`Organizations: ${info.orgs.join(', ')}`);
-			} else {
-				console.log(chalk.dim('No organizations'));
+			try {
+				const { mode, payload } = await executeWhoami();
+				if (opts.json) {
+					console.log(JSON.stringify(payload, null, 2));
+					return;
+				}
+				const orgSlug = payload.org?.slug ?? '(no org)';
+				if (mode === 'session') {
+					const email = payload.user?.email ?? '(unknown)';
+					console.log(`${chalk.bold(email)} @ ${chalk.cyan(orgSlug)} (session)`);
+				} else {
+					const preview = payload.key?.preview ?? '(unknown)';
+					const env = payload.auth.environment ?? '(?)';
+					console.log(
+						`${chalk.bold(preview)} @ ${chalk.cyan(orgSlug)} (api-key, environment=${env})`
+					);
+				}
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : 'whoami failed';
+				if (/Not logged in/i.test(msg)) {
+					console.error(chalk.yellow(msg));
+					process.exitCode = 2;
+				} else {
+					console.error(chalk.red(msg));
+					process.exitCode = 1;
+				}
 			}
 		});
 }
