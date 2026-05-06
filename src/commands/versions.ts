@@ -1,15 +1,16 @@
 import { Command } from 'commander';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
-import { readManifest } from '../manifest.js';
-import { getSessionToken } from '../credentials.js';
 import {
-	createApiClient,
 	type ApiClient,
 	type VersionInfo,
 	type VersionState,
 } from '../api-client.js';
 import { MANIFEST_FILENAME } from '../constants.js';
+import { resolveCloudContext } from '../cloud-context.js';
+import { registerVersionStateSubcommands } from './version-state.js';
+
+export { resolveCloudContext, validateExactSemver, EXACT_SEMVER, type CloudContext } from '../cloud-context.js';
 
 type ChalkFn = (s: string) => string;
 type ChalkLike = Record<'green' | 'cyan' | 'yellow' | 'red' | 'gray', ChalkFn>;
@@ -28,42 +29,6 @@ function formatStateBadge(state: VersionState, chalk: ChalkLike): string {
 	}
 }
 
-interface CloudContext {
-	session: string;
-	orgId: string;
-	orgSlug: string;
-	projectId: string;
-}
-
-async function resolveCloudContext(options: {
-	cwd?: string;
-	apiClient?: ApiClient;
-	homeDir?: string;
-}): Promise<{ client: ApiClient; ctx: CloudContext }> {
-	const cwd = options.cwd ?? process.cwd();
-	const client = options.apiClient ?? createApiClient();
-	const session = await getSessionToken(options.homeDir);
-
-	let manifest;
-	try {
-		manifest = await readManifest(cwd);
-	} catch {
-		throw new Error(`No ${MANIFEST_FILENAME} found in ${cwd}. Are you in a Poli Page project?`);
-	}
-
-	if (!manifest.cloud) {
-		throw new Error('Project is not linked to any organization. Run "poli link" first.');
-	}
-
-	const { orgSlug, projectId } = manifest.cloud;
-	const orgs = await client.getOrganizations(session);
-	const org = orgs.find((o) => o.slug === orgSlug);
-	if (!org) {
-		throw new Error(`Organization "${orgSlug}" not found.`);
-	}
-
-	return { client, ctx: { session, orgId: org.id, orgSlug, projectId } };
-}
 
 // ─── versions list ──────────────────────────────────────────────────────────────
 
@@ -151,6 +116,7 @@ export async function executeVersionsDownload(options: VersionsDownloadOptions):
 
 export function registerVersionsCommands(program: Command) {
 	const versions = program.command('versions').description('Manage published versions');
+	registerVersionStateSubcommands(versions);
 
 	versions
 		.command('list')
