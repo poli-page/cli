@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `poli watch` — auto-sync the local project to the cloud draft on each save
+  (debounced 2s). The flow that turns the dashboard "quickstart loop" from a
+  copy-paste demo into a live feedback loop: edit locally → save → the next
+  `curl` from the dashboard reflects the change within seconds.
+  - File watching via `chokidar` v5 (default ignore: `node_modules/`, `.git/`,
+    `output/`, `dist/`, `*.log`, `.DS_Store`).
+  - Incremental sync via `PATCH /api/organizations/:orgId/projects/:projectId/files`
+    with a `Map<path, sha256>` content-hash diff — only changed bytes are
+    uploaded.
+  - Resilience: exponential backoff on network errors (1s, 2s, 4s, 8s, 16s,
+    capped at 30s); `503 ORGANIZATION_MIGRATING` triggers a 5-second retry.
+  - Friendly translation of `403 SYSTEM_PROJECT_LOCKED` for the
+    `getting-started` system project.
+  - Requires a TTY (refused with exit 2 in non-interactive contexts).
+  - **Out of scope for this version**: the local HTTP preview server +
+    WebSocket auto-reload (`--port`, `--no-open`, `--engine`) listed in
+    cli-spec.md §5 — to be scoped separately.
+- Typed errors `SystemProjectLockedError` (403) and `SystemProjectImmutableError`
+  (403) added to the api-client error registry.
+- `api-client.patchFiles(session, orgId, projectId, body)` — wraps
+  `PATCH /api/organizations/:orgId/projects/:projectId/files`.
 - `poli documents get <id>` — fetch a document descriptor (metadata + 15-minute
   presigned PDF URL). Calls `GET /v1/documents/:id` over hybrid auth (session
   or `pp_*` API key). The CLI does not download the PDF — the presigned URL

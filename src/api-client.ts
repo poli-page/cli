@@ -84,6 +84,16 @@ export class DocumentGoneError extends ApiError {
 		super('DOCUMENT_GONE', 410, message, retryAfter);
 	}
 }
+export class SystemProjectLockedError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('SYSTEM_PROJECT_LOCKED', 403, message, retryAfter);
+	}
+}
+export class SystemProjectImmutableError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('SYSTEM_PROJECT_IMMUTABLE', 403, message, retryAfter);
+	}
+}
 
 type TypedErrorCtor = new (message: string, retryAfter?: number) => ApiError;
 
@@ -102,6 +112,8 @@ const TYPED_ERROR_REGISTRY: Record<string, TypedErrorCtor> = {
 	THUMBNAILS_NOT_AVAILABLE: ThumbnailsNotAvailableError,
 	DOCUMENT_NOT_FOUND: DocumentNotFoundError,
 	DOCUMENT_GONE: DocumentGoneError,
+	SYSTEM_PROJECT_LOCKED: SystemProjectLockedError,
+	SYSTEM_PROJECT_IMMUTABLE: SystemProjectImmutableError,
 };
 
 export interface ApiKeyInfo {
@@ -180,6 +192,21 @@ export interface DocumentThumbnailOptions {
 export interface DocumentPreviewResult {
 	html: string;
 	pageCount: number;
+}
+
+export interface PatchFilesEntry {
+	path: string;
+	content: string;
+}
+
+export interface PatchFilesBody {
+	added: PatchFilesEntry[];
+	modified: PatchFilesEntry[];
+	deleted: string[];
+}
+
+export interface PatchFilesResult {
+	syncedAt: string;
 }
 
 export interface RenderPdfResult {
@@ -262,6 +289,12 @@ export interface ApiClient {
 		projectId: string,
 		payload: Record<string, unknown>
 	): Promise<void>;
+	patchFiles(
+		session: string,
+		orgId: string,
+		projectId: string,
+		body: PatchFilesBody
+	): Promise<PatchFilesResult>;
 	createApiKey(
 		session: string,
 		orgId: string,
@@ -563,6 +596,21 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				},
 				body: JSON.stringify(payload),
 			});
+		},
+
+		async patchFiles(session, orgId, projectId, body) {
+			const response = await request(
+				`/api/organizations/${orgId}/projects/${projectId}/files`,
+				{
+					method: 'PATCH',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${session}`,
+					},
+					body: JSON.stringify(body),
+				}
+			);
+			return response.json() as Promise<PatchFilesResult>;
 		},
 
 		async pushVersion(session, orgId, projectId, body) {

@@ -16,6 +16,8 @@ import {
 	ThumbnailsNotAvailableError,
 	DocumentNotFoundError,
 	DocumentGoneError,
+	SystemProjectLockedError,
+	SystemProjectImmutableError,
 } from '../src/api-client.js';
 
 function mockFetchOnce(
@@ -169,6 +171,30 @@ describe('api-client error mapping', () => {
 			const err = await callAnyEndpoint().catch((e) => e);
 			expect(err).toBeInstanceOf(DocumentGoneError);
 			expect(err.httpStatus).toBe(410);
+		});
+
+		it('maps 403 SYSTEM_PROJECT_LOCKED → SystemProjectLockedError', async () => {
+			mockFetchOnce(403, {
+				error: {
+					code: 'SYSTEM_PROJECT_LOCKED',
+					message: 'getting-started is read-only',
+				},
+			});
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err).toBeInstanceOf(SystemProjectLockedError);
+			expect(err.httpStatus).toBe(403);
+		});
+
+		it('maps 403 SYSTEM_PROJECT_IMMUTABLE → SystemProjectImmutableError', async () => {
+			mockFetchOnce(403, {
+				error: {
+					code: 'SYSTEM_PROJECT_IMMUTABLE',
+					message: 'cannot rename system project',
+				},
+			});
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err).toBeInstanceOf(SystemProjectImmutableError);
+			expect(err.httpStatus).toBe(403);
 		});
 	});
 

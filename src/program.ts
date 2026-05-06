@@ -11,6 +11,7 @@ import { registerPushCommand } from './commands/push.js';
 import { registerVersionsCommands } from './commands/versions.js';
 import { registerThumbnailCommand } from './commands/thumbnail.js';
 import { registerDocumentsCommands } from './commands/documents/index.js';
+import { registerWatchCommand } from './commands/watch.js';
 import { readCredentials } from './credentials.js';
 import { readManifest } from './manifest.js';
 
@@ -66,6 +67,7 @@ export function createProgram() {
 	registerVersionsCommands(program);
 	registerThumbnailCommand(program);
 	registerDocumentsCommands(program);
+	registerWatchCommand(program);
 
 	return program;
 }
