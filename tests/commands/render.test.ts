@@ -48,7 +48,6 @@ function createMockApiClient(
 			options.calls?.push(call);
 			return options.render ? options.render(call) : defaultRender();
 		},
-		renderThumbnails: async () => [],
 		deviceRequest: async () => ({
 			deviceCode: 'dc',
 			userCode: 'uc',

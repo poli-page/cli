@@ -13,6 +13,9 @@ import {
 	VersionRequiredError,
 	MissingOrgContextError,
 	NotAMemberError,
+	ThumbnailsNotAvailableError,
+	DocumentNotFoundError,
+	DocumentGoneError,
 } from '../src/api-client.js';
 
 function mockFetchOnce(
@@ -135,6 +138,37 @@ describe('api-client error mapping', () => {
 				error: { code: 'NOT_A_MEMBER', message: 'no membership' },
 			});
 			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(NotAMemberError);
+		});
+
+		it('maps 403 THUMBNAILS_NOT_AVAILABLE → ThumbnailsNotAvailableError', async () => {
+			mockFetchOnce(403, {
+				error: {
+					code: 'THUMBNAILS_NOT_AVAILABLE',
+					message: 'Thumbnails require a paid plan.',
+				},
+			});
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err).toBeInstanceOf(ThumbnailsNotAvailableError);
+			expect(err.code).toBe('THUMBNAILS_NOT_AVAILABLE');
+			expect(err.httpStatus).toBe(403);
+		});
+
+		it('maps 404 DOCUMENT_NOT_FOUND → DocumentNotFoundError', async () => {
+			mockFetchOnce(404, {
+				error: { code: 'DOCUMENT_NOT_FOUND', message: 'unknown id' },
+			});
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err).toBeInstanceOf(DocumentNotFoundError);
+			expect(err.httpStatus).toBe(404);
+		});
+
+		it('maps 410 DOCUMENT_GONE → DocumentGoneError', async () => {
+			mockFetchOnce(410, {
+				error: { code: 'DOCUMENT_GONE', message: 'soft-deleted' },
+			});
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err).toBeInstanceOf(DocumentGoneError);
+			expect(err.httpStatus).toBe(410);
 		});
 	});
 

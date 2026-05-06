@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `poli documents get <id>` — fetch a document descriptor (metadata + 15-minute
+  presigned PDF URL). Calls `GET /v1/documents/:id` over hybrid auth (session
+  or `pp_*` API key). The CLI does not download the PDF — the presigned URL
+  is the contract. `--json` dumps the full descriptor.
+- `poli documents delete <id>` — soft-delete a document. Idempotent: returns
+  success even if the document was already deleted. `--yes` skips the prompt.
+- `poli documents thumbnails <id>` — regenerate thumbnails on demand from a
+  stored document via `POST /v1/documents/:id/thumbnails`. Counts as one
+  billable render against the monthly PDF quota when the auth env is `live`.
+  Free tier returns `403 THUMBNAILS_NOT_AVAILABLE`. Flags: `--width`,
+  `--format png|jpeg`, `--quality`, `--pages 1,3`, `-o <dir>`, `--json`.
+- `poli documents preview <id>` — fetch the stored canonical HTML re-wrapped
+  as preview-mode (free, no quota cost). Default writes to
+  `./output/documents/<id>.preview.html` and opens the browser. `--no-open`,
+  `-o <file>`, `--json` available.
+- Typed errors `ThumbnailsNotAvailableError` (403), `DocumentNotFoundError`
+  (404), `DocumentGoneError` (410) added to the api-client error registry.
+
+### Changed
+- **BREAKING** — `poli thumbnail` now takes a `<documentId>` argument and
+  forwards to `poli documents thumbnails`. The previous local-mode rendering
+  path was removed: the CLI no longer bundles the engine. Generate the
+  document with `poli render document <name>` first (it returns the
+  documentId), then thumbnail it. The `--live` and `--remote` flags are gone;
+  env is implicit in the auth context.
+
+### Removed
+- `api-client.renderThumbnails` — `/v1/render/thumbnails` was retired
+  upstream (api-spec §11.4). Thumbnails now flow through `documentThumbnails`
+  against a stored document, which guarantees zero drift with the source PDF.
+
 ## [0.1.2] — 2026-04-26
 
 ### Changed

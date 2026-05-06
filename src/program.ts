@@ -10,6 +10,7 @@ import { registerVersionStateCommands } from './commands/version-state.js';
 import { registerPushCommand } from './commands/push.js';
 import { registerVersionsCommands } from './commands/versions.js';
 import { registerThumbnailCommand } from './commands/thumbnail.js';
+import { registerDocumentsCommands } from './commands/documents/index.js';
 import { readCredentials } from './credentials.js';
 import { readManifest } from './manifest.js';
 
@@ -64,6 +65,7 @@ export function createProgram() {
 	registerPushCommand(program);
 	registerVersionsCommands(program);
 	registerThumbnailCommand(program);
+	registerDocumentsCommands(program);
 
 	return program;
 }

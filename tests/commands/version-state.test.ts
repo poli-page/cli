@@ -62,7 +62,6 @@ function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
 			info: { id: '1', name: 'n', environment: 'test' },
 		}),
 		renderPdf: async () => ({ pdf: Buffer.from(''), environment: 'sandbox' }),
-		renderThumbnails: async () => [],
 		pushVersion: async () => ver('SANDBOX'),
 		listVersions: async () => [],
 		downloadVersion: async () => ({ manifest: {}, templates: [] }),

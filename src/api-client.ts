@@ -69,6 +69,21 @@ export class NotAMemberError extends ApiError {
 		super('NOT_A_MEMBER', 403, message, retryAfter);
 	}
 }
+export class ThumbnailsNotAvailableError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('THUMBNAILS_NOT_AVAILABLE', 403, message, retryAfter);
+	}
+}
+export class DocumentNotFoundError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('DOCUMENT_NOT_FOUND', 404, message, retryAfter);
+	}
+}
+export class DocumentGoneError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('DOCUMENT_GONE', 410, message, retryAfter);
+	}
+}
 
 type TypedErrorCtor = new (message: string, retryAfter?: number) => ApiError;
 
@@ -84,6 +99,9 @@ const TYPED_ERROR_REGISTRY: Record<string, TypedErrorCtor> = {
 	VERSION_REQUIRED: VersionRequiredError,
 	MISSING_ORG_CONTEXT: MissingOrgContextError,
 	NOT_A_MEMBER: NotAMemberError,
+	THUMBNAILS_NOT_AVAILABLE: ThumbnailsNotAvailableError,
+	DOCUMENT_NOT_FOUND: DocumentNotFoundError,
+	DOCUMENT_GONE: DocumentGoneError,
 };
 
 export interface ApiKeyInfo {
@@ -152,9 +170,42 @@ export interface ThumbnailResult {
 	data: string; // base64
 }
 
+export interface DocumentThumbnailOptions {
+	width?: number;
+	format?: 'png' | 'jpeg';
+	quality?: number;
+	pages?: number[];
+}
+
+export interface DocumentPreviewResult {
+	html: string;
+	pageCount: number;
+}
+
 export interface RenderPdfResult {
 	pdf: Buffer;
 	environment: 'sandbox' | 'live' | null;
+}
+
+export interface DocumentDescriptor {
+	documentId: string;
+	organizationId: string;
+	projectId: string | null;
+	projectSlug: string | null;
+	templateId: string | null;
+	templateSlug: string | null;
+	version: string;
+	environment: 'sandbox' | 'live';
+	apiKeyId: string | null;
+	createdAt: string;
+	pageCount: number;
+	sizeBytes: number;
+	format: string;
+	orientation: string;
+	locale: string | null;
+	metadata: Record<string, unknown>;
+	presignedPdfUrl: string;
+	expiresAt: string;
 }
 
 export interface MeResponse {
@@ -223,10 +274,29 @@ export interface ApiClient {
 		payload: Record<string, unknown>
 	): Promise<RenderPdfResult>;
 	getMe(authorization: string, orgIdHeader?: string): Promise<MeResponse>;
-	renderThumbnails(
-		apiKey: string,
-		payload: Record<string, unknown>
+	// `renderThumbnails` was retired with `/v1/render/thumbnails` (api-spec §11.4).
+	// Thumbnails now come from a stored document via `documentThumbnails`.
+	getDocument(
+		authorization: string,
+		orgIdHeader: string | undefined,
+		id: string
+	): Promise<DocumentDescriptor>;
+	deleteDocument(
+		authorization: string,
+		orgIdHeader: string | undefined,
+		id: string
+	): Promise<void>;
+	documentThumbnails(
+		authorization: string,
+		orgIdHeader: string | undefined,
+		id: string,
+		options: DocumentThumbnailOptions
 	): Promise<ThumbnailResult[]>;
+	documentPreview(
+		authorization: string,
+		orgIdHeader: string | undefined,
+		id: string
+	): Promise<DocumentPreviewResult>;
 	pushVersion(
 		session: string,
 		orgId: string,
@@ -386,6 +456,83 @@ export function createApiClient(baseUrl?: string): ApiClient {
 			return response.json() as Promise<MeResponse>;
 		},
 
+		async getDocument(authorization, orgIdHeader, id) {
+			const headers: Record<string, string> = {
+				'Content-Type': 'application/json',
+				Authorization: authorization,
+			};
+			if (orgIdHeader) {
+				headers['X-Poli-Org-Id'] = orgIdHeader;
+			}
+			const response = await request(`/v1/documents/${encodeURIComponent(id)}`, {
+				method: 'GET',
+				headers,
+			});
+			return response.json() as Promise<DocumentDescriptor>;
+		},
+
+		async deleteDocument(authorization, orgIdHeader, id) {
+			const headers: Record<string, string> = {
+				'Content-Type': 'application/json',
+				Authorization: authorization,
+			};
+			if (orgIdHeader) {
+				headers['X-Poli-Org-Id'] = orgIdHeader;
+			}
+			await request(`/v1/documents/${encodeURIComponent(id)}`, {
+				method: 'DELETE',
+				headers,
+			});
+		},
+
+		async documentPreview(authorization, orgIdHeader, id) {
+			const headers: Record<string, string> = {
+				Authorization: authorization,
+			};
+			if (orgIdHeader) {
+				headers['X-Poli-Org-Id'] = orgIdHeader;
+			}
+			const response = await request(
+				`/v1/documents/${encodeURIComponent(id)}/preview`,
+				{
+					method: 'GET',
+					headers,
+				}
+			);
+			const html = await response.text();
+			const pageCountHeader = response.headers.get('X-Document-Page-Count');
+			const pageCount = pageCountHeader ? Number.parseInt(pageCountHeader, 10) : 0;
+			return {
+				html,
+				pageCount: Number.isFinite(pageCount) ? pageCount : 0,
+			};
+		},
+
+		async documentThumbnails(authorization, orgIdHeader, id, options) {
+			const headers: Record<string, string> = {
+				'Content-Type': 'application/json',
+				Authorization: authorization,
+			};
+			if (orgIdHeader) {
+				headers['X-Poli-Org-Id'] = orgIdHeader;
+			}
+			const thumbnails: Record<string, unknown> = {};
+			if (options.width !== undefined) thumbnails.width = options.width;
+			if (options.format !== undefined) thumbnails.format = options.format;
+			if (options.quality !== undefined) thumbnails.quality = options.quality;
+			if (options.pages !== undefined) thumbnails.pages = options.pages;
+			const response = await request(
+				`/v1/documents/${encodeURIComponent(id)}/thumbnails`,
+				{
+					method: 'POST',
+					headers,
+					body: JSON.stringify({ thumbnails }),
+				}
+			);
+			const data = (await response.json()) as { thumbnails: ThumbnailResult[] };
+			return data.thumbnails;
+		},
+
 		async renderPdf(authorization, orgIdHeader, payload) {
 			const headers: Record<string, string> = {
 				'Content-Type': 'application/json',
@@ -405,19 +552,6 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				pdf: Buffer.from(arrayBuffer),
 				environment: env === 'sandbox' || env === 'live' ? env : null,
 			};
-		},
-
-		async renderThumbnails(apiKey, payload) {
-			const response = await request('/v1/render/thumbnails', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${apiKey}`,
-				},
-				body: JSON.stringify(payload),
-			});
-			const data = (await response.json()) as { thumbnails: ThumbnailResult[] };
-			return data.thumbnails;
 		},
 
 		async updateProject(session, orgId, projectId, payload) {
