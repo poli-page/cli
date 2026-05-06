@@ -91,13 +91,35 @@ export interface ApiKeyInfo {
 	info: { id: string; name: string; environment: string };
 }
 
+export type VersionState = 'SANDBOX' | 'LIVE' | 'DEPRECATED' | 'DELETED';
+
 export interface VersionInfo {
 	id: string;
 	version: string;
 	major: number;
 	minor: number;
 	patch: number;
+	state: VersionState;
+	bumpType?: 'patch' | 'minor' | 'major';
+	message?: string;
+	pushedBy?: string;
 	createdAt: string;
+	promotedAt?: string;
+	promotedBy?: string;
+	unpromotedAt?: string;
+	unpromotedBy?: string;
+}
+
+export interface PushVersionBody {
+	bumpType: 'patch' | 'minor' | 'major';
+	message?: string;
+}
+
+export interface UnpromotePreview {
+	currentLatestLive: string | null;
+	newLatestLiveAfterUnpromote: string | null;
+	willHaveNoLive: boolean;
+	recentLiveCalls: number;
 }
 
 export interface ProjectBundle {
@@ -205,8 +227,44 @@ export interface ApiClient {
 		apiKey: string,
 		payload: Record<string, unknown>
 	): Promise<ThumbnailResult[]>;
-	publishVersion(session: string, orgId: string, projectId: string): Promise<VersionInfo>;
+	pushVersion(
+		session: string,
+		orgId: string,
+		projectId: string,
+		body: PushVersionBody
+	): Promise<VersionInfo>;
 	listVersions(session: string, orgId: string, projectId: string): Promise<VersionInfo[]>;
+	promoteVersion(
+		session: string,
+		orgId: string,
+		projectId: string,
+		version: string
+	): Promise<VersionInfo>;
+	unpromoteVersion(
+		session: string,
+		orgId: string,
+		projectId: string,
+		version: string,
+		body?: { force?: boolean }
+	): Promise<VersionInfo>;
+	unpromotePreview(
+		session: string,
+		orgId: string,
+		projectId: string,
+		version: string
+	): Promise<UnpromotePreview>;
+	deprecateVersion(
+		session: string,
+		orgId: string,
+		projectId: string,
+		version: string
+	): Promise<VersionInfo>;
+	undeprecateVersion(
+		session: string,
+		orgId: string,
+		projectId: string,
+		version: string
+	): Promise<VersionInfo>;
 	downloadVersion(
 		session: string,
 		orgId: string,
@@ -373,9 +431,81 @@ export function createApiClient(baseUrl?: string): ApiClient {
 			});
 		},
 
-		async publishVersion(session, orgId, projectId) {
+		async pushVersion(session, orgId, projectId, body) {
 			const response = await request(
-				`/api/organizations/${orgId}/projects/${projectId}/publish`,
+				`/api/organizations/${orgId}/projects/${projectId}/push`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${session}`,
+					},
+					body: JSON.stringify(body),
+				}
+			);
+			return response.json() as Promise<VersionInfo>;
+		},
+
+		async promoteVersion(session, orgId, projectId, version) {
+			const response = await request(
+				`/api/organizations/${orgId}/projects/${projectId}/versions/${version}/promote`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${session}`,
+					},
+				}
+			);
+			return response.json() as Promise<VersionInfo>;
+		},
+
+		async unpromoteVersion(session, orgId, projectId, version, body) {
+			const response = await request(
+				`/api/organizations/${orgId}/projects/${projectId}/versions/${version}/unpromote`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${session}`,
+					},
+					body: JSON.stringify(body ?? {}),
+				}
+			);
+			return response.json() as Promise<VersionInfo>;
+		},
+
+		async unpromotePreview(session, orgId, projectId, version) {
+			const response = await request(
+				`/api/organizations/${orgId}/projects/${projectId}/versions/${version}/unpromote-preview`,
+				{
+					method: 'GET',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${session}`,
+					},
+				}
+			);
+			return response.json() as Promise<UnpromotePreview>;
+		},
+
+		async deprecateVersion(session, orgId, projectId, version) {
+			const response = await request(
+				`/api/organizations/${orgId}/projects/${projectId}/versions/${version}/deprecate`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${session}`,
+					},
+				}
+			);
+			return response.json() as Promise<VersionInfo>;
+		},
+
+		async undeprecateVersion(session, orgId, projectId, version) {
+			const response = await request(
+				`/api/organizations/${orgId}/projects/${projectId}/versions/${version}/un-deprecate`,
 				{
 					method: 'POST',
 					headers: {

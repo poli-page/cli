@@ -3,8 +3,30 @@ import { writeFile, mkdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { readManifest } from '../manifest.js';
 import { getSessionToken } from '../credentials.js';
-import { createApiClient, type ApiClient, type VersionInfo } from '../api-client.js';
+import {
+	createApiClient,
+	type ApiClient,
+	type VersionInfo,
+	type VersionState,
+} from '../api-client.js';
 import { MANIFEST_FILENAME } from '../constants.js';
+
+type ChalkFn = (s: string) => string;
+type ChalkLike = Record<'green' | 'cyan' | 'yellow' | 'red' | 'gray', ChalkFn>;
+
+function formatStateBadge(state: VersionState, chalk: ChalkLike): string {
+	const padded = state.padEnd(11);
+	switch (state) {
+		case 'LIVE':
+			return chalk.green(padded);
+		case 'SANDBOX':
+			return chalk.cyan(padded);
+		case 'DEPRECATED':
+			return chalk.yellow(padded);
+		case 'DELETED':
+			return chalk.red(padded);
+	}
+}
 
 interface CloudContext {
 	session: string;
@@ -132,7 +154,8 @@ export function registerVersionsCommands(program: Command) {
 
 	versions
 		.command('list')
-		.description('List published versions')
+		.alias('ls')
+		.description('List versions of the current project with state badges')
 		.action(async () => {
 			const { default: chalk } = await import('chalk');
 
@@ -140,18 +163,25 @@ export function registerVersionsCommands(program: Command) {
 				const list = await executeVersionsList({});
 
 				if (list.length === 0) {
-					console.log(chalk.yellow('No published versions yet. Run "poli publish" first.'));
+					console.log(chalk.yellow('No versions yet. Run `poli push` first.'));
 					return;
 				}
 
-				console.log(chalk.bold('Published versions:\n'));
+				console.log(chalk.bold('Versions:\n'));
+				console.log(
+					`  ${chalk.dim('STATE'.padEnd(12))} ${chalk.dim('VERSION'.padEnd(10))} ${chalk.dim('PUSHED'.padEnd(13))} ${chalk.dim('MESSAGE')}`
+				);
 				for (const v of list) {
+					const stateLabel = formatStateBadge(v.state, chalk);
 					const date = new Date(v.createdAt).toLocaleDateString(undefined, {
 						year: 'numeric',
 						month: 'short',
 						day: 'numeric',
 					});
-					console.log(`  ${chalk.green(v.version.padEnd(12))} ${chalk.gray(date)}`);
+					const message = v.message ? chalk.dim(v.message) : '';
+					console.log(
+						`  ${stateLabel} ${chalk.bold(v.version.padEnd(10))} ${chalk.gray(date.padEnd(13))} ${message}`
+					);
 				}
 			} catch (error) {
 				console.error(chalk.red(error instanceof Error ? error.message : 'Failed'));

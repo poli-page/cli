@@ -58,7 +58,7 @@ function createMockApiClient(
 		}),
 		devicePoll: async () => ({ status: 'authorization_pending' as const }),
 		updateProject: async () => {},
-		publishVersion: async () => ({
+		pushVersion: async () => ({
 			id: 'v_1',
 			version: '1.0.0',
 			major: 1,

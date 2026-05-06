@@ -17,6 +17,7 @@ const sampleVersions = [
 		minor: 1,
 		patch: 0,
 		createdAt: '2026-04-20T10:00:00Z',
+		state: 'SANDBOX' as const,
 	},
 	{
 		id: 'ver_2',
@@ -74,7 +75,7 @@ function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
 			info: { id: 'key_1', name: 'CLI (test)', environment: 'test' },
 		}),
 		renderPdf: async () => Buffer.from('fake-pdf'),
-		publishVersion: async () => sampleVersions[0],
+		pushVersion: async () => sampleVersions[0],
 		listVersions: vi.fn(async () => sampleVersions),
 		downloadVersion: vi.fn(async () => sampleBundle),
 		...overrides,
