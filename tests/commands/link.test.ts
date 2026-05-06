@@ -60,7 +60,7 @@ describe('poli link / unlink', () => {
 	});
 
 	describe('executeLink', () => {
-		it('should add cloud config to poli-page.json', async () => {
+		it('writes the full cloud section to poli-page.json', async () => {
 			await executeLink({
 				cwd: projectDir,
 				orgSlug: 'acme-corp',
@@ -74,8 +74,49 @@ describe('poli link / unlink', () => {
 
 			expect(manifest.cloud).toEqual({
 				orgSlug: 'acme-corp',
+				orgId: 'org_1',
+				projectSlug: 'test-project',
 				projectId: 'proj_abc123',
 			});
+		});
+
+		it('does not cache an API key in credentials (CLI uses session auth)', async () => {
+			await executeLink({
+				cwd: projectDir,
+				orgSlug: 'acme-corp',
+				apiClient: createMockApiClient(),
+				homeDir: fakeHome,
+			});
+
+			const { readCredentials } = await import('../../src/credentials.js');
+			const creds = await readCredentials(fakeHome);
+			expect(creds?.orgs['acme-corp']?.testKey).toBe('pp_test_abc');
+			// the pre-existing test key stayed; no NEW key was minted
+		});
+
+		it('reuses an existing project on the server (re-link)', async () => {
+			let createCalled = false;
+			const client = createMockApiClient({
+				listProjects: async () => [
+					{ id: 'existing_proj_id', name: 'Test Project', slug: 'test-project' },
+				],
+				createProject: async () => {
+					createCalled = true;
+					return { id: 'NEW_id_should_not_be_used' };
+				},
+			});
+			await executeLink({
+				cwd: projectDir,
+				orgSlug: 'acme-corp',
+				apiClient: client,
+				homeDir: fakeHome,
+			});
+
+			expect(createCalled).toBe(false);
+			const manifest = JSON.parse(
+				await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
+			);
+			expect(manifest.cloud.projectId).toBe('existing_proj_id');
 		});
 
 		it('should throw if not logged in', async () => {

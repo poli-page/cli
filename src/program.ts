@@ -5,6 +5,7 @@ import { registerNewCommand } from './commands/new.js';
 import { registerRenderCommand } from './commands/render.js';
 import { registerAuthCommands } from './commands/auth.js';
 import { registerLinkCommands } from './commands/link.js';
+import { registerCheckoutCommand } from './commands/checkout.js';
 import { registerPublishCommand } from './commands/publish.js';
 import { registerVersionsCommands } from './commands/versions.js';
 import { registerThumbnailCommand } from './commands/thumbnail.js';
@@ -57,6 +58,7 @@ export function createProgram() {
 	registerRenderCommand(program);
 	registerAuthCommands(program);
 	registerLinkCommands(program);
+	registerCheckoutCommand(program);
 	registerPublishCommand(program);
 	registerVersionsCommands(program);
 	registerThumbnailCommand(program);
