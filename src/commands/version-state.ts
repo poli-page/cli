@@ -8,6 +8,7 @@ import type {
 	VersionInfo,
 	UnpromotePreview,
 } from '../api-client.js';
+import { errorToExitCode } from '../exit-codes.js';
 
 export interface VersionStateOptions {
 	cwd?: string;
@@ -140,7 +141,7 @@ export function registerVersionStateCommands(program: Command) {
 				console.error(
 					chalk.red(err instanceof Error ? err.message : 'Promote failed')
 				);
-				process.exitCode = 1;
+				process.exitCode = errorToExitCode(err);
 			}
 		});
 
@@ -191,7 +192,7 @@ export function registerVersionStateCommands(program: Command) {
 				console.error(
 					chalk.red(err instanceof Error ? err.message : 'Unpromote failed')
 				);
-				process.exitCode = 1;
+				process.exitCode = errorToExitCode(err);
 			}
 		});
 }
@@ -215,7 +216,7 @@ export function registerVersionStateSubcommands(versionsGroup: Command) {
 				console.error(
 					chalk.red(err instanceof Error ? err.message : 'Deprecate failed')
 				);
-				process.exitCode = 1;
+				process.exitCode = errorToExitCode(err);
 			}
 		});
 
@@ -237,7 +238,7 @@ export function registerVersionStateSubcommands(versionsGroup: Command) {
 				console.error(
 					chalk.red(err instanceof Error ? err.message : 'Un-deprecate failed')
 				);
-				process.exitCode = 1;
+				process.exitCode = errorToExitCode(err);
 			}
 		});
 }

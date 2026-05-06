@@ -7,6 +7,7 @@ import {
 import { readManifest } from '../manifest.js';
 import { resolveAuth } from '../auth.js';
 import { createApiClient, type ApiClient, type MeResponse } from '../api-client.js';
+import { errorToExitCode, ExitCode } from '../exit-codes.js';
 
 export interface DeviceLoginOptions {
 	apiClient?: ApiClient;
@@ -17,12 +18,31 @@ export interface DeviceLoginOptions {
 	onUserCode?: (userCode: string, verificationUrl: string) => void;
 	/** Called on each poll tick (for progress display). */
 	onPollTick?: () => void;
+	/**
+	 * Inject the POLI_PAGE_API_KEY value (defaults to the env var). When set
+	 * and the device flow is about to run, `onEnvVarInfo` is invoked with
+	 * a friendly message — login proceeds normally; once it succeeds the
+	 * stored session takes precedence over the env var (precedence rule).
+	 */
+	envApiKey?: string;
+	onEnvVarInfo?: (message: string) => void;
 }
 
 export async function executeDeviceLogin(
 	options: DeviceLoginOptions = {},
 ): Promise<StoredCredentials> {
 	const client = options.apiClient ?? createApiClient();
+
+	// Step 0: friendly info-message when an api-key env var is set.
+	// Login is not blocked — but once the session is stored, it takes
+	// precedence over the env var (resolveAuth rule).
+	const envApiKey =
+		options.envApiKey !== undefined ? options.envApiKey : process.env.POLI_PAGE_API_KEY;
+	if (envApiKey && options.onEnvVarInfo) {
+		options.onEnvVarInfo(
+			'POLI_PAGE_API_KEY is set in your environment. After login completes, your session will be preferred over the env var.'
+		);
+	}
 
 	// Step 1: Request device code
 	const deviceReq = await client.deviceRequest();
@@ -165,6 +185,10 @@ export function registerAuthCommands(program: Command) {
 
 			try {
 				const credentials = await executeDeviceLogin({
+					onEnvVarInfo: (msg) => {
+						spinner.info(chalk.dim(msg));
+						spinner.start('Opening browser for authentication…');
+					},
 					onUserCode: (userCode, verificationUrl) => {
 						spinner.info(
 							chalk.cyan(`Your code: ${chalk.bold(userCode)}`)
@@ -193,7 +217,7 @@ export function registerAuthCommands(program: Command) {
 				spinner.fail(
 					chalk.red(error instanceof Error ? error.message : 'Login failed')
 				);
-				process.exitCode = 1;
+				process.exitCode = errorToExitCode(error);
 			}
 		});
 
@@ -233,10 +257,10 @@ export function registerAuthCommands(program: Command) {
 				const msg = err instanceof Error ? err.message : 'whoami failed';
 				if (/Not logged in/i.test(msg)) {
 					console.error(chalk.yellow(msg));
-					process.exitCode = 2;
+					process.exitCode = ExitCode.NOT_AUTHENTICATED;
 				} else {
 					console.error(chalk.red(msg));
-					process.exitCode = 1;
+					process.exitCode = errorToExitCode(err);
 				}
 			}
 		});

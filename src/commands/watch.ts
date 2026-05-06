@@ -13,6 +13,7 @@ import {
 	type FileWatcherOptions,
 } from '../file-watcher.js';
 import { computeDelta, hashContent, syncWithRetry } from '../sync-engine.js';
+import { errorToExitCode } from '../exit-codes.js';
 
 export type WatchEventType = 'ready' | 'syncing' | 'synced' | 'error';
 
@@ -212,11 +213,7 @@ export function registerWatchCommand(program: Command): void {
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : 'Watch failed';
 				console.error(chalk.red(msg));
-				const exitCode =
-					err && typeof err === 'object' && 'exitCode' in err
-						? (err as { exitCode?: number }).exitCode
-						: undefined;
-				process.exitCode = exitCode ?? 1;
+				process.exitCode = errorToExitCode(err);
 			} finally {
 				process.removeListener('SIGINT', onSigint);
 			}

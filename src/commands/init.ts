@@ -11,6 +11,7 @@ import {
 	type Fetcher,
 	type TemplateSource,
 } from '../template-importer.js';
+import { errorToExitCode } from '../exit-codes.js';
 
 function toKebabCase(name: string): string {
 	return name
@@ -138,7 +139,7 @@ export function registerInitCommand(program: Command) {
 				spinner.fail(
 					chalk.red(error instanceof Error ? error.message : 'Failed to create project')
 				);
-				process.exitCode = 1;
+				process.exitCode = errorToExitCode(error);
 			}
 		});
 }

@@ -9,6 +9,7 @@ import {
 import { MANIFEST_FILENAME } from '../constants.js';
 import { resolveCloudContext } from '../cloud-context.js';
 import { registerVersionStateSubcommands } from './version-state.js';
+import { errorToExitCode } from '../exit-codes.js';
 
 export { resolveCloudContext, validateExactSemver, EXACT_SEMVER, type CloudContext } from '../cloud-context.js';
 
@@ -151,7 +152,7 @@ export function registerVersionsCommands(program: Command) {
 				}
 			} catch (error) {
 				console.error(chalk.red(error instanceof Error ? error.message : 'Failed'));
-				process.exitCode = 1;
+				process.exitCode = errorToExitCode(error);
 			}
 		});
 
@@ -169,7 +170,7 @@ export function registerVersionsCommands(program: Command) {
 				spinner.succeed(chalk.green(`Version ${version} downloaded to ${opts.output}`));
 			} catch (error) {
 				console.error(chalk.red(error instanceof Error ? error.message : 'Download failed'));
-				process.exitCode = 1;
+				process.exitCode = errorToExitCode(error);
 			}
 		});
 }

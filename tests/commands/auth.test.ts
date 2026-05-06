@@ -192,6 +192,38 @@ describe('auth commands', () => {
 
 			expect(Object.keys(credentials.orgs)).toHaveLength(0);
 		});
+
+		it('emits a non-blocking info message when POLI_PAGE_API_KEY is set in the environment', async () => {
+			const infoMessages: string[] = [];
+
+			const credentials = await executeDeviceLogin({
+				apiClient: createMockApiClient(),
+				homeDir: fakeHome,
+				envApiKey: 'pp_sa_live_abc123def456',
+				onEnvVarInfo: (msg) => infoMessages.push(msg),
+				openUrl: async () => {},
+			});
+
+			expect(infoMessages).toHaveLength(1);
+			expect(infoMessages[0]).toMatch(/POLI_PAGE_API_KEY/);
+			expect(infoMessages[0]).toMatch(/session.*will be preferred|will be ignored/i);
+			// Device flow still runs and stores credentials.
+			expect(credentials.session).toBe('device-session-token');
+		});
+
+		it('does not emit info message when env var is not set', async () => {
+			const infoMessages: string[] = [];
+
+			await executeDeviceLogin({
+				apiClient: createMockApiClient(),
+				homeDir: fakeHome,
+				envApiKey: undefined,
+				onEnvVarInfo: (msg) => infoMessages.push(msg),
+				openUrl: async () => {},
+			});
+
+			expect(infoMessages).toHaveLength(0);
+		});
 	});
 
 	describe('executeLogout', () => {

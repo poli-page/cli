@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-06
+
+Synced with the monorepo's 0.4.0 release. Big surface expansion: the
+documents namespace, `poli watch`, exit-code centralisation, CI/CD
+auth improvements.
+
 ### Added
 - `poli watch` — auto-sync the local project to the cloud draft on each save
   (debounced 2s). The flow that turns the dashboard "quickstart loop" from a
@@ -59,6 +65,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `api-client.renderThumbnails` — `/v1/render/thumbnails` was retired
   upstream (api-spec §11.4). Thumbnails now flow through `documentThumbnails`
   against a stored document, which guarantees zero drift with the source PDF.
+
+### CI / CD
+- `poli login` now prints a non-blocking info-message when
+  `POLI_PAGE_API_KEY` is set in the environment, then proceeds with the
+  device flow. After login, the stored session takes precedence over the
+  env var (CLI-S08 precedence rule).
+- New `tests/ci-api-key.test.ts` covers the `pp_sa_*` end-to-end CI path
+  (resolver, `pp_*` validation, header propagation, session > env var
+  precedence).
+
+### Internal
+- New `src/exit-codes.ts` — centralises the cli-spec §1.2 table (0/1/2/3/4/5/6)
+  and exposes `errorToExitCode(err)` to map thrown values to a code via the
+  typed-error registry. All command handlers now route through it instead of
+  hardcoding `process.exitCode = 1`. This means commands like `poli render`
+  on a free-tier org now exit `5` (`NOT_AUTHORIZED`) instead of `1`, and
+  `poli render` on an unlinked folder exits `6` (`INVALID_LOCAL_STATE`).
+- New CI workflows: `.github/workflows/ci.yml` (typecheck + test + build on
+  every push and PR) and `.github/workflows/release.yml` (npm publish on
+  `v*` tags, with a tag/version match guard).
+
+[0.4.0]: https://github.com/poli-page/cli/compare/v0.1.2...v0.4.0
 
 ## [0.1.2] — 2026-04-26
 

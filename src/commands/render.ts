@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { loadProject, findTemplate, loadTemplate } from '../project-loader.js';
 import { createApiClient, type ApiClient } from '../api-client.js';
 import { resolveAuth } from '../auth.js';
+import { errorToExitCode } from '../exit-codes.js';
 
 export interface RenderOptions {
 	cwd?: string;
@@ -120,7 +121,7 @@ export function registerRenderCommand(program: Command) {
 				spinner.fail(
 					chalk.red(error instanceof Error ? error.message : 'Rendering failed')
 				);
-				process.exitCode = 1;
+				process.exitCode = errorToExitCode(error);
 			}
 		});
 }

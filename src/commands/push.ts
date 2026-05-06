@@ -9,6 +9,7 @@ import {
 } from '../api-client.js';
 import { collectProjectPayload } from '../project-loader.js';
 import { MANIFEST_FILENAME } from '../constants.js';
+import { errorToExitCode } from '../exit-codes.js';
 
 export type BumpType = 'patch' | 'minor' | 'major';
 
@@ -110,7 +111,7 @@ export function registerPushCommand(program: Command) {
 				spinner.fail(
 					chalk.red(error instanceof Error ? error.message : 'Push failed')
 				);
-				process.exitCode = 1;
+				process.exitCode = errorToExitCode(error);
 			}
 		});
 }

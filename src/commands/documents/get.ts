@@ -6,6 +6,7 @@ import {
 	type ApiClient,
 	type DocumentDescriptor,
 } from '../../api-client.js';
+import { errorToExitCode } from '../../exit-codes.js';
 
 export interface DocumentsGetOptions {
 	cwd?: string;
@@ -62,7 +63,7 @@ export function registerDocumentsGetCommand(documents: Command): void {
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : 'documents get failed';
 				console.error(chalk.red(msg));
-				process.exitCode = 1;
+				process.exitCode = errorToExitCode(err);
 			}
 		});
 }

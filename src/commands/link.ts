@@ -3,6 +3,7 @@ import { readManifest, writeManifest } from '../manifest.js';
 import { getSessionToken, readCredentials } from '../credentials.js';
 import { createApiClient, type ApiClient } from '../api-client.js';
 import { MANIFEST_FILENAME } from '../constants.js';
+import { errorToExitCode, ExitCode } from '../exit-codes.js';
 
 export interface LinkOptions {
 	cwd?: string;
@@ -116,7 +117,7 @@ export function registerLinkCommands(program: Command) {
 				const credentials = await readCredentials();
 				if (!credentials) {
 					console.error(chalk.red('Not logged in. Run "poli login" first.'));
-					process.exitCode = 4;
+					process.exitCode = ExitCode.NOT_AUTHENTICATED;
 					return;
 				}
 
@@ -129,7 +130,7 @@ export function registerLinkCommands(program: Command) {
 							'No organizations found. Create one via the dashboard first.'
 						)
 					);
-					process.exitCode = 1;
+					process.exitCode = ExitCode.INVALID_LOCAL_STATE;
 					return;
 				}
 
@@ -148,7 +149,7 @@ export function registerLinkCommands(program: Command) {
 				console.error(
 					chalk.red(error instanceof Error ? error.message : 'Link failed')
 				);
-				process.exitCode = 1;
+				process.exitCode = errorToExitCode(error);
 			}
 		});
 
@@ -164,7 +165,7 @@ export function registerLinkCommands(program: Command) {
 				console.error(
 					chalk.red(error instanceof Error ? error.message : 'Unlink failed')
 				);
-				process.exitCode = 1;
+				process.exitCode = errorToExitCode(error);
 			}
 		});
 }

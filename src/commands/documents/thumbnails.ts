@@ -8,6 +8,7 @@ import {
 	type ApiClient,
 	type DocumentThumbnailOptions,
 } from '../../api-client.js';
+import { errorToExitCode } from '../../exit-codes.js';
 
 export interface DocumentsThumbnailsOptions {
 	cwd?: string;
@@ -161,7 +162,7 @@ export function registerDocumentsThumbnailsCommand(documents: Command): void {
 							err instanceof Error ? err.message : 'Thumbnails failed'
 						)
 					);
-					process.exitCode = 1;
+					process.exitCode = errorToExitCode(err);
 				}
 			}
 		);

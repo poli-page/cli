@@ -4,6 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { resolveAuth } from '../../auth.js';
 import { readManifest } from '../../manifest.js';
 import { createApiClient, type ApiClient } from '../../api-client.js';
+import { errorToExitCode } from '../../exit-codes.js';
 
 export interface DocumentsPreviewOptions {
 	cwd?: string;
@@ -115,7 +116,7 @@ export function registerDocumentsPreviewCommand(documents: Command): void {
 					console.error(
 						chalk.red(err instanceof Error ? err.message : 'Preview failed')
 					);
-					process.exitCode = 1;
+					process.exitCode = errorToExitCode(err);
 				}
 			}
 		);

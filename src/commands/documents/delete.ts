@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { resolveAuth } from '../../auth.js';
 import { readManifest } from '../../manifest.js';
 import { createApiClient, type ApiClient } from '../../api-client.js';
+import { errorToExitCode } from '../../exit-codes.js';
 
 export interface DocumentsDeleteOptions {
 	cwd?: string;
@@ -70,7 +71,7 @@ export function registerDocumentsDeleteCommand(documents: Command): void {
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : 'documents delete failed';
 				console.error(chalk.red(msg));
-				process.exitCode = 1;
+				process.exitCode = errorToExitCode(err);
 			}
 		});
 }

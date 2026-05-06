@@ -4,6 +4,7 @@ import {
 	type DocumentsThumbnailFile,
 	type DocumentsThumbnailsOptions,
 } from './documents/thumbnails.js';
+import { errorToExitCode } from '../exit-codes.js';
 
 export async function executeThumbnailAlias(
 	documentId: string | undefined,
@@ -90,7 +91,7 @@ export function registerThumbnailCommand(program: Command): void {
 							)
 						);
 					}
-					process.exitCode = 1;
+					process.exitCode = errorToExitCode(err);
 				}
 			}
 		);

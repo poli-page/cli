@@ -5,6 +5,7 @@ import { readManifest, writeManifest } from '../manifest.js';
 import { getSessionToken } from '../credentials.js';
 import { createApiClient, type ApiClient } from '../api-client.js';
 import { MANIFEST_FILENAME } from '../constants.js';
+import { errorToExitCode } from '../exit-codes.js';
 
 export interface CheckoutOptions {
 	cwd?: string;
@@ -124,7 +125,7 @@ export function registerCheckoutCommand(program: Command) {
 				spinner.fail(
 					chalk.red(error instanceof Error ? error.message : 'Checkout failed')
 				);
-				process.exitCode = 1;
+				process.exitCode = errorToExitCode(error);
 			}
 		});
 }
