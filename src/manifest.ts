@@ -1,47 +1,29 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MANIFEST_FILENAME } from './constants.js';
+import { parseManifest, type PoliPageManifest } from './manifest.schema.js';
 
-export interface PoliPageManifest {
-	project: {
-		name: string;
-		version: string;
-		description?: string;
-	};
-	engine?: {
-		paginationOptions?: {
-			orphanThreshold?: number;
-		};
-	};
-	fonts?: Array<{
-		family: string;
-		src: string;
-		weight: number;
-		style?: string;
-	}>;
-	templates?: Array<{
-		name: string;
-		template: string;
-		mock: string;
-		format?: string;
-		orientation?: string;
-	}>;
-	cloud?: {
-		orgSlug: string;
-		orgId?: string;
-		projectSlug?: string;
-		projectId: string;
-		apiUrl?: string;
-	};
-}
+export type { PoliPageManifest } from './manifest.schema.js';
+export {
+	ManifestValidationError,
+	type ManifestValidationIssue,
+} from './manifest.schema.js';
 
 export async function readManifest(projectDir: string): Promise<PoliPageManifest> {
 	const manifestPath = join(projectDir, MANIFEST_FILENAME);
 	const content = await readFile(manifestPath, 'utf-8');
-	return JSON.parse(content);
+	const raw = JSON.parse(content);
+	return parseManifest(raw);
 }
 
-export async function writeManifest(projectDir: string, manifest: PoliPageManifest): Promise<void> {
+export async function writeManifest(
+	projectDir: string,
+	manifest: PoliPageManifest
+): Promise<void> {
 	const manifestPath = join(projectDir, MANIFEST_FILENAME);
-	await writeFile(manifestPath, JSON.stringify(manifest, null, '\t') + '\n', 'utf-8');
+	await writeFile(
+		manifestPath,
+		JSON.stringify(manifest, null, '\t') + '\n',
+		'utf-8'
+	);
 }

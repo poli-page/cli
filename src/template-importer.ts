@@ -31,6 +31,7 @@ export interface TemplateManifestFontEntry {
 	src: string;
 	weight: number;
 	style?: string;
+	[key: string]: unknown;
 }
 
 export interface TemplateManifest {
