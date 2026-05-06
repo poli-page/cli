@@ -207,7 +207,8 @@ describe('poli init', () => {
 				fetcher: makeFetcher(SOURCE_FILES),
 			});
 
-			await stat(join(projectDir, 'templates', 'welcome', 'invoice.html'));
+			await stat(join(projectDir, 'templates', 'welcome', 'welcome.html'));
+			await stat(join(projectDir, 'templates', 'welcome', 'welcome.json'));
 			const manifest = JSON.parse(
 				await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
 			);

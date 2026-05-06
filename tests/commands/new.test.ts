@@ -129,11 +129,16 @@ describe('poli new', () => {
 			fetcher: makeFetcher(SOURCE_FILES),
 		});
 
-		await stat(join(projectDir, 'templates', 'billing', 'invoice.html'));
+		await stat(join(projectDir, 'templates', 'billing', 'billing.html'));
+		await stat(join(projectDir, 'templates', 'billing', 'billing.json'));
 		const manifest = JSON.parse(
 			await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
 		);
-		expect(manifest.templates[0].name).toBe('billing');
+		expect(manifest.templates[0]).toMatchObject({
+			name: 'billing',
+			template: 'billing.html',
+			mock: 'billing.json',
+		});
 	});
 
 	it('imports the blank structure (replaces the legacy --model blank flow)', async () => {
@@ -144,7 +149,7 @@ describe('poli new', () => {
 			fetcher: makeFetcher(SOURCE_FILES),
 		});
 		const html = await readFile(
-			join(projectDir, 'templates', 'simple', 'blank.html'),
+			join(projectDir, 'templates', 'simple', 'simple.html'),
 			'utf-8'
 		);
 		expect(html).not.toContain('poli-header');
@@ -228,7 +233,7 @@ describe('poli new', () => {
 			await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
 		);
 		expect(manifest.templates[0].name).toBe('my-invoice');
-		await stat(join(projectDir, 'templates', 'my-invoice', 'invoice.html'));
+		await stat(join(projectDir, 'templates', 'my-invoice', 'my-invoice.html'));
 	});
 
 	it('passes through --source for third-party repos', async () => {

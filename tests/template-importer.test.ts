@@ -196,11 +196,16 @@ describe('importTemplate — happy path', () => {
 		});
 
 		expect(result.destTemplateName).toBe('welcome');
-		// File copied to renamed dir
-		await stat(join(projectDir, 'templates', 'welcome', 'invoice.html'));
-		// Manifest entry uses the new name
+		// File copied to renamed dir AND renamed to match destName
+		await stat(join(projectDir, 'templates', 'welcome', 'welcome.html'));
+		await stat(join(projectDir, 'templates', 'welcome', 'welcome.json'));
+		// Manifest entry uses the new name AND points at the renamed files
 		const manifest = await readManifest(projectDir);
-		expect(manifest.templates![0].name).toBe('welcome');
+		expect(manifest.templates![0]).toMatchObject({
+			name: 'welcome',
+			template: 'welcome.html',
+			mock: 'welcome.json',
+		});
 	});
 
 	it('is idempotent for the tailwind block on a re-import of the same source', async () => {

@@ -251,10 +251,14 @@ export async function importTemplate(
 		if (result.copied) copiedImages.push(basename(result.path));
 	}
 
-	// 6. Copy template body files
+	// 6. Copy template body files, renamed to match destName so the
+	// project's `templates/<destName>/` is internally consistent
+	// (folder name = template name = filename stem).
+	const destHtmlName = `${destName}.html`;
+	const destMockName = `${destName}.json`;
 	await mkdir(destDir, { recursive: true });
-	await writeFile(join(destDir, tplManifest.template.template), htmlBuf);
-	await writeFile(join(destDir, tplManifest.template.mock), mockBuf);
+	await writeFile(join(destDir, destHtmlName), htmlBuf);
+	await writeFile(join(destDir, destMockName), mockBuf);
 
 	// 7. Append tailwind block (idempotent — keyed by source <coll>/<tpl>)
 	const markerKey = `${ref.collection}/${ref.name}`;
@@ -281,6 +285,8 @@ export async function importTemplate(
 	projectManifest.templates.push({
 		...tplManifest.template,
 		name: destName,
+		template: destHtmlName,
+		mock: destMockName,
 	});
 
 	for (const font of projectedFonts) {
