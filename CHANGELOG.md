@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`poli link` was sending the wrong payload to `POST /api/organizations/:orgId/projects`.**
+  The body used to be `{ name, slug }`, but the API's Zod schema (`createProjectSchema`)
+  expects `{ manifest, templates, images?, tailwindCss? }` — the same shape `poli push`
+  uses for `updateProject`. Linking now goes through `collectProjectPayload(cwd, manifest)`
+  and creates the cloud project with the local content as initial state. Fixes a
+  `ZodError: expected object, received undefined` failure on every fresh link.
+- **`poli link` left its `Linking project…` spinner running after an API error.**
+  The `ora` spinner is now correctly transitioned to a failed state in the catch
+  block, so the terminal does not hang.
+
 ## [0.5.0] — 2026-05-07
 
 ### Added

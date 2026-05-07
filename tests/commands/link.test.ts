@@ -94,6 +94,34 @@ describe('poli link / unlink', () => {
 			// the pre-existing test key stayed; no NEW key was minted
 		});
 
+		it('sends the full project payload (manifest + templates) to createProject', async () => {
+			let receivedPayload: Record<string, unknown> | undefined;
+			const client = createMockApiClient({
+				createProject: async (_session, _orgId, payload) => {
+					receivedPayload = payload as Record<string, unknown>;
+					return { id: 'proj_abc123' };
+				},
+			});
+
+			await executeLink({
+				cwd: projectDir,
+				orgSlug: 'acme-corp',
+				apiClient: client,
+				homeDir: fakeHome,
+			});
+
+			expect(receivedPayload).toBeDefined();
+			expect(receivedPayload).toHaveProperty('manifest');
+			expect(receivedPayload).toHaveProperty('templates');
+			// `name` and `slug` (the previous shape) must not be at the top level —
+			// they belong inside `manifest.project`.
+			expect(receivedPayload).not.toHaveProperty('name');
+			expect(receivedPayload).not.toHaveProperty('slug');
+
+			const manifest = (receivedPayload as { manifest: { project: { name: string } } }).manifest;
+			expect(manifest.project.name).toBe('test-project');
+		});
+
 		it('reuses an existing project on the server (re-link)', async () => {
 			let createCalled = false;
 			const client = createMockApiClient({

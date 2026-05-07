@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { readManifest, writeManifest } from '../manifest.js';
 import { getSessionToken, readCredentials } from '../credentials.js';
 import { createApiClient, type ApiClient } from '../api-client.js';
+import { collectProjectPayload } from '../project-loader.js';
 import { MANIFEST_FILENAME } from '../constants.js';
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
 
@@ -60,10 +61,11 @@ export async function executeLink(options: LinkOptions): Promise<void> {
 	if (existing) {
 		projectId = existing.id;
 	} else {
-		const created = await client.createProject(session, org.id, {
-			name: manifest.project.name,
-			slug: projectSlug,
-		});
+		// The API expects the full project bundle (manifest + templates +
+		// optional images + tailwind) — same payload shape as `updateProject`.
+		// The server derives the slug from `manifest.project.name`.
+		const payload = await collectProjectPayload(cwd, manifest);
+		const created = await client.createProject(session, org.id, payload);
 		projectId = created.id;
 	}
 
@@ -113,6 +115,7 @@ export function registerLinkCommands(program: Command) {
 			const { default: ora } = await import('ora');
 			const { select } = await import('@inquirer/prompts');
 
+			let spinner: ReturnType<typeof ora> | undefined;
 			try {
 				const credentials = await readCredentials();
 				if (!credentials) {
@@ -142,13 +145,16 @@ export function registerLinkCommands(program: Command) {
 					})),
 				});
 
-				const spinner = ora('Linking project...').start();
+				spinner = ora('Linking project...').start();
 				await executeLink({ orgSlug, apiClient: client });
 				spinner.succeed(chalk.green(`Project linked to ${orgSlug}`));
 			} catch (error) {
-				console.error(
-					chalk.red(error instanceof Error ? error.message : 'Link failed')
-				);
+				const msg = error instanceof Error ? error.message : 'Link failed';
+				if (spinner) {
+					spinner.fail(chalk.red(msg));
+				} else {
+					console.error(chalk.red(msg));
+				}
 				process.exitCode = errorToExitCode(error);
 			}
 		});
