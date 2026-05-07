@@ -5,6 +5,7 @@ import { resolveAuth } from '../../auth.js';
 import { readManifest } from '../../manifest.js';
 import { createApiClient, type ApiClient } from '../../api-client.js';
 import { errorToExitCode } from '../../exit-codes.js';
+import { shouldEmitJson } from '../../output.js';
 
 export interface DocumentsPreviewOptions {
 	cwd?: string;
@@ -78,7 +79,7 @@ export function registerDocumentsPreviewCommand(documents: Command): void {
 		.description('Fetch a document preview HTML (free, no quota cost)')
 		.option('-o, --output <file>', 'Write HTML to this path')
 		.option('--no-open', 'Do not open the HTML in a browser')
-		.option('--json', 'Output { html, totalPages } as JSON')
+		.option('--json', 'Force JSON output even in a TTY')
 		.action(
 			async (
 				id: string,
@@ -86,17 +87,21 @@ export function registerDocumentsPreviewCommand(documents: Command): void {
 			) => {
 				const { default: chalk } = await import('chalk');
 				try {
+					const emitJson = shouldEmitJson(opts);
 					const result = await executeDocumentsPreview(id, {
 						output: opts.output,
 						noOpen: opts.open === false,
-						json: opts.json,
+						// `executeDocumentsPreview` writes the HTML file unless
+						// `json` is true. In auto-JSON mode (pipe), no file —
+						// scripts get pure stdout.
+						json: emitJson,
 						openFn: async (path) => {
 							const open = await import('open');
 							await open.default(path);
 						},
 					});
 
-					if (opts.json) {
+					if (emitJson) {
 						console.log(
 							JSON.stringify(
 								{ html: result.html, totalPages: result.pageCount },

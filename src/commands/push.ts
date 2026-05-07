@@ -10,6 +10,7 @@ import {
 import { collectProjectPayload } from '../project-loader.js';
 import { MANIFEST_FILENAME } from '../constants.js';
 import { errorToExitCode } from '../exit-codes.js';
+import { shouldEmitJson } from '../output.js';
 
 export type BumpType = 'patch' | 'minor' | 'major';
 
@@ -160,6 +161,7 @@ export function registerPushCommand(program: Command) {
 			'Override the manifest cloud.track (CI use). Anchors --patch/--minor on this family.'
 		)
 		.option('-m, --message <text>', 'Optional push message (max 500 chars)')
+		.option('--json', 'Force JSON output even in a TTY')
 		.action(async (opts) => {
 			const { default: chalk } = await import('chalk');
 			const { default: ora } = await import('ora');
@@ -169,7 +171,8 @@ export function registerPushCommand(program: Command) {
 			else if (opts.minor) bump = 'minor';
 			else if (opts.patch) bump = 'patch';
 
-			const spinner = ora('Pushing version...').start();
+			const emitJson = shouldEmitJson(opts);
+			const spinner = emitJson ? null : ora('Pushing version...').start();
 			try {
 				const version = await executePush({
 					bump,
@@ -177,7 +180,13 @@ export function registerPushCommand(program: Command) {
 					track: opts.track,
 					message: opts.message,
 				});
-				spinner.succeed(
+
+				if (emitJson) {
+					console.log(JSON.stringify(version, null, 2));
+					return;
+				}
+
+				spinner!.succeed(
 					chalk.green(`Pushed version ${version.version} (SANDBOX)`)
 				);
 				console.log();
@@ -186,9 +195,15 @@ export function registerPushCommand(program: Command) {
 				);
 				console.log();
 			} catch (error) {
-				spinner.fail(
-					chalk.red(error instanceof Error ? error.message : 'Push failed')
-				);
+				if (spinner) {
+					spinner.fail(
+						chalk.red(error instanceof Error ? error.message : 'Push failed')
+					);
+				} else {
+					console.error(
+						chalk.red(error instanceof Error ? error.message : 'Push failed')
+					);
+				}
 				process.exitCode = errorToExitCode(error);
 			}
 		});

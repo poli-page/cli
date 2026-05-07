@@ -10,6 +10,7 @@ import { MANIFEST_FILENAME } from '../constants.js';
 import { resolveCloudContext } from '../cloud-context.js';
 import { registerVersionStateSubcommands } from './version-state.js';
 import { errorToExitCode } from '../exit-codes.js';
+import { shouldEmitJson } from '../output.js';
 
 export { resolveCloudContext, validateExactSemver, EXACT_SEMVER, type CloudContext } from '../cloud-context.js';
 
@@ -123,11 +124,17 @@ export function registerVersionsCommands(program: Command) {
 		.command('list')
 		.alias('ls')
 		.description('List versions of the current project with state badges')
-		.action(async () => {
+		.option('--json', 'Force JSON output even in a TTY')
+		.action(async (opts: { json?: boolean }) => {
 			const { default: chalk } = await import('chalk');
 
 			try {
 				const list = await executeVersionsList({});
+
+				if (shouldEmitJson(opts)) {
+					console.log(JSON.stringify(list, null, 2));
+					return;
+				}
 
 				if (list.length === 0) {
 					console.log(chalk.yellow('No versions yet. Run `poli push` first.'));

@@ -9,6 +9,7 @@ import {
 	type DocumentThumbnailOptions,
 } from '../../api-client.js';
 import { errorToExitCode } from '../../exit-codes.js';
+import { shouldEmitJson } from '../../output.js';
 
 export interface DocumentsThumbnailsOptions {
 	cwd?: string;
@@ -116,7 +117,7 @@ export function registerDocumentsThumbnailsCommand(documents: Command): void {
 		.option('-q, --quality <n>', 'JPEG quality 1-100', (v) => Number.parseInt(v, 10))
 		.option('--pages <list>', 'Comma-separated page numbers (e.g. "1,3")', parsePages)
 		.option('-o, --output <dir>', 'Output directory')
-		.option('--json', 'Output base64 thumbnails as JSON')
+		.option('--json', 'Force JSON output even in a TTY')
 		.action(
 			async (
 				id: string,
@@ -132,7 +133,10 @@ export function registerDocumentsThumbnailsCommand(documents: Command): void {
 				const { default: chalk } = await import('chalk');
 				const { default: ora } = await import('ora');
 
-				const spinner = ora(`Generating thumbnails for ${id}…`).start();
+				const emitJson = shouldEmitJson(opts);
+				const spinner = emitJson
+					? null
+					: ora(`Generating thumbnails for ${id}…`).start();
 				try {
 					const results = await executeDocumentsThumbnails(id, {
 						width: opts.width,
@@ -142,8 +146,7 @@ export function registerDocumentsThumbnailsCommand(documents: Command): void {
 						output: opts.output,
 					});
 
-					if (opts.json) {
-						spinner.stop();
+					if (emitJson) {
 						console.log(JSON.stringify(results, null, 2));
 						return;
 					}
@@ -151,17 +154,21 @@ export function registerDocumentsThumbnailsCommand(documents: Command): void {
 					const summary = results
 						.map((r) => `  ${r.width}×${r.height} → ${r.path}`)
 						.join('\n');
-					spinner.succeed(
+					spinner!.succeed(
 						chalk.green(
 							`${results.length} thumbnail(s) generated:\n${summary}`
 						)
 					);
 				} catch (err) {
-					spinner.fail(
-						chalk.red(
-							err instanceof Error ? err.message : 'Thumbnails failed'
-						)
-					);
+					if (spinner) {
+						spinner.fail(
+							chalk.red(err instanceof Error ? err.message : 'Thumbnails failed')
+						);
+					} else {
+						console.error(
+							chalk.red(err instanceof Error ? err.message : 'Thumbnails failed')
+						);
+					}
 					process.exitCode = errorToExitCode(err);
 				}
 			}

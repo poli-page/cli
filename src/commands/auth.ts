@@ -10,6 +10,7 @@ import { readManifest } from '../manifest.js';
 import { resolveAuth } from '../auth.js';
 import { createApiClient, type ApiClient, type MeResponse } from '../api-client.js';
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
+import { shouldEmitJson } from '../output.js';
 
 export interface DeviceLoginOptions {
 	apiClient?: ApiClient;
@@ -258,12 +259,12 @@ export function registerAuthCommands(program: Command) {
 	program
 		.command('whoami')
 		.description('Show current identity (session user or API key) and active org')
-		.option('--json', 'Output the raw /v1/me payload as JSON')
+		.option('--json', 'Force JSON output even in a TTY')
 		.action(async (opts) => {
 			const { default: chalk } = await import('chalk');
 			try {
 				const result = await executeWhoami();
-				if (opts.json) {
+				if (shouldEmitJson(opts)) {
 					if (result.mode === 'session-no-org') {
 						console.log(
 							JSON.stringify(

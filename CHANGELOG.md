@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   surface area without earning its keep — one way to do it is clearer
   than two.
 
+### Added
+- **Unified `--json` + auto-detect TTY across data commands.** New
+  shared helper `src/output.ts:shouldEmitJson(opts)` decides whether
+  to emit JSON or the human-friendly summary. Rule:
+  1. `--json` flag → always JSON
+  2. stdout not a TTY (pipe, redirect, CI) → JSON
+  3. stdout is a TTY → human summary
+  Never both — one or the other on stdout. Applied to:
+  `render`, `documents get`, `documents preview`, `documents thumbnails`,
+  `whoami`, `versions list`, `push`, `promote`, `unpromote`,
+  `versions deprecate`, `versions un-deprecate`. The previous behaviour
+  on `documents get` and `render` (printing the JSON to stdout AND a
+  summary on stderr in the same invocation) is fixed — pipelines now
+  see clean JSON and TTY users see clean summaries.
+
 ### Changed
 - **`poli documents get` now matches `poli render` output contract.**
   The JSON descriptor is always printed to stdout (16 fields, same

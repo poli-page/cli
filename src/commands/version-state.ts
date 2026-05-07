@@ -9,6 +9,7 @@ import type {
 	UnpromotePreview,
 } from '../api-client.js';
 import { errorToExitCode } from '../exit-codes.js';
+import { shouldEmitJson } from '../output.js';
 
 export interface VersionStateOptions {
 	cwd?: string;
@@ -128,6 +129,7 @@ export function registerVersionStateCommands(program: Command) {
 		.description('Promote a SANDBOX version to LIVE')
 		.argument('<version>', 'Exact semver to promote')
 		.option('-y, --yes', 'Skip the confirmation prompt')
+		.option('--json', 'Force JSON output even in a TTY')
 		.action(async (version: string, opts) => {
 			const { default: chalk } = await import('chalk');
 			try {
@@ -136,6 +138,10 @@ export function registerVersionStateCommands(program: Command) {
 					confirmFn: async ({ action, version: v }) =>
 						defaultConfirm(`${action} ${v} to LIVE?`),
 				});
+				if (shouldEmitJson(opts)) {
+					console.log(JSON.stringify(result, null, 2));
+					return;
+				}
 				console.log(chalk.green(`✓ Promoted ${result.version} to LIVE`));
 			} catch (err) {
 				console.error(
@@ -153,31 +159,41 @@ export function registerVersionStateCommands(program: Command) {
 		.argument('<version>', 'Exact semver to unpromote')
 		.option('-y, --yes', 'Skip the confirmation prompt')
 		.option('--force', 'Allow unpromoting the last LIVE version (dangerous)')
+		.option('--json', 'Force JSON output even in a TTY')
 		.action(async (version: string, opts) => {
 			const { default: chalk } = await import('chalk');
+			const emitJson = shouldEmitJson(opts);
 			try {
 				const { preview, result } = await executeUnpromote(version, {
 					yes: opts.yes,
 					force: opts.force,
-					confirmFn: async ({ version: v, preview: p }) => {
-						console.log();
-						console.log(chalk.bold('Unpromote preview:'));
-						console.log(`  Current latest LIVE: ${p.currentLatestLive ?? '(none)'}`);
-						console.log(
-							`  After unpromote:    ${p.newLatestLiveAfterUnpromote ?? '(none)'}`
-						);
-						if (p.willHaveNoLive) {
-							console.log(
-								chalk.yellow(
-									`  ⚠ No LIVE version will remain — production calls will fail.`
-								)
-							);
-						}
-						console.log(`  Live calls (24h):    ${p.recentLiveCalls}`);
-						console.log();
-						return defaultConfirm(`Unpromote ${v} from LIVE?`);
-					},
+					// In JSON mode, the preview belongs to the structured output —
+					// we don't print it as a banner. Caller decides what to do.
+					confirmFn: emitJson
+						? async () => true
+						: async ({ version: v, preview: p }) => {
+								console.log();
+								console.log(chalk.bold('Unpromote preview:'));
+								console.log(`  Current latest LIVE: ${p.currentLatestLive ?? '(none)'}`);
+								console.log(
+									`  After unpromote:    ${p.newLatestLiveAfterUnpromote ?? '(none)'}`
+								);
+								if (p.willHaveNoLive) {
+									console.log(
+										chalk.yellow(
+											`  ⚠ No LIVE version will remain — production calls will fail.`
+										)
+									);
+								}
+								console.log(`  Live calls (24h):    ${p.recentLiveCalls}`);
+								console.log();
+								return defaultConfirm(`Unpromote ${v} from LIVE?`);
+							},
 				});
+				if (emitJson) {
+					console.log(JSON.stringify({ preview, version: result }, null, 2));
+					return;
+				}
 				console.log(
 					chalk.green(`✓ Unpromoted ${result.version} (now SANDBOX)`)
 				);
@@ -203,6 +219,7 @@ export function registerVersionStateSubcommands(versionsGroup: Command) {
 		.description('Mark a SANDBOX version as DEPRECATED')
 		.argument('<version>', 'Exact semver to deprecate')
 		.option('-y, --yes', 'Skip the confirmation prompt')
+		.option('--json', 'Force JSON output even in a TTY')
 		.action(async (version: string, opts) => {
 			const { default: chalk } = await import('chalk');
 			try {
@@ -211,6 +228,10 @@ export function registerVersionStateSubcommands(versionsGroup: Command) {
 					confirmFn: async ({ version: v }) =>
 						defaultConfirm(`Deprecate ${v}?`),
 				});
+				if (shouldEmitJson(opts)) {
+					console.log(JSON.stringify(result, null, 2));
+					return;
+				}
 				console.log(chalk.yellow(`✓ Deprecated ${result.version}`));
 			} catch (err) {
 				console.error(
@@ -225,6 +246,7 @@ export function registerVersionStateSubcommands(versionsGroup: Command) {
 		.description('Move a DEPRECATED version back to SANDBOX')
 		.argument('<version>', 'Exact semver to un-deprecate')
 		.option('-y, --yes', 'Skip the confirmation prompt')
+		.option('--json', 'Force JSON output even in a TTY')
 		.action(async (version: string, opts) => {
 			const { default: chalk } = await import('chalk');
 			try {
@@ -233,6 +255,10 @@ export function registerVersionStateSubcommands(versionsGroup: Command) {
 					confirmFn: async ({ version: v }) =>
 						defaultConfirm(`Un-deprecate ${v}?`),
 				});
+				if (shouldEmitJson(opts)) {
+					console.log(JSON.stringify(result, null, 2));
+					return;
+				}
 				console.log(chalk.cyan(`✓ Un-deprecated ${result.version} (now SANDBOX)`));
 			} catch (err) {
 				console.error(

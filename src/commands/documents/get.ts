@@ -7,6 +7,7 @@ import {
 	type DocumentDescriptor,
 } from '../../api-client.js';
 import { errorToExitCode } from '../../exit-codes.js';
+import { shouldEmitJson } from '../../output.js';
 
 export interface DocumentsGetOptions {
 	cwd?: string;
@@ -48,24 +49,21 @@ export function registerDocumentsGetCommand(documents: Command): void {
 	documents
 		.command('get <id>')
 		.description('Fetch a document descriptor (same JSON shape as `poli render`)')
-		.action(async (id: string) => {
+		.option('--json', 'Force JSON output even in a TTY')
+		.action(async (id: string, opts: { json?: boolean }) => {
 			const { default: chalk } = await import('chalk');
 			try {
 				const doc = await executeDocumentsGet(id);
 
-				// JSON descriptor on stdout — same contract as `poli render`.
-				// Pipelines can `jq` it or pipe into a downstream step.
-				console.log(JSON.stringify(doc, null, 2));
-
-				// Human-friendly summary on stderr — only when the user is at
-				// an interactive terminal. Scripts piping the output don't see
-				// it (and don't have to filter it).
-				if (process.stderr.isTTY) {
-					printDescriptor(doc, chalk);
+				// Pipe / --json / non-TTY → JSON. TTY → human summary. Never both.
+				if (shouldEmitJson(opts)) {
+					console.log(JSON.stringify(doc, null, 2));
+					return;
 				}
+				printDescriptor(doc, chalk);
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : 'documents get failed';
-				console.error(chalk.red(msg));
+				console.log(chalk.red(msg));
 				process.exitCode = errorToExitCode(err);
 			}
 		});
@@ -82,24 +80,24 @@ function printDescriptor(doc: DocumentDescriptor, chalk: ChalkLike): void {
 	const versionLabel = doc.version ? `v${doc.version}` : 'draft';
 	const orientationLabel = doc.orientation ?? '';
 
-	console.error(chalk.green(`✓ Document ${chalk.bold(doc.documentId)}`));
-	console.error(`  Template:    ${tplLabel} ${versionLabel}`);
-	console.error(`  Environment: ${doc.environment}`);
-	console.error(`  Format:      ${doc.format}${orientationLabel ? ' ' + orientationLabel : ''}`);
-	console.error(`  Pages:       ${doc.pageCount}`);
-	console.error(`  Size:        ${formatBytes(doc.sizeBytes)}`);
-	console.error(`  Created:     ${created}`);
-	console.error(`  Expires:     ${expires}`);
-	console.error('');
-	console.error(`  PDF URL: ${chalk.cyan(doc.presignedPdfUrl)}`);
+	console.log(chalk.green(`✓ Document ${chalk.bold(doc.documentId)}`));
+	console.log(`  Template:    ${tplLabel} ${versionLabel}`);
+	console.log(`  Environment: ${doc.environment}`);
+	console.log(`  Format:      ${doc.format}${orientationLabel ? ' ' + orientationLabel : ''}`);
+	console.log(`  Pages:       ${doc.pageCount}`);
+	console.log(`  Size:        ${formatBytes(doc.sizeBytes)}`);
+	console.log(`  Created:     ${created}`);
+	console.log(`  Expires:     ${expires}`);
+	console.log('');
+	console.log(`  PDF URL: ${chalk.cyan(doc.presignedPdfUrl)}`);
 
 	const meta = doc.metadata ?? {};
 	const keys = Object.keys(meta);
 	if (keys.length > 0) {
-		console.error('');
-		console.error('  Metadata:');
+		console.log('');
+		console.log('  Metadata:');
 		for (const key of keys) {
-			console.error(`    ${key}: ${JSON.stringify(meta[key])}`);
+			console.log(`    ${key}: ${JSON.stringify(meta[key])}`);
 		}
 	}
 }

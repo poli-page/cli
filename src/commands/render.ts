@@ -14,6 +14,7 @@ import {
 } from '../api-client.js';
 import { resolveAuth } from '../auth.js';
 import { errorToExitCode } from '../exit-codes.js';
+import { shouldEmitJson } from '../output.js';
 
 export interface RenderOptions {
 	cwd?: string;
@@ -152,8 +153,9 @@ export function registerRenderCommand(program: Command) {
 		)
 		.option(
 			'--no-download',
-			'Skip fetching the presigned PDF URL — only print the JSON descriptor'
+			'Skip fetching the presigned PDF URL — only emit the JSON descriptor'
 		)
+		.option('--json', 'Force JSON output even in a TTY')
 		.action(async (name: string, opts) => {
 			const { default: chalk } = await import('chalk');
 
@@ -165,21 +167,32 @@ export function registerRenderCommand(program: Command) {
 					noDownload: opts.download === false,
 				});
 
-				// Always print the JSON descriptor on stdout — pipelines (jq, CI)
-				// rely on it. Pretty-printed for human readability; one render =
-				// one JSON object so consumers can `tail -1` if they need to.
-				console.log(JSON.stringify(result.descriptor, null, 2));
+				// Pipe / --json / non-TTY → JSON. TTY → human summary.
+				// Never both — picking one keeps stdout clean for either consumer.
+				if (shouldEmitJson(opts)) {
+					console.log(JSON.stringify(result.descriptor, null, 2));
+					return;
+				}
 
+				const env = result.descriptor.environment;
+				const versionLabel = result.descriptor.version
+					? `v${result.descriptor.version}`
+					: 'vdraft';
+				const envSuffix = ` (${env}${env === 'live' ? ', billed' : ''})`;
 				if (result.outputPath) {
-					const env = result.descriptor.environment;
-					const versionLabel = result.descriptor.version
-						? `v${result.descriptor.version}`
-						: 'vdraft';
-					const envSuffix = ` (${env}${env === 'live' ? ', billed' : ''})`;
-					console.error(
+					console.log(
 						chalk.green(
 							`✓ Rendered ${name} ${versionLabel}${envSuffix} → ${result.outputPath}`
 						)
+					);
+				} else {
+					console.log(
+						chalk.green(
+							`✓ Document ${chalk.bold(result.descriptor.documentId)} ${versionLabel}${envSuffix} (no download)`
+						)
+					);
+					console.log(
+						`  ${chalk.dim('PDF URL:')} ${chalk.cyan(result.descriptor.presignedPdfUrl)}`
 					);
 				}
 			} catch (error) {
