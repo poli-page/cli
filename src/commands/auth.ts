@@ -2,7 +2,9 @@ import { Command } from 'commander';
 import {
 	writeCredentials,
 	clearCredentials,
+	readCredentials,
 	type StoredCredentials,
+	type UserInfo,
 } from '../credentials.js';
 import { readManifest } from '../manifest.js';
 import { resolveAuth } from '../auth.js';
@@ -26,6 +28,14 @@ export interface DeviceLoginOptions {
 	 */
 	envApiKey?: string;
 	onEnvVarInfo?: (message: string) => void;
+	/**
+	 * Explicit API URL to persist in credentials after a successful login.
+	 * When omitted, falls back to `process.env.POLI_API_URL`. This is the
+	 * value the CLI will use on subsequent runs without `--api-url` —
+	 * critical for non-prod (develop) targeting, which relies on a custom
+	 * URL but should not require the flag at every invocation.
+	 */
+	apiUrl?: string;
 }
 
 export async function executeDeviceLogin(
@@ -90,7 +100,7 @@ export async function executeDeviceLogin(
 			const result = await client.devicePoll(deviceReq.deviceCode);
 
 			if (result.status === 'confirmed' && result.sessionToken && result.user) {
-				const apiUrl = process.env.POLI_API_URL;
+				const apiUrl = options.apiUrl ?? process.env.POLI_API_URL;
 				const credentials: StoredCredentials = {
 					...(apiUrl ? { apiUrl } : {}),
 					session: result.sessionToken,
@@ -136,10 +146,14 @@ export interface WhoamiOptions {
 	apiClient?: ApiClient;
 }
 
-export interface WhoamiResult {
-	mode: 'session' | 'api-key';
-	payload: MeResponse;
-}
+export type WhoamiResult =
+	| { mode: 'session'; payload: MeResponse }
+	| { mode: 'api-key'; payload: MeResponse }
+	| {
+			mode: 'session-no-org';
+			user: UserInfo;
+			orgs: Array<{ id: string; slug: string; name: string }>;
+	  };
 
 export async function executeWhoami(
 	options: WhoamiOptions = {}
@@ -151,25 +165,36 @@ export async function executeWhoami(
 		const manifest = await readManifest(cwd);
 		manifestOrgId = manifest.cloud?.orgId;
 	} catch {
-		// Not in a Poli Page project — leave orgId undefined; resolveAuth will
-		// throw a friendly error if a session is present but orgId is needed.
+		// Not in a Poli Page project — leave orgId undefined.
 	}
+
+	const client = options.apiClient ?? createApiClient();
 
 	let auth;
 	try {
 		auth = await resolveAuth({ manifestOrgId, homeDir: options.homeDir });
 	} catch (err) {
+		// Session is present but no linked project — fall back to listing the
+		// orgs the session can see. Identity check should work from anywhere.
 		if (err instanceof Error && /isn't linked/i.test(err.message)) {
-			throw new Error(
-				'Run `poli whoami` inside a linked project, or set POLI_PAGE_API_KEY for api-key mode.'
-			);
+			const credentials = await readCredentials(options.homeDir);
+			if (credentials?.session) {
+				let orgs: Array<{ id: string; slug: string; name: string }>;
+				try {
+					orgs = await client.getOrganizations(credentials.session);
+				} catch {
+					// 401 / network / API issue — the session is no longer usable.
+					throw new Error(
+						'Not logged in. Run `poli login` or set POLI_PAGE_API_KEY.'
+					);
+				}
+				return { mode: 'session-no-org', user: credentials.user, orgs };
+			}
 		}
 		throw err;
 	}
 
-	const client = options.apiClient ?? createApiClient();
 	const payload = await client.getMe(auth.authorization, auth.orgIdHeader);
-
 	return { mode: auth.mode, payload };
 }
 
@@ -237,18 +262,49 @@ export function registerAuthCommands(program: Command) {
 		.action(async (opts) => {
 			const { default: chalk } = await import('chalk');
 			try {
-				const { mode, payload } = await executeWhoami();
+				const result = await executeWhoami();
 				if (opts.json) {
-					console.log(JSON.stringify(payload, null, 2));
+					if (result.mode === 'session-no-org') {
+						console.log(
+							JSON.stringify(
+								{ mode: result.mode, user: result.user, orgs: result.orgs },
+								null,
+								2
+							)
+						);
+					} else {
+						console.log(JSON.stringify(result.payload, null, 2));
+					}
 					return;
 				}
-				const orgSlug = payload.org?.slug ?? '(no org)';
-				if (mode === 'session') {
-					const email = payload.user?.email ?? '(unknown)';
+
+				if (result.mode === 'session') {
+					const email = result.payload.user?.email ?? '(unknown)';
+					const orgSlug = result.payload.org?.slug ?? '(no org)';
 					console.log(`${chalk.bold(email)} @ ${chalk.cyan(orgSlug)} (session)`);
+				} else if (result.mode === 'session-no-org') {
+					const email = result.user.email;
+					const count = result.orgs.length;
+					const orgList =
+						count === 0
+							? '(no organizations)'
+							: count === 1
+								? result.orgs[0].slug
+								: `${count} organizations: ${result.orgs.map((o) => o.slug).join(', ')}`;
+					console.log(
+						`${chalk.bold(email)} (session, ${chalk.cyan(orgList)})`
+					);
+					if (count > 0) {
+						console.log(
+							chalk.dim(
+								'  Run `poli link` inside a project to bind it to an organization.'
+							)
+						);
+					}
 				} else {
-					const preview = payload.key?.preview ?? '(unknown)';
-					const env = payload.auth.environment ?? '(?)';
+					const preview = result.payload.key?.preview ?? '(unknown)';
+					const orgSlug = result.payload.org?.slug ?? '(no org)';
+					const env = result.payload.auth.environment ?? '(?)';
 					console.log(
 						`${chalk.bold(preview)} @ ${chalk.cyan(orgSlug)} (api-key, environment=${env})`
 					);

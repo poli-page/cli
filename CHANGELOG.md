@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-05-07
+
+UX patch built from real-world testing of 0.4.0. Three fixes that
+made the CLI hard to use against the develop environment.
+
+### Changed
+- **Network errors now show what failed.** Node's fetch surfaces low-level
+  network failures as `TypeError: fetch failed`, hiding the real cause.
+  The CLI now unwraps the `cause` and prints the URL that was tried plus
+  the underlying reason (e.g. `getaddrinfo ENOTFOUND api-develop.poli.page`).
+- **`poli whoami` now works from anywhere.** Previously, in session mode,
+  it required a linked project (because `/v1/me` needs `X-Poli-Org-Id`).
+  When called outside a linked project, it now falls back to listing the
+  organizations the session can see — like `gh auth status`. The new mode
+  is exposed as `mode: 'session-no-org'` in `--json` output.
+
+### Fixed
+- **`--api-url` is now persisted at login.** The flag value is now
+  injected into `executeDeviceLogin` directly (in addition to the
+  pre-existing `POLI_API_URL` env var path), so it lands in
+  `~/.polipage/credentials.json` after a successful device flow.
+  Subsequent commands no longer need `--api-url` repeated.
+
+[0.4.1]: https://github.com/poli-page/cli/compare/v0.4.0...v0.4.1
+
 ## [0.4.0] — 2026-05-06
 
 Synced with the monorepo's 0.4.0 release. Big surface expansion: the

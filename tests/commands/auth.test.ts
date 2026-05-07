@@ -224,6 +224,37 @@ describe('auth commands', () => {
 
 			expect(infoMessages).toHaveLength(0);
 		});
+
+		it('persists the explicit apiUrl in credentials when provided', async () => {
+			const credentials = await executeDeviceLogin({
+				apiClient: createMockApiClient(),
+				homeDir: fakeHome,
+				apiUrl: 'https://api-develop.poli.page',
+				openUrl: async () => {},
+			});
+
+			expect(credentials.apiUrl).toBe('https://api-develop.poli.page');
+
+			const stored = await readCredentials(fakeHome);
+			expect(stored?.apiUrl).toBe('https://api-develop.poli.page');
+		});
+
+		it('does not write apiUrl when neither option nor env var is set', async () => {
+			const savedEnv = process.env.POLI_API_URL;
+			delete process.env.POLI_API_URL;
+			try {
+				const credentials = await executeDeviceLogin({
+					apiClient: createMockApiClient(),
+					homeDir: fakeHome,
+					openUrl: async () => {},
+				});
+				expect(credentials.apiUrl).toBeUndefined();
+			} finally {
+				if (savedEnv !== undefined) {
+					process.env.POLI_API_URL = savedEnv;
+				}
+			}
+		});
 	});
 
 	describe('executeLogout', () => {
@@ -352,22 +383,67 @@ describe('auth commands', () => {
 			).rejects.toThrow(/Not logged in/i);
 		});
 
-		it('throws a whoami-specific friendly error when session is present but no linked project', async () => {
+		it('returns session-no-org mode with user + orgs when session is present but no linked project', async () => {
 			await setupSessionCreds();
-			// no manifest.cloud.orgId — bare project dir
+			// no manifest at all
+			const client = createMockApiClient({
+				getOrganizations: async () => [
+					{ id: 'org_uuid_acme', slug: 'acme', name: 'Acme' },
+					{ id: 'org_uuid_other', slug: 'other', name: 'Other Co' },
+				],
+			});
+
+			const result = await executeWhoami({
+				cwd: projectDir,
+				homeDir: fakeHome,
+				apiClient: client,
+			});
+
+			expect(result.mode).toBe('session-no-org');
+			if (result.mode !== 'session-no-org') throw new Error('mode mismatch');
+			expect(result.user.email).toBe('xavier@test.com');
+			expect(result.orgs).toHaveLength(2);
+			expect(result.orgs.map((o) => o.slug)).toEqual(['acme', 'other']);
+		});
+
+		it('returns session-no-org when session is present in a non-linked project (manifest without cloud)', async () => {
+			await setupSessionCreds();
 			await writeFile(
 				join(projectDir, 'poli-page.json'),
 				JSON.stringify({ project: { name: 'p', version: '1.0' } }),
 				'utf-8'
 			);
 
+			const client = createMockApiClient({
+				getOrganizations: async () => [
+					{ id: 'org_uuid_acme', slug: 'acme', name: 'Acme' },
+				],
+			});
+
+			const result = await executeWhoami({
+				cwd: projectDir,
+				homeDir: fakeHome,
+				apiClient: client,
+			});
+
+			expect(result.mode).toBe('session-no-org');
+		});
+
+		it('surfaces "Not logged in" if the session is rejected when listing orgs', async () => {
+			await setupSessionCreds();
+			const client = createMockApiClient({
+				getOrganizations: async () => {
+					throw new Error('API error (401): Unauthorized');
+				},
+			});
+
 			await expect(
 				executeWhoami({
 					cwd: projectDir,
 					homeDir: fakeHome,
-					apiClient: createMockApiClient(),
+					apiClient: client,
 				})
-			).rejects.toThrow(/Run `poli whoami` inside a linked project/i);
+			).rejects.toThrow(/Not logged in/i);
 		});
 
 		it('does not require a manifest in api-key mode', async () => {

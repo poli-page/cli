@@ -217,4 +217,38 @@ describe('api-client error mapping', () => {
 			expect(err.message).toMatch(/plain text body/);
 		});
 	});
+
+	describe('network failure (fetch threw)', () => {
+		it('wraps a fetch TypeError with a readable message exposing URL + cause', async () => {
+			const cause = new Error('getaddrinfo ENOTFOUND api.poli.page');
+			(cause as Error & { code?: string }).code = 'ENOTFOUND';
+			const fetchErr = new TypeError('fetch failed', { cause });
+			vi.stubGlobal('fetch', vi.fn().mockRejectedValue(fetchErr));
+
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err).toBeInstanceOf(Error);
+			expect(err.message).toMatch(/Cannot reach the API/i);
+			expect(err.message).toMatch(/api\.test/);
+			expect(err.message).toMatch(/ENOTFOUND/);
+		});
+
+		it('still wraps when the cause has no code', async () => {
+			const fetchErr = new TypeError('fetch failed', {
+				cause: new Error('something low-level'),
+			});
+			vi.stubGlobal('fetch', vi.fn().mockRejectedValue(fetchErr));
+
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err.message).toMatch(/Cannot reach the API/i);
+			expect(err.message).toMatch(/something low-level/);
+		});
+
+		it('passes through non-fetch errors unchanged', async () => {
+			const original = new Error('something else');
+			vi.stubGlobal('fetch', vi.fn().mockRejectedValue(original));
+
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err).toBe(original);
+		});
+	});
 });

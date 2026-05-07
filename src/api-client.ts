@@ -380,14 +380,27 @@ export function createApiClient(baseUrl?: string): ApiClient {
 	const url = baseUrl ?? process.env.POLI_API_URL ?? DEFAULT_API_URL;
 
 	async function request(path: string, options: RequestInit = {}): Promise<Response> {
-		const response = await fetch(`${url}${path}`, {
-			...options,
-			headers: {
-				'Content-Type': 'application/json',
-				Origin: url,
-				...options.headers,
-			},
-		});
+		const fullUrl = `${url}${path}`;
+		let response: Response;
+		try {
+			response = await fetch(fullUrl, {
+				...options,
+				headers: {
+					'Content-Type': 'application/json',
+					Origin: url,
+					...options.headers,
+				},
+			});
+		} catch (err) {
+			// Node's fetch surfaces low-level network failures as
+			// `TypeError: fetch failed`, hiding the real cause. Unwrap so the
+			// CLI prints something actionable (which host failed to resolve,
+			// which port refused the connection, …).
+			if (err instanceof TypeError && err.message === 'fetch failed') {
+				throw new Error(formatNetworkError(fullUrl, err));
+			}
+			throw err;
+		}
 		if (!response.ok) {
 			throw await buildApiError(response);
 		}
@@ -761,4 +774,19 @@ function parseRetryAfter(header: string | null): number | undefined {
 	if (!header) return undefined;
 	const seconds = Number.parseInt(header, 10);
 	return Number.isFinite(seconds) ? seconds : undefined;
+}
+
+function formatNetworkError(url: string, err: TypeError): string {
+	const cause = (err as TypeError & { cause?: unknown }).cause;
+	const reason = describeCause(cause);
+	return `Cannot reach the API.\n  URL:    ${url}\n  Reason: ${reason}`;
+}
+
+function describeCause(cause: unknown): string {
+	if (!cause) return 'unknown network failure';
+	if (cause instanceof Error) {
+		const code = (cause as Error & { code?: string }).code;
+		return code ? `${cause.message} (${code})` : cause.message;
+	}
+	return String(cause);
 }

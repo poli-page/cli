@@ -177,14 +177,21 @@ Clears the local credentials file.
 Displays the active identity and organization. Calls `GET /v1/me` over hybrid auth (session or API key).
 
 ```bash
+# Inside a linked project (session)
 $ poli whoami
 xavier@example.com @ acme (session)
 
+# Anywhere — fallback when no project is linked, lists the orgs the session can see
+$ poli whoami
+xavier@example.com (session, 2 organizations: acme, demo-corp)
+  Run `poli link` inside a project to bind it to an organization.
+
+# Programmatic (API key)
 $ POLI_PAGE_API_KEY=pp_live_xxx poli whoami
 pp_live_xxx…abcd @ acme (api-key, environment=live)
 ```
 
-Flag: `--json` to dump the raw `/v1/me` payload.
+Flag: `--json` to dump the raw `/v1/me` payload (or, in `session-no-org` mode, `{ mode, user, orgs }`).
 
 ### Cloud sync
 
