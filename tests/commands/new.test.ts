@@ -259,8 +259,7 @@ describe('poli new', () => {
 				homeDir: fakeHome,
 				fetcher: makeFetcher(SOURCE_FILES),
 				promptForTemplate: async () => ({
-					collection: 'showcase',
-					name: 'invoice',
+					ref: { collection: 'showcase', name: 'invoice' },
 				}),
 			});
 

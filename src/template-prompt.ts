@@ -22,6 +22,17 @@ export type ConfirmFn = (args: {
 	default?: boolean;
 }) => Promise<boolean>;
 
+export type InputFn = (args: {
+	message: string;
+	default?: string;
+}) => Promise<string>;
+
+export interface TemplatePromptResult {
+	ref: TemplateRef;
+	/** Set when promptDestName=true. Defaults to ref.name if the user kept the suggested value. */
+	destName?: string;
+}
+
 export interface TemplatePromptOptions {
 	source?: TemplateSource;
 	fetcher?: FetchOptions['fetcher'];
@@ -33,17 +44,26 @@ export interface TemplatePromptOptions {
 	 * `process.stdout.isTTY`.
 	 */
 	isTTY?: boolean;
+	/**
+	 * After picking a template, also prompt for the destination template
+	 * name in the project (default suggestion = source template name).
+	 * Used by `poli init` only — `poli new` already takes the destination
+	 * as a positional argument.
+	 */
+	promptDestName?: boolean;
 	/** Injectable for testing. Default uses `@inquirer/prompts` confirm. */
 	confirmFn?: ConfirmFn;
 	/** Injectable for testing. Default uses `@inquirer/prompts` select. */
 	selectFn?: SelectFn;
+	/** Injectable for testing. Default uses `@inquirer/prompts` input. */
+	inputFn?: InputFn;
 	/** Injectable for testing. Default fetches from the source repo via fetchTemplateIndex. */
 	fetchIndex?: () => Promise<TemplateIndex>;
 }
 
 export async function promptForStarterTemplate(
 	options: TemplatePromptOptions = {}
-): Promise<TemplateRef | null> {
+): Promise<TemplatePromptResult | null> {
 	const isTTY = options.isTTY ?? Boolean(process.stdout.isTTY);
 	if (!isTTY) {
 		return null;
@@ -93,7 +113,18 @@ export async function promptForStarterTemplate(
 		choices: templateChoices,
 	});
 
-	return { collection: collectionKey, name: templateName };
+	const ref: TemplateRef = { collection: collectionKey, name: templateName };
+
+	if (options.promptDestName) {
+		const inputFn = options.inputFn ?? defaultInput;
+		const destName = await inputFn({
+			message: 'Template name in the project:',
+			default: templateName,
+		});
+		return { ref, destName };
+	}
+
+	return { ref };
 }
 
 async function defaultConfirm(args: {
@@ -113,4 +144,12 @@ async function defaultSelect<T>(args: {
 		message: args.message,
 		choices: args.choices.map((c) => ({ name: c.name, value: c.value })),
 	}) as Promise<T>;
+}
+
+async function defaultInput(args: {
+	message: string;
+	default?: string;
+}): Promise<string> {
+	const { input } = await import('@inquirer/prompts');
+	return input({ message: args.message, default: args.default });
 }

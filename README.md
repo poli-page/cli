@@ -140,7 +140,7 @@ poli init my-app --with-template showcase/quote --template-name custom-quote
 poli init my-app --source github:my-org/my-templates --with-template internal/cover
 ```
 
-Run without `--with-template` in an interactive shell to be prompted for a collection then a template (with descriptions). In non-interactive shells (CI), the prompt is skipped and the project is created without a starter — pass `--with-template` explicitly when needed.
+Run without `--with-template` in an interactive shell to be prompted for a collection, a template (with descriptions), and the destination template name in your project (default = source template name; press Enter to keep, or type a new name). In non-interactive shells (CI), the prompt is skipped and the project is created without a starter — pass `--with-template` explicitly when needed.
 
 Flags:
 

@@ -270,7 +270,9 @@ describe('poli init', () => {
 				cwd: tempDir,
 				homeDir: fakeHome,
 				fetcher: makeFetcher(SOURCE_FILES),
-				promptForTemplate: async () => ({ collection: 'showcase', name: 'invoice' }),
+				promptForTemplate: async () => ({
+					ref: { collection: 'showcase', name: 'invoice' },
+				}),
 			});
 
 			await stat(join(projectDir, 'templates', 'invoice', 'invoice.html'));
@@ -279,6 +281,40 @@ describe('poli init', () => {
 			);
 			expect(manifest.templates).toHaveLength(1);
 			expect(manifest.templates[0].name).toBe('invoice');
+		});
+
+		it('uses the destName from the prompt to rename the imported template', async () => {
+			const projectDir = await executeInit('billing', {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher(SOURCE_FILES),
+				promptForTemplate: async () => ({
+					ref: { collection: 'showcase', name: 'invoice' },
+					destName: 'welcome',
+				}),
+			});
+
+			await stat(join(projectDir, 'templates', 'welcome', 'welcome.html'));
+			await stat(join(projectDir, 'templates', 'welcome', 'welcome.json'));
+			const manifest = JSON.parse(
+				await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
+			);
+			expect(manifest.templates[0].name).toBe('welcome');
+		});
+
+		it('explicit --template-name option wins over the prompt destName', async () => {
+			const projectDir = await executeInit('billing', {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher(SOURCE_FILES),
+				templateName: 'override-name',
+				promptForTemplate: async () => ({
+					ref: { collection: 'showcase', name: 'invoice' },
+					destName: 'prompt-name',
+				}),
+			});
+
+			await stat(join(projectDir, 'templates', 'override-name', 'override-name.html'));
 		});
 
 		it('skips template import when the prompt returns null (user declined or non-TTY)', async () => {

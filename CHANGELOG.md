@@ -15,9 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *"Add a starter template?"* (y/N). On yes, it lists the available
   collections from the source repo's `index.json` (with descriptions),
   then the templates within the chosen collection (also with
-  descriptions). Skipped silently in non-TTY contexts (CI). Network
-  failure during the prompt does **not** leave a half-created project
-  on disk — the prompt runs before scaffolding.
+  descriptions), then asks for the destination template name in the
+  project (default = source template name; the user can keep it or
+  rename). Skipped silently in non-TTY contexts (CI). Network failure
+  during the prompt does **not** leave a half-created project on disk
+  — the prompt runs before scaffolding.
 - **Interactive prompt for `poli new`** — same picker, triggered when
   `--from-template` is omitted in an interactive shell. Non-TTY without
   the flag still throws the friendly "Missing --from-template" error.
@@ -25,8 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `template-importer.ts` — used by the prompt module to fetch and
   parse `index.json` without going through the full import pipeline.
 - New module `src/template-prompt.ts` exposing
-  `promptForStarterTemplate({ isTTY, confirmFn, selectFn, fetchIndex, … })`
-  for direct programmatic use or testing.
+  `promptForStarterTemplate({ isTTY, confirmFn, selectFn, inputFn,
+  fetchIndex, promptDestName, … })` for direct programmatic use or
+  testing. Returns `{ ref, destName? } | null`. The optional
+  `promptDestName` flag (used by `init`, not by `new`) appends an
+  input prompt for the destination template name. Precedence on the
+  destination name is: `--template-name` flag > prompt's `destName`
+  > source template's own name.
 
 ### Changed
 - `--from-template` is no longer a `requiredOption` on `poli new` —

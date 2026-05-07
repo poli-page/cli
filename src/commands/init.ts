@@ -9,10 +9,12 @@ import {
 	parseTemplateRef,
 	type ConflictHandler,
 	type Fetcher,
-	type TemplateRef,
 	type TemplateSource,
 } from '../template-importer.js';
-import { promptForStarterTemplate } from '../template-prompt.js';
+import {
+	promptForStarterTemplate,
+	type TemplatePromptResult,
+} from '../template-prompt.js';
 import { errorToExitCode } from '../exit-codes.js';
 
 function toKebabCase(name: string): string {
@@ -48,10 +50,10 @@ export interface InitOptions {
 	/**
 	 * When `withTemplate` is not provided and the shell is interactive,
 	 * the CLI prompts the user to pick a starter template (collection +
-	 * template, with descriptions). Override this for tests, or pass
+	 * template + destination name). Override this for tests, or pass
 	 * `null`-returning to disable.
 	 */
-	promptForTemplate?: () => Promise<TemplateRef | null>;
+	promptForTemplate?: () => Promise<TemplatePromptResult | null>;
 }
 
 export async function executeInit(name: string, options: InitOptions = {}): Promise<string> {
@@ -67,13 +69,14 @@ export async function executeInit(name: string, options: InitOptions = {}): Prom
 			? parseSource(options.source)
 			: options.source;
 
-	// Resolve the template ref before scaffolding so a network failure in
-	// the prompt doesn't leave a half-created project on disk.
-	let templateRef: TemplateRef | null = options.withTemplate
-		? parseTemplateRef(options.withTemplate)
+	// Resolve the template ref (and optionally a custom destName from the
+	// prompt) BEFORE scaffolding, so a network failure during the prompt
+	// doesn't leave a half-created project on disk.
+	let promptResult: TemplatePromptResult | null = options.withTemplate
+		? { ref: parseTemplateRef(options.withTemplate) }
 		: null;
 
-	if (!templateRef) {
+	if (!promptResult) {
 		const prompt =
 			options.promptForTemplate ??
 			(() =>
@@ -82,8 +85,12 @@ export async function executeInit(name: string, options: InitOptions = {}): Prom
 					fetcher: options.fetcher,
 					homeDir: options.homeDir,
 					noCache: options.noCache,
+					// Init asks for the destination name after picking a template
+					// (default = source template name). `new` already takes it as
+					// a positional arg, so it does NOT pass this flag.
+					promptDestName: true,
 				}));
-		templateRef = await prompt();
+		promptResult = await prompt();
 	}
 
 	if (!initInPlace) {
@@ -111,13 +118,21 @@ export async function executeInit(name: string, options: InitOptions = {}): Prom
 	await writeFile(join(projectDir, 'tailwind.css'), TAILWIND_CSS_TEMPLATE, 'utf-8');
 	await writeFile(join(projectDir, '.gitignore'), GITIGNORE_TEMPLATE, 'utf-8');
 
-	if (templateRef) {
+	if (promptResult) {
+		// Precedence for the destination template name:
+		//   1. explicit --template-name flag (options.templateName)
+		//   2. value returned by the interactive prompt (promptResult.destName)
+		//   3. the source template's own name (default in importTemplate)
+		const destTemplateName = options.templateName
+			? toKebabCase(options.templateName)
+			: promptResult.destName
+				? toKebabCase(promptResult.destName)
+				: undefined;
+
 		await importTemplate({
 			source,
-			templateRef,
-			destTemplateName: options.templateName
-				? toKebabCase(options.templateName)
-				: undefined,
+			templateRef: promptResult.ref,
+			destTemplateName,
 			projectDir,
 			fetcher: options.fetcher,
 			homeDir: options.homeDir,

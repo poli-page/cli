@@ -10,7 +10,10 @@ import {
 	type TemplateRef,
 	type TemplateSource,
 } from '../template-importer.js';
-import { promptForStarterTemplate } from '../template-prompt.js';
+import {
+	promptForStarterTemplate,
+	type TemplatePromptResult,
+} from '../template-prompt.js';
 import { errorToExitCode } from '../exit-codes.js';
 
 function toKebabCase(name: string): string {
@@ -34,10 +37,10 @@ export interface NewOptions {
 	/**
 	 * When `fromTemplate` is not provided and the shell is interactive,
 	 * the CLI prompts the user to pick a source template (collection +
-	 * template, with descriptions). Override this for tests, or pass
-	 * `null`-returning to disable.
+	 * template, with descriptions). The destination name is the positional
+	 * argument, so the prompt does not ask for it.
 	 */
-	promptForTemplate?: () => Promise<TemplateRef | null>;
+	promptForTemplate?: () => Promise<TemplatePromptResult | null>;
 }
 
 export async function executeNew(name: string, options: NewOptions = {}): Promise<string> {
@@ -68,8 +71,12 @@ export async function executeNew(name: string, options: NewOptions = {}): Promis
 					fetcher: options.fetcher,
 					homeDir: options.homeDir,
 					noCache: options.noCache,
+					// `new` already takes the destination name as a positional
+					// argument, so we don't ask for it again.
+					promptDestName: false,
 				}));
-		templateRef = await prompt();
+		const promptResult = await prompt();
+		templateRef = promptResult ? promptResult.ref : null;
 	}
 
 	if (!templateRef) {

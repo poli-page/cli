@@ -37,7 +37,7 @@ describe('promptForStarterTemplate', () => {
 		expect(result).toBeNull();
 	});
 
-	it('prompts for collection then template, and returns the chosen ref', async () => {
+	it('prompts for collection then template, and returns { ref } without destName by default', async () => {
 		const askedConfirms: string[] = [];
 		const askedSelects: string[] = [];
 
@@ -49,8 +49,6 @@ describe('promptForStarterTemplate', () => {
 			},
 			selectFn: async ({ message, choices }) => {
 				askedSelects.push(message);
-				// First call → pick "showcase" collection
-				// Second call → pick "invoice" template
 				if (askedSelects.length === 1) {
 					return choices.find((c) => c.value === 'showcase')!.value;
 				}
@@ -59,11 +57,66 @@ describe('promptForStarterTemplate', () => {
 			fetchIndex: async () => fakeIndex,
 		});
 
-		expect(result).toEqual({ collection: 'showcase', name: 'invoice' });
+		expect(result).toEqual({
+			ref: { collection: 'showcase', name: 'invoice' },
+		});
 		expect(askedConfirms).toHaveLength(1);
 		expect(askedSelects).toHaveLength(2);
 		expect(askedSelects[0]).toMatch(/collection/i);
 		expect(askedSelects[1]).toMatch(/showcase/);
+	});
+
+	it('prompts for the destination template name when promptDestName=true (default = source name)', async () => {
+		let inputDefault: string | undefined;
+		const result = await promptForStarterTemplate({
+			isTTY: true,
+			promptDestName: true,
+			confirmFn: async () => true,
+			selectFn: async ({ choices }) => choices[0].value,
+			inputFn: async ({ default: def }) => {
+				inputDefault = def;
+				return def ?? '';
+			},
+			fetchIndex: async () => fakeIndex,
+		});
+
+		expect(inputDefault).toBe('invoice');
+		expect(result).toEqual({
+			ref: { collection: 'showcase', name: 'invoice' },
+			destName: 'invoice',
+		});
+	});
+
+	it('passes through a renamed destination from the input prompt', async () => {
+		const result = await promptForStarterTemplate({
+			isTTY: true,
+			promptDestName: true,
+			confirmFn: async () => true,
+			selectFn: async ({ choices }) => choices[0].value,
+			inputFn: async () => 'welcome',
+			fetchIndex: async () => fakeIndex,
+		});
+
+		expect(result).toEqual({
+			ref: { collection: 'showcase', name: 'invoice' },
+			destName: 'welcome',
+		});
+	});
+
+	it('does not call inputFn when promptDestName is false (default)', async () => {
+		const inputSpy = vi.fn();
+		const result = await promptForStarterTemplate({
+			isTTY: true,
+			confirmFn: async () => true,
+			selectFn: async ({ choices }) => choices[0].value,
+			inputFn: inputSpy,
+			fetchIndex: async () => fakeIndex,
+		});
+
+		expect(inputSpy).not.toHaveBeenCalled();
+		expect(result).toEqual({
+			ref: { collection: 'showcase', name: 'invoice' },
+		});
 	});
 
 	it('returns null in non-TTY contexts (CI) without prompting', async () => {
