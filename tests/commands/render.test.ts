@@ -285,7 +285,7 @@ describe('poli render', () => {
 			expect(result.outputPath).toBe(customPath);
 		});
 
-		it('reads custom data via -d <file>', async () => {
+		it('reads custom data via -d <file> (flat shape)', async () => {
 			const dataPath = join(tempDir, 'data.json');
 			await writeFile(
 				dataPath,
@@ -302,6 +302,28 @@ describe('poli render', () => {
 			});
 
 			expect(calls[0].payload.data).toEqual({ title: 'Custom', amount: 42 });
+		});
+
+		it('unwraps the wrapped { locale, data: {...} } shape from --data (matches mock convention)', async () => {
+			const dataPath = join(tempDir, 'data.json');
+			await writeFile(
+				dataPath,
+				JSON.stringify({
+					locale: 'fr',
+					data: { title: 'Mes nouvelles données' },
+				}),
+				'utf-8'
+			);
+
+			const calls: RenderCall[] = [];
+			await executeRender('invoice', {
+				cwd: projectDir,
+				data: dataPath,
+				apiClient: createMockApiClient({ calls }),
+				homeDir: fakeHome,
+			});
+
+			expect(calls[0].payload.data).toEqual({ title: 'Mes nouvelles données' });
 		});
 	});
 

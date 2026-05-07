@@ -76,15 +76,34 @@ export async function loadTemplate(
 		throw new Error(`Mock data file not found or invalid: ${mockPath}`);
 	}
 
-	// Mock files can use { locale, data: {...} } structure or flat data
-	const hasDataField =
-		'data' in mockJson && typeof mockJson.data === 'object' && mockJson.data !== null;
-	const data = hasDataField
-		? (mockJson.data as Record<string, unknown>)
-		: mockJson;
-	const locale = typeof mockJson.locale === 'string' ? mockJson.locale : undefined;
-
+	const { data, locale } = unwrapMockJson(mockJson);
 	return { entry, html, data, locale };
+}
+
+/**
+ * Mock and `--data` JSON files can be written in two shapes:
+ *
+ *   1. Wrapped (matches what the API expects + what `poli init` scaffolds):
+ *      `{ "locale": "fr", "data": { "title": "..." } }`
+ *
+ *   2. Flat:
+ *      `{ "title": "..." }`
+ *
+ * This helper detects the wrapped shape and returns `{ data, locale }` so
+ * callers don't have to reimplement the dewrap (and risk double-wrapping
+ * the payload on the way to the API). Used by `loadTemplate` for the
+ * on-disk mock and by `executeRender` for `--data` overrides.
+ */
+export function unwrapMockJson(
+	json: Record<string, unknown>
+): { data: Record<string, unknown>; locale: string | undefined } {
+	const hasDataField =
+		'data' in json && typeof json.data === 'object' && json.data !== null;
+	const data = hasDataField
+		? (json.data as Record<string, unknown>)
+		: json;
+	const locale = typeof json.locale === 'string' ? json.locale : undefined;
+	return { data, locale };
 }
 
 export function createAssetsResolver(projectDir: string) {

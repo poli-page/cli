@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **`poli render --data <file>` was double-wrapping the payload when the
+  file used the same `{ locale, data: { … } }` shape as the mock JSON
+  scaffolded by `poli init`.** The on-disk mock file is auto-dewrapped
+  by `loadTemplate`, but the `--data` override read the file raw and
+  passed the whole object through, which then arrived at the engine as
+  `{ data: { data: {...} } }` — so any `{{ title }}` reference rendered
+  empty. The dewrap is now factored into a shared `unwrapMockJson`
+  helper and applied to both paths. Flat-shape `--data` files keep
+  working unchanged.
 - **`poli link` was sending the wrong payload to `POST /api/organizations/:orgId/projects`.**
   The body used to be `{ name, slug }`, but the API's Zod schema (`createProjectSchema`)
   expects `{ manifest, templates, images?, tailwindCss? }` — the same shape `poli push`

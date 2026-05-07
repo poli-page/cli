@@ -1,7 +1,12 @@
 import { Command } from 'commander';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { loadProject, findTemplate, loadTemplate } from '../project-loader.js';
+import {
+	loadProject,
+	findTemplate,
+	loadTemplate,
+	unwrapMockJson,
+} from '../project-loader.js';
 import { createApiClient, type ApiClient } from '../api-client.js';
 import { resolveAuth } from '../auth.js';
 import { errorToExitCode } from '../exit-codes.js';
@@ -40,7 +45,12 @@ export async function executeRender(
 	let data = loaded.data;
 	if (options.data) {
 		const dataPath = resolve(cwd, options.data);
-		data = JSON.parse(await readFile(dataPath, 'utf-8'));
+		const raw = JSON.parse(await readFile(dataPath, 'utf-8'));
+		// Same dewrap as loadTemplate: accept both `{ locale, data: {...} }`
+		// (the convention used by mock files and `poli init` scaffolds) and
+		// flat shapes. Without this, passing the wrapped shape via --data
+		// would result in `{ data: { data: {...} } }` reaching the engine.
+		data = unwrapMockJson(raw).data;
 	}
 
 	const auth = await resolveAuth({
