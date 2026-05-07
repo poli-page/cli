@@ -94,6 +94,16 @@ export class SystemProjectImmutableError extends ApiError {
 		super('SYSTEM_PROJECT_IMMUTABLE', 403, message, retryAfter);
 	}
 }
+export class InvalidTrackFormatError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('INVALID_TRACK_FORMAT', 400, message, retryAfter);
+	}
+}
+export class VersionConflictError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('VERSION_CONFLICT', 409, message, retryAfter);
+	}
+}
 
 type TypedErrorCtor = new (message: string, retryAfter?: number) => ApiError;
 
@@ -114,6 +124,8 @@ const TYPED_ERROR_REGISTRY: Record<string, TypedErrorCtor> = {
 	DOCUMENT_GONE: DocumentGoneError,
 	SYSTEM_PROJECT_LOCKED: SystemProjectLockedError,
 	SYSTEM_PROJECT_IMMUTABLE: SystemProjectImmutableError,
+	INVALID_TRACK_FORMAT: InvalidTrackFormatError,
+	VERSION_CONFLICT: VersionConflictError,
 };
 
 export interface ApiKeyInfo {
@@ -140,10 +152,21 @@ export interface VersionInfo {
 	unpromotedBy?: string;
 }
 
-export interface PushVersionBody {
-	bumpType: 'patch' | 'minor' | 'major';
-	message?: string;
-}
+/**
+ * `POST /projects/:projectId/push` body. Two mutually exclusive shapes
+ * (api-spec §9.1):
+ *
+ *  1. Bump-driven: `{ bumpType, track?, message? }`. Track anchors
+ *     `--patch` / `--minor` on a specific `major.minor` family. `--major`
+ *     ignores the track and always picks `max(major)+1`.
+ *
+ *  2. Explicit: `{ version, message? }`. The caller declares the exact
+ *     version. Server returns `409 VERSION_CONFLICT` if it already
+ *     exists in any state.
+ */
+export type PushVersionBody =
+	| { bumpType: 'patch' | 'minor' | 'major'; track?: string; message?: string }
+	| { version: string; message?: string };
 
 export interface UnpromotePreview {
 	currentLatestLive: string | null;

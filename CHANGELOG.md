@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 API surface stabilisation. The server now uniformly returns a JSON
 descriptor for every render (no more PDF binary), and the CLI follows.
+Plus version `track` support for the hotfix workflow.
 
 ### Changed (BREAKING)
 - **`poli render` now talks to `POST /v1/render`**, the new unified
@@ -33,6 +34,24 @@ descriptor for every render (no more PDF binary), and the CLI follows.
   of `DocumentDescriptor`) instead of `{ pdf: Buffer, environment }`.
 
 ### Added
+- **Version `track` support** in `poli push` (api-spec §9.1) — enables the
+  hotfix flow when a SANDBOX is more recent than the LIVE you need to patch.
+  - `poli checkout X.Y.Z` now writes `cloud.track = "X.Y"` to the manifest.
+  - `poli push` reads `cloud.track` and forwards it in the body, so
+    `--patch` and `--minor` are anchored on that family. `--major` ignores
+    the track and always picks `max(major)+1`.
+  - Post-push, `cloud.track` is updated to the major.minor of the version
+    the server returned (no-op for patches on the same family).
+  - Two new flags on `poli push`:
+    - `--version <X.Y.Z>` — explicit version mode (mutually exclusive with
+      `--patch`/`--minor`/`--major`/`--track`). 409 `VERSION_CONFLICT` if
+      the version already exists in any state.
+    - `--track <X.Y>` — override the manifest track (CI use, no manifest).
+  - **Hotfix scenario**: 1.0.1 LIVE in prod, 2.0.0 SANDBOX in dev.
+    Before: `poli push --patch` after `checkout 1.0.1` produced 2.0.1.
+    After: 1.0.2.
+- New typed errors: `InvalidTrackFormatError` (400), `VersionConflictError`
+  (409). Both mapped in the error registry.
 - **`--no-download` flag** for `poli render` — skips the presigned URL
   fetch entirely, only emits the JSON descriptor. Useful for CI/CD
   pipelines that consume the metadata and let a downstream step fetch

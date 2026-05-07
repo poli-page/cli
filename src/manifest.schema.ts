@@ -19,12 +19,24 @@ const templateEntrySchema = z
 	})
 	.passthrough();
 
+// `track` is the version family the project is currently working on
+// (api-spec §9.1). Written by `poli checkout X.Y.Z` (= "X.Y") and read
+// by `poli push` to anchor --patch / --minor on the right family —
+// enables hotfixing a LIVE version while a newer SANDBOX exists.
+// Optional: a fresh project from `poli init` has no track until the
+// first checkout or push.
+const TRACK_RE = /^\d+\.\d+$/;
+
 const cloudSchema = z
 	.object({
 		orgSlug: z.string(),
 		orgId: z.string().optional(),
 		projectSlug: z.string().optional(),
 		projectId: z.string(),
+		track: z
+			.string()
+			.regex(TRACK_RE, 'Track must be `major.minor` (e.g. "1.0")')
+			.optional(),
 		apiUrl: z.string().optional(),
 	})
 	.passthrough();

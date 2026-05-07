@@ -271,6 +271,218 @@ describe('poli push', () => {
 			expect(callOrder).toEqual(['updateProject', 'pushVersion']);
 		});
 
+		it('reads cloud.track from manifest and forwards it in the body', async () => {
+			await setupLinked();
+			const m = await readManifest(projectDir);
+			m.cloud!.track = '1.0';
+			await writeManifest(projectDir, m);
+
+			const client = createMockApiClient();
+			await executePush({
+				cwd: projectDir,
+				bump: 'patch',
+				apiClient: client,
+				homeDir: fakeHome,
+			});
+
+			const body = (client.pushVersion as ReturnType<typeof vi.fn>).mock
+				.calls[0][3] as PushVersionBody;
+			expect(body).toEqual({ bumpType: 'patch', track: '1.0' });
+		});
+
+		it('omits track from body when manifest has no cloud.track', async () => {
+			await setupLinked();
+			const client = createMockApiClient();
+			await executePush({
+				cwd: projectDir,
+				bump: 'patch',
+				apiClient: client,
+				homeDir: fakeHome,
+			});
+
+			const body = (client.pushVersion as ReturnType<typeof vi.fn>).mock
+				.calls[0][3] as PushVersionBody;
+			expect('track' in body).toBe(false);
+		});
+
+		it('--track <X.Y> overrides the manifest track', async () => {
+			await setupLinked();
+			const m = await readManifest(projectDir);
+			m.cloud!.track = '1.0';
+			await writeManifest(projectDir, m);
+
+			const client = createMockApiClient();
+			await executePush({
+				cwd: projectDir,
+				bump: 'patch',
+				track: '2.5',
+				apiClient: client,
+				homeDir: fakeHome,
+			});
+
+			const body = (client.pushVersion as ReturnType<typeof vi.fn>).mock
+				.calls[0][3] as PushVersionBody;
+			expect((body as { track?: string }).track).toBe('2.5');
+		});
+
+		it('--version <X.Y.Z> sends the explicit body shape (no bumpType, no track)', async () => {
+			await setupLinked();
+			const client = createMockApiClient({
+				pushVersion: vi.fn(async () =>
+					sandboxVersion({ version: '5.0.0', major: 5, minor: 0, patch: 0 })
+				),
+			});
+			await executePush({
+				cwd: projectDir,
+				version: '5.0.0',
+				apiClient: client,
+				homeDir: fakeHome,
+			});
+
+			const body = (client.pushVersion as ReturnType<typeof vi.fn>).mock
+				.calls[0][3] as PushVersionBody;
+			expect(body).toEqual({ version: '5.0.0' });
+		});
+
+		it('--version + --bump is rejected locally', async () => {
+			await setupLinked();
+			await expect(
+				executePush({
+					cwd: projectDir,
+					version: '1.0.0',
+					bump: 'patch',
+					apiClient: createMockApiClient(),
+					homeDir: fakeHome,
+				})
+			).rejects.toThrow(/--version.*--bump|exclusive/i);
+		});
+
+		it('--version + --track is rejected locally', async () => {
+			await setupLinked();
+			await expect(
+				executePush({
+					cwd: projectDir,
+					version: '1.0.0',
+					track: '1.0',
+					apiClient: createMockApiClient(),
+					homeDir: fakeHome,
+				})
+			).rejects.toThrow(/--version.*--track|exclusive/i);
+		});
+
+		it('rejects --version with non-exact semver', async () => {
+			await setupLinked();
+			await expect(
+				executePush({
+					cwd: projectDir,
+					version: 'latest',
+					apiClient: createMockApiClient(),
+					homeDir: fakeHome,
+				})
+			).rejects.toThrow(/exact semver|latest/i);
+		});
+
+		it('rejects --track with bad format', async () => {
+			await setupLinked();
+			await expect(
+				executePush({
+					cwd: projectDir,
+					track: '1.0.5',
+					apiClient: createMockApiClient(),
+					homeDir: fakeHome,
+				})
+			).rejects.toThrow(/major\.minor|track/i);
+		});
+	});
+
+	describe('post-push manifest update', () => {
+		it('keeps cloud.track unchanged when --patch on the same track returns the same major.minor', async () => {
+			await setupLinked();
+			const m = await readManifest(projectDir);
+			m.cloud!.track = '1.0';
+			await writeManifest(projectDir, m);
+
+			const client = createMockApiClient({
+				pushVersion: vi.fn(async () =>
+					sandboxVersion({ version: '1.0.6', major: 1, minor: 0, patch: 6 })
+				),
+			});
+			await executePush({
+				cwd: projectDir,
+				bump: 'patch',
+				apiClient: client,
+				homeDir: fakeHome,
+			});
+
+			const manifest = await readManifest(projectDir);
+			expect(manifest.cloud?.track).toBe('1.0');
+			expect(manifest.project.version).toBe('1.0.6');
+		});
+
+		it('updates cloud.track when --minor produces a new major.minor', async () => {
+			await setupLinked();
+			const m = await readManifest(projectDir);
+			m.cloud!.track = '1.0';
+			await writeManifest(projectDir, m);
+
+			const client = createMockApiClient({
+				pushVersion: vi.fn(async () =>
+					sandboxVersion({ version: '1.1.0', major: 1, minor: 1, patch: 0 })
+				),
+			});
+			await executePush({
+				cwd: projectDir,
+				bump: 'minor',
+				apiClient: client,
+				homeDir: fakeHome,
+			});
+
+			const manifest = await readManifest(projectDir);
+			expect(manifest.cloud?.track).toBe('1.1');
+		});
+
+		it('updates cloud.track to the new major when --major', async () => {
+			await setupLinked();
+			const m = await readManifest(projectDir);
+			m.cloud!.track = '1.0';
+			await writeManifest(projectDir, m);
+
+			const client = createMockApiClient({
+				pushVersion: vi.fn(async () =>
+					sandboxVersion({ version: '3.0.0', major: 3, minor: 0, patch: 0 })
+				),
+			});
+			await executePush({
+				cwd: projectDir,
+				bump: 'major',
+				apiClient: client,
+				homeDir: fakeHome,
+			});
+
+			const manifest = await readManifest(projectDir);
+			expect(manifest.cloud?.track).toBe('3.0');
+		});
+
+		it('updates cloud.track from --version explicit', async () => {
+			await setupLinked();
+			const client = createMockApiClient({
+				pushVersion: vi.fn(async () =>
+					sandboxVersion({ version: '5.0.0', major: 5, minor: 0, patch: 0 })
+				),
+			});
+			await executePush({
+				cwd: projectDir,
+				version: '5.0.0',
+				apiClient: client,
+				homeDir: fakeHome,
+			});
+
+			const manifest = await readManifest(projectDir);
+			expect(manifest.cloud?.track).toBe('5.0');
+		});
+	});
+
+	describe('side effects (legacy)', () => {
 		it('includes font binaries in the sync payload', async () => {
 			await setupLinked();
 			const fontsDir = join(projectDir, 'assets', 'fonts');

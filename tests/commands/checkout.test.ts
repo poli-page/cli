@@ -277,7 +277,8 @@ describe('poli checkout', () => {
 			const tw = await readFile(join(projectDir, 'tailwind.css'), 'utf-8');
 			expect(tw).toContain('--color-x');
 
-			// Manifest merged AND cloud section preserved
+			// Manifest merged AND cloud section preserved + track derived
+			// from the checked-out version.
 			const manifest = await readManifest(projectDir);
 			expect(manifest.project.version).toBe('1.2.3');
 			expect(manifest.cloud).toEqual({
@@ -285,9 +286,31 @@ describe('poli checkout', () => {
 				orgId: 'org_uuid_acme',
 				projectSlug: 'test-project',
 				projectId: 'proj_1',
+				track: '1.2',
 			});
 			expect(manifest.templates?.[0].name).toBe('invoice');
 			expect(manifest.fonts?.[0].family).toBe('Inter');
+		});
+
+		it('updates cloud.track when checking out a different track', async () => {
+			await setupLinked();
+			// Pre-set an existing track; checkout should overwrite it.
+			const m = await readManifest(projectDir);
+			m.cloud!.track = '1.0';
+			await writeManifest(projectDir, m);
+
+			await executeCheckout({
+				cwd: projectDir,
+				version: '2.5.7',
+				yes: true,
+				apiClient: createMockApiClient({
+					downloadVersion: async () => FULL_BUNDLE,
+				}),
+				homeDir: fakeHome,
+			});
+
+			const manifest = await readManifest(projectDir);
+			expect(manifest.cloud?.track).toBe('2.5');
 		});
 	});
 

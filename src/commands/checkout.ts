@@ -86,11 +86,26 @@ export async function executeCheckout(options: CheckoutOptions): Promise<void> {
 		await writeFile(join(cwd, 'tailwind.css'), bundle.tailwindCss, 'utf-8');
 	}
 
+	// Write the cloud track derived from the checked-out version. `poli push`
+	// reads this to anchor --patch / --minor on the right family, enabling
+	// the hotfix flow (api-spec §9.1). E.g. checkout 1.0.5 → track "1.0";
+	// `poli push --patch` then produces 1.0.6, not the linear next-major.
+	const track = trackOf(options.version);
+
 	const merged = {
 		...(bundle.manifest as Record<string, unknown>),
-		cloud: manifest.cloud,
+		cloud: { ...manifest.cloud, track },
 	};
 	await writeManifest(cwd, merged as Parameters<typeof writeManifest>[1]);
+}
+
+/** Derives the major.minor track from an exact semver. */
+export function trackOf(version: string): string {
+	const m = version.match(/^(\d+)\.(\d+)\.\d+$/);
+	if (!m) {
+		throw new Error(`Cannot derive track from non-exact-semver: "${version}".`);
+	}
+	return `${m[1]}.${m[2]}`;
 }
 
 async function defaultConfirm(version: string): Promise<boolean> {

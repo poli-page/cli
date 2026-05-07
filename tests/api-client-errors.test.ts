@@ -18,6 +18,8 @@ import {
 	DocumentGoneError,
 	SystemProjectLockedError,
 	SystemProjectImmutableError,
+	InvalidTrackFormatError,
+	VersionConflictError,
 } from '../src/api-client.js';
 
 function mockFetchOnce(
@@ -195,6 +197,30 @@ describe('api-client error mapping', () => {
 			const err = await callAnyEndpoint().catch((e) => e);
 			expect(err).toBeInstanceOf(SystemProjectImmutableError);
 			expect(err.httpStatus).toBe(403);
+		});
+
+		it('maps 400 INVALID_TRACK_FORMAT → InvalidTrackFormatError', async () => {
+			mockFetchOnce(400, {
+				error: {
+					code: 'INVALID_TRACK_FORMAT',
+					message: 'Track must match major.minor',
+				},
+			});
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err).toBeInstanceOf(InvalidTrackFormatError);
+			expect(err.httpStatus).toBe(400);
+		});
+
+		it('maps 409 VERSION_CONFLICT → VersionConflictError', async () => {
+			mockFetchOnce(409, {
+				error: {
+					code: 'VERSION_CONFLICT',
+					message: 'Version 1.0.5 already exists',
+				},
+			});
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err).toBeInstanceOf(VersionConflictError);
+			expect(err.httpStatus).toBe(409);
 		});
 	});
 

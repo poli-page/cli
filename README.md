@@ -235,18 +235,35 @@ poli checkout 1.0.5    # exact semver only
 
 `latest` and partial semver (`1.0`, `1`) are rejected with a friendly hint.
 
+Side effect: writes `cloud.track = "X.Y"` to the manifest (derived from the checked-out version). `poli push --patch` / `--minor` will then be anchored on that track — see the hotfix flow above.
+
 ### Versioning
 
 #### `poli push`
 
-Sync the current local draft and create a new SANDBOX version.
+Sync the current local draft and create a new SANDBOX version. The body shape is one of two mutually exclusive forms (api-spec §9.1):
+
+- Bump-driven: `--patch` (default), `--minor`, or `--major`. Anchored on the manifest's `cloud.track` (set by `poli checkout`).
+- Explicit: `--version <X.Y.Z>`. The server returns 409 `VERSION_CONFLICT` if the version already exists in any state.
 
 ```bash
-poli push --message "Tweaked invoice header"
-poli push --major --message "BREAKING: new schema"
+poli push --message "Tweaked invoice header"        # patch (default), anchored on cloud.track
+poli push --major --message "BREAKING: new schema"  # ignores track, picks max(major)+1
 poli push --minor
-poli push --patch    # default
+poli push --version 1.0.2                           # explicit version (no track logic)
+poli push --track 1.0 --patch                       # override the manifest track (CI)
 ```
+
+**Hotfix flow** — 1.0.1 LIVE in prod, 2.0.0 SANDBOX in dev:
+
+```bash
+poli checkout 1.0.1     # writes cloud.track = "1.0"
+# fix the bug…
+poli push --patch       # produces 1.0.2 (anchored on track 1.0), not 2.0.1
+poli promote 1.0.2
+```
+
+After the push, `cloud.track` is updated to the major.minor of the version the server returned (no-op for patches on the same family).
 
 #### `poli versions list` (alias `ls`)
 
