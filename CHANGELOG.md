@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`poli new` now defaults to `structures/blank` when no template is
+  provided.** Previously it threw `"Missing --from-template"` either when
+  the interactive prompt returned `null` (user said No) or in non-TTY
+  contexts without the flag. Since `poli new` always produces a template
+  by definition, falling back to the minimal blank template is a more
+  helpful default. Pass `--from-template <coll>/<tpl>` to pick anything
+  else explicitly.
+
 ## [0.6.0] — 2026-05-07
 
 API surface stabilisation. The server now uniformly returns a JSON

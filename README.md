@@ -159,7 +159,7 @@ poli new invoice --from-template showcase/invoice
 poli new quote --from-template structures/blank
 ```
 
-Run without `--from-template` in an interactive shell to be prompted. In CI, the flag is required (the prompt is skipped and a friendly error fires).
+Run without `--from-template` in an interactive shell to be prompted for a collection/template. If you decline the prompt (or run in CI without the flag), the command falls back to **`structures/blank`** — the minimal blank template — rather than erroring out. Pass `--from-template <coll>/<tpl>` to pick anything else explicitly.
 
 Flags:
 

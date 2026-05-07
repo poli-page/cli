@@ -171,14 +171,18 @@ describe('poli new', () => {
 		expect(manifest.templates[0].orientation).toBe('landscape');
 	});
 
-	it('throws if --from-template is omitted (no other source mode exists)', async () => {
-		await expect(
-			executeNew('invoice', {
-				cwd: projectDir,
-				homeDir: fakeHome,
-				fetcher: makeFetcher(SOURCE_FILES),
-			})
-		).rejects.toThrow(/from-template/i);
+	it('falls back to structures/blank when --from-template is omitted (no prompt available)', async () => {
+		// In non-TTY contexts the prompt returns null and `poli new` defaults
+		// to the minimal blank template rather than erroring out. The user
+		// can always pass --from-template explicitly to pick something else.
+		await executeNew('invoice', {
+			cwd: projectDir,
+			homeDir: fakeHome,
+			fetcher: makeFetcher(SOURCE_FILES),
+			promptForTemplate: async () => null,
+		});
+
+		await stat(join(projectDir, 'templates', 'invoice', 'invoice.html'));
 	});
 
 	it('throws if the template ref is malformed', async () => {
@@ -266,14 +270,29 @@ describe('poli new', () => {
 			await stat(join(projectDir, 'templates', 'invoice', 'invoice.html'));
 		});
 
-		it('throws a friendly error when neither --from-template nor an interactive prompt yield a template', async () => {
-			await expect(
-				executeNew('invoice', {
-					cwd: projectDir,
-					homeDir: fakeHome,
-					promptForTemplate: async () => null,
-				})
-			).rejects.toThrow(/Missing --from-template/i);
+		it('defaults to structures/blank when the user declines the interactive prompt', async () => {
+			await executeNew('pay-slip', {
+				cwd: projectDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher(SOURCE_FILES),
+				promptForTemplate: async () => null,
+			});
+
+			// Blank template imported under the requested name
+			await stat(join(projectDir, 'templates', 'pay-slip', 'pay-slip.html'));
+		});
+
+		it('defaults to structures/blank in non-TTY when --from-template is omitted', async () => {
+			// Real promptForStarterTemplate would return null here (no TTY).
+			// Tests pass an explicit null-returning prompt to simulate.
+			await executeNew('quick', {
+				cwd: projectDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher(SOURCE_FILES),
+				promptForTemplate: async () => null,
+			});
+
+			await stat(join(projectDir, 'templates', 'quick', 'quick.html'));
 		});
 
 		it('does not call the prompt when --from-template is provided', async () => {

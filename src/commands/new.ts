@@ -79,10 +79,12 @@ export async function executeNew(name: string, options: NewOptions = {}): Promis
 		templateRef = promptResult ? promptResult.ref : null;
 	}
 
+	// Fallback: `poli new` always produces a template (that's its whole job),
+	// so when the user declines the prompt or runs in non-TTY without
+	// --from-template, default to the minimal `structures/blank` template
+	// rather than erroring out. The user can always override later.
 	if (!templateRef) {
-		throw new Error(
-			'Missing --from-template <coll>/<tpl>. Pick a source template (e.g. `--from-template structures/blank` for an empty page) or run interactively.'
-		);
+		templateRef = { collection: 'structures', name: 'blank' };
 	}
 
 	await importTemplate({
