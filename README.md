@@ -349,11 +349,11 @@ There is intentionally **no `poli documents list`** — your application is resp
 
 #### `poli documents get <id>`
 
-Returns a JSON descriptor with metadata + a 15-minute presigned PDF URL. The CLI does not download the PDF — `curl` the URL or hand it to the browser yourself.
+Returns the document JSON descriptor (same 16-field shape as `poli render`) on stdout, plus a human-friendly summary on stderr when run from a terminal. The CLI does not download the PDF — `curl` the `presignedPdfUrl` or hand it to the browser yourself.
 
 ```bash
 poli documents get doc_abc123
-poli documents get doc_abc123 --json
+poli documents get doc_abc123 | jq '.presignedPdfUrl'   # pipe-friendly
 ```
 
 #### `poli documents delete <id>`

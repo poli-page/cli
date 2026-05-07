@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **`poli documents get` now matches `poli render` output contract.**
+  The JSON descriptor is always printed to stdout (16 fields, same
+  shape as `poli render`), the human-friendly summary goes to stderr
+  (and only when stderr is a TTY). The `--json` flag is removed — it
+  was redundant since JSON is now the default. Pipelines can chain
+  the two commands without filtering:
+  ```bash
+  $ poli documents get $DOC_ID | jq '.presignedPdfUrl'
+  ```
+  Also fixes the cosmetic `(vnull)` display when `version` is `null`
+  (draft document) — now shown as `draft`.
 - **`poli new` now defaults to `structures/blank` when no template is
   provided.** Previously it threw `"Missing --from-template"` either when
   the interactive prompt returned `null` (user said No) or in non-TTY
