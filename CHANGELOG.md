@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed (BREAKING)
+- **`poli thumbnail <documentId>` alias** is gone. Use the canonical
+  `poli documents thumbnails <documentId>` instead. The alias added
+  surface area without earning its keep — one way to do it is clearer
+  than two.
+
 ### Changed
 - **`poli documents get` now matches `poli render` output contract.**
   The JSON descriptor is always printed to stdout (16 fields, same

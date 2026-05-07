@@ -382,16 +382,6 @@ poli documents preview doc_abc123 --no-open
 poli documents preview doc_abc123 -o ./preview.html
 ```
 
-#### `poli thumbnail <documentId>` (alias)
-
-Light alias for `poli documents thumbnails`. Accepts the same flags.
-
-```bash
-poli thumbnail doc_abc123 --width 200 --format png
-```
-
-Without arguments, prints a friendly hint pointing at `poli render document` to produce a `documentId` first.
-
 ---
 
 ## Manifest format
@@ -548,7 +538,7 @@ The CLI now requires an exact `X.Y.Z` semver when pinning a version. List the pu
 
 ### `403 THUMBNAILS_NOT_AVAILABLE`
 
-Thumbnails (whether via `poli documents thumbnails` or `poli thumbnail`) are a paid-tier feature. Upgrade to Starter from the dashboard. Exit code `5`.
+Thumbnails via `poli documents thumbnails` are a paid-tier feature. Upgrade to Starter from the dashboard. Exit code `5`.
 
 ### `429 OVERAGE_CAP_EXCEEDED`
 
