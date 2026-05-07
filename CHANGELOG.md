@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-05-07
+
+UX cleanup pass after the 0.6.0 stabilisation. Drops the redundant
+`poli thumbnail` alias, unifies the `--json` flag semantics across
+all data-producing commands, and adds smarter defaults to `poli new`.
+
 ### Removed (BREAKING)
 - **`poli thumbnail <documentId>` alias** is gone. Use the canonical
   `poli documents thumbnails <documentId>` instead. The alias added
@@ -133,6 +139,9 @@ Plus version `track` support for the hotfix workflow.
 - **`poli link` left its `Linking project…` spinner running after an API error.**
   The `ora` spinner is now correctly transitioned to a failed state in the catch
   block, so the terminal does not hang.
+
+[0.6.1]: https://github.com/poli-page/cli/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/poli-page/cli/compare/v0.5.0...v0.6.0
 
 ## [0.5.0] — 2026-05-07
 

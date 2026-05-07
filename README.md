@@ -322,15 +322,16 @@ Flags:
 - `--data <file>` — JSON data overrides the mock
 - `-o <file>` — output PDF path. Incompatible with `--no-download`
 - `--no-download` — skip the presigned URL fetch (CI/CD pipelines)
+- `--json` — force JSON output even in a TTY
 
-The JSON descriptor is **always** printed to stdout, the success line (`✓`) to stderr — so you can pipe to `jq`:
+[Output rules](#output-conventions) apply: in a TTY you see only the `✓` line, in a pipe you see only the JSON descriptor, with `--json` you always see the JSON. Pipelines stay clean:
 
 ```bash
 $ DOC_ID=$(poli render invoice | jq -r '.documentId')
 $ poli documents thumbnails "$DOC_ID" --width 400
 ```
 
-Resolved environment is exposed in the success line:
+Resolved environment is exposed in the success line (TTY):
 
 ```
 ✓ Rendered invoice v1.0.5 (live, billed) → ./output/invoice/invoice.pdf
@@ -343,13 +344,13 @@ Counter:
 
 ### Documents
 
-Documents are the cloud-stored output of `render document` calls (made via the SDK or directly via the API). The CLI lets you inspect, delete, and re-derive thumbnails or preview HTML from them.
+Documents are the cloud-stored output of every `poli render` invocation (or the same render endpoints called via the SDK or REST API). The CLI lets you inspect, delete, and re-derive thumbnails or preview HTML from them.
 
 There is intentionally **no `poli documents list`** — your application is responsible for tracking the `documentId` values it cares about.
 
 #### `poli documents get <id>`
 
-Returns the document JSON descriptor (same 16-field shape as `poli render`) on stdout, plus a human-friendly summary on stderr when run from a terminal. The CLI does not download the PDF — `curl` the `presignedPdfUrl` or hand it to the browser yourself.
+Returns the document JSON descriptor — same 16-field shape as `poli render`. Output rules: in a TTY you see only the human-readable summary; in a pipe you see only the JSON descriptor; `--json` forces JSON. The CLI never downloads the PDF — `curl` the `presignedPdfUrl` or hand it to the browser yourself.
 
 ```bash
 poli documents get doc_abc123
@@ -438,10 +439,25 @@ The `cloud:` block is written by `poli link`, removed by `poli unlink`. **No API
 ### Common flags
 
 - `--api-url <url>` — override the API base URL for one invocation
-- `--json` — structured JSON output (where supported)
 - `-y` / `--yes` — skip confirmation prompts
 - `-h` / `--help` — show help for any command or sub-command
 - `-v` / `--version` — print the CLI version and exit
+
+### Output conventions
+
+Every command that returns a payload (renders, descriptors, lists, version mutations) follows the same output rule:
+
+| Context | Stdout |
+| ------- | ------ |
+| TTY (interactive terminal), no `--json` | Human-readable summary |
+| Pipe / redirect / CI (stdout not a TTY) | JSON |
+| `--json` flag (any context) | JSON |
+
+Either the summary **or** the JSON — never both at once. Errors always go to stderr with a clear message.
+
+Commands that take this contract: `render`, `documents get`, `documents preview`, `documents thumbnails`, `whoami`, `versions list`, `push`, `promote`, `unpromote`, `versions deprecate`, `versions un-deprecate`.
+
+Imperative commands (`init`, `new`, `link`, `unlink`, `checkout`, `logout`, `documents delete`, `watch`, `login`) don't have a JSON payload to forward — they just acknowledge with a `✓` line on success.
 
 ---
 
@@ -542,7 +558,7 @@ Thumbnails via `poli documents thumbnails` are a paid-tier feature. Upgrade to S
 
 ### `429 OVERAGE_CAP_EXCEEDED`
 
-Your org has crossed the monthly cap on `live` PDF renders (counted across `render`, `render document`, and `documents thumbnails` calls). Wait until the next billing period or raise the cap from your dashboard. Exit code `3`.
+Your org has crossed the monthly cap on `live` PDF renders (counted across `poli render` against a LIVE version and `poli documents thumbnails` on a LIVE document). Wait until the next billing period or raise the cap from your dashboard. Exit code `3`.
 
 ### `503 ORGANIZATION_MIGRATING`
 
