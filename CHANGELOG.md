@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **`poli render` was discarding the `locale` field from the mock JSON.**
+  `loadTemplate` already extracted it (e.g. `"locale": "en"` from
+  `templates/<name>/<name>.json`) but `executeRender` ignored it and
+  never sent it to the API. Templates that depend on date or number
+  formatting tied to a locale were silently rendering with the engine
+  default instead of the declared locale. Now forwarded in the payload
+  when defined; omitted entirely when the mock or `--data` file is flat
+  or has no `locale` field. `--data` fully replaces both `data` and
+  `locale` (same precedence as before, just with the locale carried).
 - **`poli render --data <file>` was double-wrapping the payload when the
   file used the same `{ locale, data: { … } }` shape as the mock JSON
   scaffolded by `poli init`.** The on-disk mock file is auto-dewrapped

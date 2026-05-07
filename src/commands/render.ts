@@ -43,6 +43,7 @@ export async function executeRender(
 	const loaded = await loadTemplate(projectDir, entry);
 
 	let data = loaded.data;
+	let locale = loaded.locale;
 	if (options.data) {
 		const dataPath = resolve(cwd, options.data);
 		const raw = JSON.parse(await readFile(dataPath, 'utf-8'));
@@ -50,7 +51,11 @@ export async function executeRender(
 		// (the convention used by mock files and `poli init` scaffolds) and
 		// flat shapes. Without this, passing the wrapped shape via --data
 		// would result in `{ data: { data: {...} } }` reaching the engine.
-		data = unwrapMockJson(raw).data;
+		// --data fully replaces both data and locale — if the user wants the
+		// mock locale, they keep it in their override file.
+		const unwrapped = unwrapMockJson(raw);
+		data = unwrapped.data;
+		locale = unwrapped.locale;
 	}
 
 	const auth = await resolveAuth({
@@ -65,6 +70,10 @@ export async function executeRender(
 		version,
 		format: entry.format,
 		orientation: entry.orientation,
+		// Locale is optional — only forward it when actually set (in the mock
+		// or in --data). Sending `locale: undefined` would still serialise as
+		// `"locale":null` on some JSON paths and confuse the engine.
+		...(locale ? { locale } : {}),
 	});
 
 	const outputDir = join(projectDir, 'output');

@@ -325,6 +325,80 @@ describe('poli render', () => {
 
 			expect(calls[0].payload.data).toEqual({ title: 'Mes nouvelles données' });
 		});
+
+		it('forwards the mock locale to the API when present', async () => {
+			// The default invoice mock written by setupTemplate uses the
+			// `{ locale: 'en', data: { … } }` shape — locale must reach the API.
+			const calls: RenderCall[] = [];
+			await executeRender('invoice', {
+				cwd: projectDir,
+				apiClient: createMockApiClient({ calls }),
+				homeDir: fakeHome,
+			});
+
+			expect(calls[0].payload.locale).toBe('en');
+		});
+
+		it('omits locale from the payload when the mock is flat (no locale field)', async () => {
+			// Override the mock with a flat shape (no locale).
+			await writeFile(
+				join(projectDir, 'templates', 'invoice', 'invoice.json'),
+				JSON.stringify({ title: 'Flat' }),
+				'utf-8'
+			);
+
+			const calls: RenderCall[] = [];
+			await executeRender('invoice', {
+				cwd: projectDir,
+				apiClient: createMockApiClient({ calls }),
+				homeDir: fakeHome,
+			});
+
+			expect(calls[0].payload).not.toHaveProperty('locale');
+		});
+
+		it('--data with a locale overrides the mock locale', async () => {
+			const dataPath = join(tempDir, 'data.json');
+			await writeFile(
+				dataPath,
+				JSON.stringify({
+					locale: 'fr',
+					data: { title: 'Bonjour' },
+				}),
+				'utf-8'
+			);
+
+			const calls: RenderCall[] = [];
+			await executeRender('invoice', {
+				cwd: projectDir,
+				data: dataPath,
+				apiClient: createMockApiClient({ calls }),
+				homeDir: fakeHome,
+			});
+
+			expect(calls[0].payload.locale).toBe('fr');
+		});
+
+		it('--data flat (no locale) drops the locale even if the mock had one', async () => {
+			const dataPath = join(tempDir, 'data.json');
+			await writeFile(
+				dataPath,
+				JSON.stringify({ title: 'Flat override' }),
+				'utf-8'
+			);
+
+			const calls: RenderCall[] = [];
+			await executeRender('invoice', {
+				cwd: projectDir,
+				data: dataPath,
+				apiClient: createMockApiClient({ calls }),
+				homeDir: fakeHome,
+			});
+
+			// --data fully replaces both data and locale — if the user wants
+			// the mock locale, they re-add it in their override file.
+			expect(calls[0].payload).not.toHaveProperty('locale');
+		});
 	});
 
 	describe('environment surface', () => {
