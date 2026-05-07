@@ -32,7 +32,7 @@ function makeStubClient(overrides: Partial<ApiClient> = {}): ApiClient {
 			key: 'pp_test_x',
 			info: { id: 'k', name: 'n', environment: 'test' },
 		}),
-		renderPdf: async () => ({ pdf: Buffer.from(''), environment: null }),
+		render: async () => { throw new Error('not implemented in stub'); },
 		getMe: async () => {
 			throw new Error('not implemented in stub');
 		},

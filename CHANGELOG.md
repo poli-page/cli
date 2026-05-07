@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-05-07
+
+API surface stabilisation. The server now uniformly returns a JSON
+descriptor for every render (no more PDF binary), and the CLI follows.
+
+### Changed (BREAKING)
+- **`poli render` now talks to `POST /v1/render`**, the new unified
+  render endpoint (api-spec §11.3). The previous `/v1/render/pdf`
+  (binary) and `/v1/render/document` are retired (404).
+- **The render result is the JSON descriptor**, not a PDF buffer.
+  `executeRender` returns `{ descriptor, outputPath? }` instead of
+  `{ outputPath, version, environment }`. The descriptor carries 16
+  fields incl. `documentId`, `presignedPdfUrl`, `expiresAt`, `pageCount`,
+  `sizeBytes`, `metadata`. This unblocks chaining: every render now
+  produces a `documentId` you can pass to `poli documents thumbnails`,
+  `poli documents preview`, or `poli documents get`.
+- **Default download path is `output/<templateSlug>/<templateSlug>.pdf`**
+  (one folder per template). The CLI fetches the `presignedPdfUrl` and
+  writes the file locally — same UX as before, just via S3.
+- **The JSON descriptor is always printed to stdout** (whether the PDF
+  was downloaded or not). The success line goes to stderr so pipelines
+  can `jq` the JSON cleanly.
+- **`api-client.renderPdf` → `render`.** Returns `RenderResult` (alias
+  of `DocumentDescriptor`) instead of `{ pdf: Buffer, environment }`.
+
+### Added
+- **`--no-download` flag** for `poli render` — skips the presigned URL
+  fetch entirely, only emits the JSON descriptor. Useful for CI/CD
+  pipelines that consume the metadata and let a downstream step fetch
+  the PDF (the URL is valid 15 min per api-spec §11.3).
+- **`fetchPdf` injection** on `executeRender` for testability.
+
+### Removed
+- `poli render document` was never actually shipped as a command (only
+  in older spec drafts) — explicitly out of scope. `/v1/render/document`
+  is retired upstream; everything goes through `poli render`.
+- `RenderPdfResult` interface (replaced by `RenderResult`).
+
 ### Fixed
 - **`poli render` was discarding the `locale` field from the mock JSON.**
   `loadTemplate` already extracted it (e.g. `"locale": "en"` from

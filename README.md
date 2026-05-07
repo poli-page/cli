@@ -289,27 +289,40 @@ Download a published version's content to a local directory (read-only inspectio
 
 #### `poli render <name>`
 
-Generate a PDF from a local template against the cloud engine.
+Render a template against the cloud engine. Every render produces a stored document (api-spec §11.3) — the CLI receives a JSON descriptor with `documentId`, `presignedPdfUrl`, `expiresAt`, and 13 other fields. By default it then fetches the URL and writes the PDF locally; pass `--no-download` to skip that step.
 
 ```bash
-poli render invoice                                       # default: draft
-poli render invoice --version 1.0.5                       # exact semver pin
-poli render invoice --version draft --data ./mock.json    # custom data
-poli render invoice -o ./out/invoice.pdf
+poli render invoice                                          # default: draft, downloads PDF
+poli render invoice --version 1.0.5                          # exact semver pin
+poli render invoice --version draft --data ./mock.json       # custom data
+poli render invoice -o ./out/invoice.pdf                     # custom path
+poli render invoice --no-download                            # JSON descriptor only
 ```
 
 Flags:
 
 - `--version <draft|X.Y.Z>` — exact semver only (`latest` is rejected)
-- `--data <file>` — JSON data overrides the template's mock
-- `-o <file>` — output path
+- `--data <file>` — JSON data overrides the mock
+- `-o <file>` — output PDF path. Incompatible with `--no-download`
+- `--no-download` — skip the presigned URL fetch (CI/CD pipelines)
 
-The CLI surfaces the resolved environment in the success line:
+The JSON descriptor is **always** printed to stdout, the success line (`✓`) to stderr — so you can pipe to `jq`:
+
+```bash
+$ DOC_ID=$(poli render invoice | jq -r '.documentId')
+$ poli documents thumbnails "$DOC_ID" --width 400
+```
+
+Resolved environment is exposed in the success line:
 
 ```
-✓ Rendered invoice v1.0.5 (live, billed)
-✓ Rendered invoice (draft, sandbox)
+✓ Rendered invoice v1.0.5 (live, billed) → ./output/invoice/invoice.pdf
+✓ Rendered invoice vdraft (sandbox) → ./output/invoice/invoice.pdf
 ```
+
+Counter:
+- `version: draft` or `X.Y.Z` SANDBOX/DEPRECATED → unmetered
+- `version: X.Y.Z` LIVE → counts in monthly quota
 
 ### Documents
 

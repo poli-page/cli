@@ -28,7 +28,7 @@ function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
 			key: 'pp_test_mock123',
 			info: { id: 'key_1', name: 'CLI (test)', environment: 'test' },
 		}),
-		renderPdf: async () => Buffer.from('fake-pdf'),
+		render: async () => { throw new Error('not implemented in stub'); },
 		...overrides,
 	};
 }

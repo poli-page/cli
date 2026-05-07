@@ -12,7 +12,7 @@ export async function executeThumbnailAlias(
 ): Promise<DocumentsThumbnailFile[]> {
 	if (!documentId) {
 		throw new Error(
-			'Missing <documentId>. Generate a document with `poli render document <name>` first, then run `poli thumbnail <documentId>`.'
+			'Missing <documentId>. Generate a document with `poli render <name>` first (it returns the documentId), then run `poli thumbnail <documentId>`.'
 		);
 	}
 	return executeDocumentsThumbnails(documentId, options);

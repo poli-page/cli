@@ -209,11 +209,6 @@ export interface PatchFilesResult {
 	syncedAt: string;
 }
 
-export interface RenderPdfResult {
-	pdf: Buffer;
-	environment: 'sandbox' | 'live' | null;
-}
-
 export interface DocumentDescriptor {
 	documentId: string;
 	organizationId: string;
@@ -221,19 +216,25 @@ export interface DocumentDescriptor {
 	projectSlug: string | null;
 	templateId: string | null;
 	templateSlug: string | null;
-	version: string;
+	version: string | null;
 	environment: 'sandbox' | 'live';
 	apiKeyId: string | null;
 	createdAt: string;
 	pageCount: number;
 	sizeBytes: number;
 	format: string;
-	orientation: string;
+	orientation: string | null;
 	locale: string | null;
 	metadata: Record<string, unknown>;
 	presignedPdfUrl: string;
 	expiresAt: string;
 }
+
+/**
+ * Result of `POST /v1/render`. Same shape as `DocumentDescriptor` since
+ * every render now produces a stored document (api-spec §11.3).
+ */
+export type RenderResult = DocumentDescriptor;
 
 export interface MeResponse {
 	auth: {
@@ -301,11 +302,11 @@ export interface ApiClient {
 		name: string,
 		environment: 'test' | 'live'
 	): Promise<ApiKeyInfo>;
-	renderPdf(
+	render(
 		authorization: string,
 		orgIdHeader: string | undefined,
 		payload: Record<string, unknown>
-	): Promise<RenderPdfResult>;
+	): Promise<RenderResult>;
 	getMe(authorization: string, orgIdHeader?: string): Promise<MeResponse>;
 	// `renderThumbnails` was retired with `/v1/render/thumbnails` (api-spec §11.4).
 	// Thumbnails now come from a stored document via `documentThumbnails`.
@@ -579,7 +580,7 @@ export function createApiClient(baseUrl?: string): ApiClient {
 			return data.thumbnails;
 		},
 
-		async renderPdf(authorization, orgIdHeader, payload) {
+		async render(authorization, orgIdHeader, payload) {
 			const headers: Record<string, string> = {
 				'Content-Type': 'application/json',
 				Authorization: authorization,
@@ -587,17 +588,12 @@ export function createApiClient(baseUrl?: string): ApiClient {
 			if (orgIdHeader) {
 				headers['X-Poli-Org-Id'] = orgIdHeader;
 			}
-			const response = await request('/v1/render/pdf', {
+			const response = await request('/v1/render', {
 				method: 'POST',
 				headers,
 				body: JSON.stringify(payload),
 			});
-			const arrayBuffer = await response.arrayBuffer();
-			const env = response.headers.get('X-Poli-Environment');
-			return {
-				pdf: Buffer.from(arrayBuffer),
-				environment: env === 'sandbox' || env === 'live' ? env : null,
-			};
+			return response.json() as Promise<RenderResult>;
 		},
 
 		async updateProject(session, orgId, projectId, payload) {
