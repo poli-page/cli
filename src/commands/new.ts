@@ -7,8 +7,10 @@ import {
 	parseTemplateRef,
 	type ConflictHandler,
 	type Fetcher,
+	type TemplateRef,
 	type TemplateSource,
 } from '../template-importer.js';
+import { promptForStarterTemplate } from '../template-prompt.js';
 import { errorToExitCode } from '../exit-codes.js';
 
 function toKebabCase(name: string): string {
@@ -29,18 +31,18 @@ export interface NewOptions {
 	homeDir?: string;
 	noCache?: boolean;
 	onConflict?: ConflictHandler;
+	/**
+	 * When `fromTemplate` is not provided and the shell is interactive,
+	 * the CLI prompts the user to pick a source template (collection +
+	 * template, with descriptions). Override this for tests, or pass
+	 * `null`-returning to disable.
+	 */
+	promptForTemplate?: () => Promise<TemplateRef | null>;
 }
 
 export async function executeNew(name: string, options: NewOptions = {}): Promise<string> {
 	const cwd = options.cwd ?? process.cwd();
 	const destName = toKebabCase(name);
-
-	if (!options.fromTemplate) {
-		throw new Error(
-			'Missing --from-template <coll>/<tpl>. Pick a source template (e.g. `--from-template structures/blank` for an empty page).'
-		);
-	}
-	const templateRef = parseTemplateRef(options.fromTemplate);
 
 	try {
 		await readManifest(cwd);
@@ -52,6 +54,29 @@ export async function executeNew(name: string, options: NewOptions = {}): Promis
 
 	const source =
 		typeof options.source === 'string' ? parseSource(options.source) : options.source;
+
+	let templateRef: TemplateRef | null = options.fromTemplate
+		? parseTemplateRef(options.fromTemplate)
+		: null;
+
+	if (!templateRef) {
+		const prompt =
+			options.promptForTemplate ??
+			(() =>
+				promptForStarterTemplate({
+					source,
+					fetcher: options.fetcher,
+					homeDir: options.homeDir,
+					noCache: options.noCache,
+				}));
+		templateRef = await prompt();
+	}
+
+	if (!templateRef) {
+		throw new Error(
+			'Missing --from-template <coll>/<tpl>. Pick a source template (e.g. `--from-template structures/blank` for an empty page) or run interactively.'
+		);
+	}
 
 	await importTemplate({
 		source,
@@ -83,9 +108,9 @@ export function registerNewCommand(program: Command) {
 		.command('new')
 		.description('Create a new template from a source template')
 		.argument('<name>', 'Destination template name (kebab-case in the project)')
-		.requiredOption(
+		.option(
 			'--from-template <ref>',
-			'Source template, format <collection>/<template> (e.g. structures/blank)'
+			'Source template, format <collection>/<template> (e.g. structures/blank). When omitted, an interactive prompt asks for one.'
 		)
 		.option('--source <repo>', 'Source repo, format github:<owner>/<repo>')
 		.option('--format <format>', 'Override the template format (e.g. A5)')
@@ -96,10 +121,11 @@ export function registerNewCommand(program: Command) {
 		.option('--no-cache', 'Bypass the 24h source cache')
 		.action(async (name: string, opts) => {
 			const { default: chalk } = await import('chalk');
-			const { default: ora } = await import('ora');
 
-			const spinner = ora('Importing template...').start();
 			try {
+				// No spinner here — `executeNew` may show an interactive prompt
+				// (collection + template) when --from-template is omitted, and
+				// a spinner would clobber the choices.
 				const templateDir = await executeNew(name, {
 					fromTemplate: opts.fromTemplate,
 					source: opts.source,
@@ -107,14 +133,14 @@ export function registerNewCommand(program: Command) {
 					orientation: opts.orientation,
 					noCache: opts.cache === false,
 				});
-				spinner.succeed(chalk.green(`Template imported at ${templateDir}`));
+				console.log(chalk.green(`✓ Template imported at ${templateDir}`));
 				console.log();
 				console.log(`  ${chalk.bold('Next steps:')}`);
 				console.log(`  ${chalk.cyan(`Edit templates/${toKebabCase(name)}/`)}`);
 				console.log(`  ${chalk.cyan(`poli render ${toKebabCase(name)}`)}  — generate PDF`);
 				console.log();
 			} catch (error) {
-				spinner.fail(
+				console.error(
 					chalk.red(error instanceof Error ? error.message : 'Failed to import template')
 				);
 				process.exitCode = errorToExitCode(error);

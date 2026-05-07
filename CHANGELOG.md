@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-07
+
+### Added
+- **Interactive starter prompt for `poli init`** — when `--with-template`
+  is not passed and the shell is interactive, the CLI now asks
+  *"Add a starter template?"* (y/N). On yes, it lists the available
+  collections from the source repo's `index.json` (with descriptions),
+  then the templates within the chosen collection (also with
+  descriptions). Skipped silently in non-TTY contexts (CI). Network
+  failure during the prompt does **not** leave a half-created project
+  on disk — the prompt runs before scaffolding.
+- **Interactive prompt for `poli new`** — same picker, triggered when
+  `--from-template` is omitted in an interactive shell. Non-TTY without
+  the flag still throws the friendly "Missing --from-template" error.
+- New public export `fetchTemplateIndex(source, options)` from
+  `template-importer.ts` — used by the prompt module to fetch and
+  parse `index.json` without going through the full import pipeline.
+- New module `src/template-prompt.ts` exposing
+  `promptForStarterTemplate({ isTTY, confirmFn, selectFn, fetchIndex, … })`
+  for direct programmatic use or testing.
+
+### Changed
+- `--from-template` is no longer a `requiredOption` on `poli new` —
+  it's now optional. The interactive prompt is the alternate path.
+- `poli init` and `poli new` no longer wrap their work in an `ora`
+  spinner. The spinner clobbered the interactive prompt's rendering;
+  a plain `✓` line on success is cleaner.
+
+[0.5.0]: https://github.com/poli-page/cli/compare/v0.4.1...v0.5.0
+
 ## [0.4.1] — 2026-05-07
 
 UX patch built from real-world testing of 0.4.0. Three fixes that

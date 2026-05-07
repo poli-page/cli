@@ -253,4 +253,75 @@ describe('poli init', () => {
 			expect(calls.some((u) => u.includes('acme/my-templates'))).toBe(true);
 		});
 	});
+
+	describe('interactive starter prompt (no --with-template)', () => {
+		let fakeHome: string;
+
+		beforeEach(async () => {
+			fakeHome = await mkdtemp(join(tmpdir(), 'poli-init-home-'));
+		});
+
+		afterEach(async () => {
+			await rm(fakeHome, { recursive: true, force: true });
+		});
+
+		it('imports the template returned by the prompt', async () => {
+			const projectDir = await executeInit('billing', {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher(SOURCE_FILES),
+				promptForTemplate: async () => ({ collection: 'showcase', name: 'invoice' }),
+			});
+
+			await stat(join(projectDir, 'templates', 'invoice', 'invoice.html'));
+			const manifest = JSON.parse(
+				await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
+			);
+			expect(manifest.templates).toHaveLength(1);
+			expect(manifest.templates[0].name).toBe('invoice');
+		});
+
+		it('skips template import when the prompt returns null (user declined or non-TTY)', async () => {
+			const projectDir = await executeInit('billing', {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				promptForTemplate: async () => null,
+			});
+
+			const manifest = JSON.parse(
+				await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
+			);
+			expect(manifest.templates ?? []).toHaveLength(0);
+		});
+
+		it('does not call the prompt when --with-template is provided', async () => {
+			const promptSpy = async () => {
+				throw new Error('prompt should not be called');
+			};
+
+			await executeInit('billing', {
+				cwd: tempDir,
+				withTemplate: 'showcase/invoice',
+				homeDir: fakeHome,
+				fetcher: makeFetcher(SOURCE_FILES),
+				promptForTemplate: promptSpy,
+			});
+		});
+
+		it('does not create the project directory when the prompt fails (no half-created state)', async () => {
+			const projectName = 'should-not-exist';
+			await expect(
+				executeInit(projectName, {
+					cwd: tempDir,
+					homeDir: fakeHome,
+					promptForTemplate: async () => {
+						throw new Error('Failed to fetch index.json (HTTP 404).');
+					},
+				})
+			).rejects.toThrow(/Failed to fetch/);
+
+			const dirExists = await stat(join(tempDir, projectName)).catch(() => null);
+			expect(dirExists).toBeNull();
+		});
+	});
 });

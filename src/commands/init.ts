@@ -9,8 +9,10 @@ import {
 	parseTemplateRef,
 	type ConflictHandler,
 	type Fetcher,
+	type TemplateRef,
 	type TemplateSource,
 } from '../template-importer.js';
+import { promptForStarterTemplate } from '../template-prompt.js';
 import { errorToExitCode } from '../exit-codes.js';
 
 function toKebabCase(name: string): string {
@@ -43,6 +45,13 @@ export interface InitOptions {
 	homeDir?: string;
 	noCache?: boolean;
 	onConflict?: ConflictHandler;
+	/**
+	 * When `withTemplate` is not provided and the shell is interactive,
+	 * the CLI prompts the user to pick a starter template (collection +
+	 * template, with descriptions). Override this for tests, or pass
+	 * `null`-returning to disable.
+	 */
+	promptForTemplate?: () => Promise<TemplateRef | null>;
 }
 
 export async function executeInit(name: string, options: InitOptions = {}): Promise<string> {
@@ -50,6 +59,32 @@ export async function executeInit(name: string, options: InitOptions = {}): Prom
 	const initInPlace = name === '.';
 	const projectName = initInPlace ? basename(cwd) : toKebabCase(name);
 	const projectDir = initInPlace ? cwd : join(cwd, projectName);
+
+	// Resolve the source once; we use it both for the prompt and for the
+	// downstream import call.
+	const source =
+		typeof options.source === 'string'
+			? parseSource(options.source)
+			: options.source;
+
+	// Resolve the template ref before scaffolding so a network failure in
+	// the prompt doesn't leave a half-created project on disk.
+	let templateRef: TemplateRef | null = options.withTemplate
+		? parseTemplateRef(options.withTemplate)
+		: null;
+
+	if (!templateRef) {
+		const prompt =
+			options.promptForTemplate ??
+			(() =>
+				promptForStarterTemplate({
+					source,
+					fetcher: options.fetcher,
+					homeDir: options.homeDir,
+					noCache: options.noCache,
+				}));
+		templateRef = await prompt();
+	}
 
 	if (!initInPlace) {
 		const exists = await stat(projectDir).catch(() => null);
@@ -76,12 +111,7 @@ export async function executeInit(name: string, options: InitOptions = {}): Prom
 	await writeFile(join(projectDir, 'tailwind.css'), TAILWIND_CSS_TEMPLATE, 'utf-8');
 	await writeFile(join(projectDir, '.gitignore'), GITIGNORE_TEMPLATE, 'utf-8');
 
-	if (options.withTemplate) {
-		const templateRef = parseTemplateRef(options.withTemplate);
-		const source =
-			typeof options.source === 'string'
-				? parseSource(options.source)
-				: options.source;
+	if (templateRef) {
 		await importTemplate({
 			source,
 			templateRef,
@@ -113,30 +143,30 @@ export function registerInitCommand(program: Command) {
 		.option('--no-cache', 'Bypass the 24h source cache')
 		.action(async (name: string, opts) => {
 			const { default: chalk } = await import('chalk');
-			const { default: ora } = await import('ora');
 
-			const spinner = ora('Creating project...').start();
 			try {
+				// No spinner here — `executeInit` may show an interactive prompt
+				// (collection + template) and a spinner would clobber the choices.
 				const projectDir = await executeInit(name, {
 					withTemplate: opts.withTemplate,
 					templateName: opts.templateName,
 					source: opts.source,
 					noCache: opts.cache === false,
 				});
-				spinner.succeed(chalk.green(`Project created at ${projectDir}`));
+				console.log(chalk.green(`✓ Project created at ${projectDir}`));
 				console.log();
 				console.log(`  ${chalk.bold('Next steps:')}`);
 				console.log(`  ${chalk.cyan(`cd ${name === '.' ? '.' : toKebabCase(name)}`)}`);
 				if (!opts.withTemplate) {
 					console.log(
-						`  ${chalk.cyan('poli new <name> --from-template structures/blank')}  — create your first template`
+						`  ${chalk.cyan('poli new <name>')}  — add another template (interactive picker)`
 					);
 				} else {
 					console.log(`  ${chalk.cyan('poli render <template>')}  — generate PDF`);
 				}
 				console.log();
 			} catch (error) {
-				spinner.fail(
+				console.error(
 					chalk.red(error instanceof Error ? error.message : 'Failed to create project')
 				);
 				process.exitCode = errorToExitCode(error);

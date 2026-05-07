@@ -251,4 +251,44 @@ describe('poli new', () => {
 		});
 		expect(calls.some((u) => u.includes('acme/my-templates'))).toBe(true);
 	});
+
+	describe('interactive prompt (no --from-template)', () => {
+		it('uses the template returned by the prompt', async () => {
+			await executeNew('invoice', {
+				cwd: projectDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher(SOURCE_FILES),
+				promptForTemplate: async () => ({
+					collection: 'showcase',
+					name: 'invoice',
+				}),
+			});
+
+			await stat(join(projectDir, 'templates', 'invoice', 'invoice.html'));
+		});
+
+		it('throws a friendly error when neither --from-template nor an interactive prompt yield a template', async () => {
+			await expect(
+				executeNew('invoice', {
+					cwd: projectDir,
+					homeDir: fakeHome,
+					promptForTemplate: async () => null,
+				})
+			).rejects.toThrow(/Missing --from-template/i);
+		});
+
+		it('does not call the prompt when --from-template is provided', async () => {
+			const promptSpy = async () => {
+				throw new Error('prompt should not be called');
+			};
+
+			await executeNew('invoice', {
+				cwd: projectDir,
+				fromTemplate: 'showcase/invoice',
+				homeDir: fakeHome,
+				fetcher: makeFetcher(SOURCE_FILES),
+				promptForTemplate: promptSpy,
+			});
+		});
+	});
 });

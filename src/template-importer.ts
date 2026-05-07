@@ -104,10 +104,23 @@ export function parseTemplateRef(spec: string): TemplateRef {
 	return { collection: m[1], name: m[2] };
 }
 
-interface FetchOptions {
+export interface FetchOptions {
 	fetcher?: Fetcher;
 	homeDir?: string;
 	noCache?: boolean;
+}
+
+/**
+ * Fetch and parse the source repo's `index.json`. Used by `importTemplate`
+ * for validation, and by the interactive prompt to populate collection
+ * and template choices.
+ */
+export async function fetchTemplateIndex(
+	source: TemplateSource = DEFAULT_SOURCE,
+	options: FetchOptions = {}
+): Promise<TemplateIndex> {
+	const buf = await fetchRaw(source, 'index.json', options);
+	return JSON.parse(buf.toString('utf-8')) as TemplateIndex;
 }
 
 async function fetchRaw(

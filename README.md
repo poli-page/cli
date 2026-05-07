@@ -134,15 +134,17 @@ This means a developer can keep `POLI_PAGE_API_KEY` set in `.zshrc` for occasion
 Scaffold a new Poli Page project. Creates the directory, the `poli-page.json` manifest, `templates/`, `partials/`, `assets/{fonts,images}/`, `tailwind.css`, and `.gitignore`.
 
 ```bash
-poli init my-invoices
-poli init . --with-template showcase/invoice          # init in cwd + import a starter
+poli init my-invoices                                   # interactive: prompts to add a starter
+poli init . --with-template showcase/invoice            # init in cwd + import an explicit starter
 poli init my-app --with-template showcase/quote --template-name custom-quote
 poli init my-app --source github:my-org/my-templates --with-template internal/cover
 ```
 
+Run without `--with-template` in an interactive shell to be prompted for a collection then a template (with descriptions). In non-interactive shells (CI), the prompt is skipped and the project is created without a starter — pass `--with-template` explicitly when needed.
+
 Flags:
 
-- `--with-template <ref>` — pre-install a starter template, format `<collection>/<template>`
+- `--with-template <ref>` — pre-install a starter template, format `<collection>/<template>`. Skips the interactive prompt.
 - `--template-name <name>` — override the imported template's destination name
 - `--source <repo>` — source repo, format `github:<owner>/<repo>` (default: `github:poli-page/templates`)
 - `--no-cache` — bypass the 24-hour template cache
@@ -152,13 +154,16 @@ Flags:
 Create a new template inside an existing project from a remote starter.
 
 ```bash
+poli new invoice                                # interactive: prompts for collection/template
 poli new invoice --from-template showcase/invoice
 poli new quote --from-template structures/blank
 ```
 
+Run without `--from-template` in an interactive shell to be prompted. In CI, the flag is required (the prompt is skipped and a friendly error fires).
+
 Flags:
 
-- `--from-template <ref>` (required) — collection/template
+- `--from-template <ref>` — collection/template. Skips the interactive prompt.
 - `--source <repo>` — override the source
 - `--no-cache` — bypass cache
 
