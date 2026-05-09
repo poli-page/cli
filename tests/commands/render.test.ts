@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeInit } from '../../src/commands/init.js';
 import { setupTemplate } from '../helpers/setup-template.js';
-import { executeRender } from '../../src/commands/render.js';
+import { executeRender, parseTemplateSpec } from '../../src/commands/render.js';
 import { writeCredentials } from '../../src/credentials.js';
 import { writeManifest, readManifest } from '../../src/manifest.js';
 import type { ApiClient, RenderResult } from '../../src/api-client.js';
@@ -455,6 +455,71 @@ describe('poli render', () => {
 					homeDir: fakeHome,
 				})
 			).rejects.toThrow(/poli-page\.json/i);
+		});
+	});
+});
+
+describe('parseTemplateSpec', () => {
+	it('returns draft when no @ is present', () => {
+		expect(parseTemplateSpec('invoice')).toEqual({
+			name: 'invoice',
+			version: 'draft',
+		});
+	});
+
+	it('parses an exact semver version', () => {
+		expect(parseTemplateSpec('invoice@1.2.3')).toEqual({
+			name: 'invoice',
+			version: '1.2.3',
+		});
+	});
+
+	it('parses an explicit @draft', () => {
+		expect(parseTemplateSpec('invoice@draft')).toEqual({
+			name: 'invoice',
+			version: 'draft',
+		});
+	});
+
+	it('handles slugs with hyphens and digits', () => {
+		expect(parseTemplateSpec('cerfa-15776@2.0.1')).toEqual({
+			name: 'cerfa-15776',
+			version: '2.0.1',
+		});
+	});
+
+	it('rejects an empty spec', () => {
+		expect(() => parseTemplateSpec('')).toThrow(/template name is required/i);
+	});
+
+	it('rejects a leading @ (empty name)', () => {
+		expect(() => parseTemplateSpec('@1.2.3')).toThrow(/template name is required/i);
+	});
+
+	it('rejects a trailing @ (empty version)', () => {
+		expect(() => parseTemplateSpec('invoice@')).toThrow(
+			/version is required.*@/i
+		);
+	});
+
+	it('rejects multiple @ separators', () => {
+		expect(() => parseTemplateSpec('invoice@1.0.0@latest')).toThrow(
+			/only one `@`/i
+		);
+	});
+
+	it('does not validate the version itself (defers to executeRender)', () => {
+		// `parseTemplateSpec` is purely structural — semver validation is the
+		// responsibility of `executeRender`'s validateVersion. This guarantees
+		// that versions like `latest` reach the friendly error path inside
+		// executeRender rather than being silently mangled here.
+		expect(parseTemplateSpec('invoice@latest')).toEqual({
+			name: 'invoice',
+			version: 'latest',
+		});
+		expect(parseTemplateSpec('invoice@1.0')).toEqual({
+			name: 'invoice',
+			version: '1.0',
 		});
 	});
 });

@@ -244,15 +244,17 @@ Side effect: writes `cloud.track = "X.Y"` to the manifest (derived from the chec
 Sync the current local draft and create a new SANDBOX version. The body shape is one of two mutually exclusive forms (api-spec §9.1):
 
 - Bump-driven: `--patch` (default), `--minor`, or `--major`. Anchored on the manifest's `cloud.track` (set by `poli checkout`).
-- Explicit: `--version <X.Y.Z>`. The server returns 409 `VERSION_CONFLICT` if the version already exists in any state.
+- Explicit: pass an exact semver as a positional argument (`poli push 1.0.2`). The server returns 409 `VERSION_CONFLICT` if the version already exists in any state.
 
 ```bash
 poli push --message "Tweaked invoice header"        # patch (default), anchored on cloud.track
 poli push --major --message "BREAKING: new schema"  # ignores track, picks max(major)+1
 poli push --minor
-poli push --version 1.0.2                           # explicit version (no track logic)
+poli push 1.0.2                                     # explicit version (no track logic)
 poli push --track 1.0 --patch                       # override the manifest track (CI)
 ```
+
+> An explicit positional version is mutually exclusive with `--patch` / `--minor` / `--major` and with `--track`.
 
 **Hotfix flow** — 1.0.1 LIVE in prod, 2.0.0 SANDBOX in dev:
 
@@ -304,21 +306,25 @@ Download a published version's content to a local directory (read-only inspectio
 
 ### Render
 
-#### `poli render <name>`
+#### `poli render <spec>`
 
-Render a template against the cloud engine. Every render produces a stored document (api-spec §11.3) — the CLI receives a JSON descriptor with `documentId`, `presignedPdfUrl`, `expiresAt`, and 13 other fields. By default it then fetches the URL and writes the PDF locally; pass `--no-download` to skip that step.
+Render a template against the cloud engine. The `<spec>` is either the bare template `name` (renders the draft) or `name@<X.Y.Z>` to pin an exact published version (npm-style). Every render produces a stored document (api-spec §11.3) — the CLI receives a JSON descriptor with `documentId`, `presignedPdfUrl`, `expiresAt`, and 13 other fields. By default it then fetches the URL and writes the PDF locally; pass `--no-download` to skip that step.
 
 ```bash
 poli render invoice                                          # default: draft, downloads PDF
-poli render invoice --version 1.0.5                          # exact semver pin
-poli render invoice --version draft --data ./mock.json       # custom data
+poli render invoice@1.0.5                                    # exact semver pin
+poli render invoice@draft --data ./mock.json                 # explicit draft + custom data
 poli render invoice -o ./out/invoice.pdf                     # custom path
 poli render invoice --no-download                            # JSON descriptor only
 ```
 
+Spec rules:
+
+- `name` → renders the draft (equivalent to `name@draft`).
+- `name@<X.Y.Z>` → exact semver only. `latest`, `1.0`, etc. are rejected with a friendly error.
+
 Flags:
 
-- `--version <draft|X.Y.Z>` — exact semver only (`latest` is rejected)
 - `--data <file>` — JSON data overrides the mock
 - `-o <file>` — output PDF path. Incompatible with `--no-download`
 - `--no-download` — skip the presigned URL fetch (CI/CD pipelines)
@@ -498,7 +504,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm install -g @poli-page/cli
-      - run: poli render invoice -o ./artifacts/invoice.pdf --version 1.0.5
+      - run: poli render invoice@1.0.5 -o ./artifacts/invoice.pdf
       - uses: actions/upload-artifact@v4
         with:
           name: invoice-pdf
@@ -516,7 +522,7 @@ render:
     POLI_PAGE_API_KEY: $POLI_PAGE_API_KEY
   script:
     - npm install -g @poli-page/cli
-    - poli render invoice -o invoice.pdf --version 1.0.5
+    - poli render invoice@1.0.5 -o invoice.pdf
   artifacts:
     paths:
       - invoice.pdf

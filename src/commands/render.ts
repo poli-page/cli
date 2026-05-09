@@ -36,6 +36,37 @@ export interface RenderResult {
 const EXACT_SEMVER = /^\d+\.\d+\.\d+$/;
 const PARTIAL_SEMVER = /^\d+(?:\.\d+)?$/;
 
+/**
+ * Parses a template spec of the form `name`, `name@draft`, or `name@X.Y.Z`.
+ *
+ * Purely structural — semver validity is checked downstream by
+ * `executeRender` so the same friendly error path applies whether the
+ * user wrote `--version` (legacy) or `name@version`.
+ */
+export function parseTemplateSpec(spec: string): { name: string; version: string } {
+	if (spec === '') {
+		throw new Error('Template name is required.');
+	}
+	const atIdx = spec.indexOf('@');
+	if (atIdx === -1) {
+		return { name: spec, version: 'draft' };
+	}
+	const name = spec.slice(0, atIdx);
+	const rest = spec.slice(atIdx + 1);
+	if (name === '') {
+		throw new Error('Template name is required (got empty name in `@version` spec).');
+	}
+	if (rest === '') {
+		throw new Error(
+			'Version is required after `@` (e.g. `invoice@1.2.3` or `invoice@draft`).'
+		);
+	}
+	if (rest.includes('@')) {
+		throw new Error('Invalid template spec: only one `@` is allowed.');
+	}
+	return { name, version: rest };
+}
+
 export async function executeRender(
 	templateName: string,
 	options: RenderOptions = {}
@@ -143,27 +174,26 @@ export function registerRenderCommand(program: Command) {
 	program
 		.command('render')
 		.description('Render a PDF from a template')
-		.argument('<name>', 'Template name')
+		.argument(
+			'<spec>',
+			'Template spec: `name` (draft) or `name@X.Y.Z` (explicit version)'
+		)
 		.option('-o, --output <path>', 'Output file path')
 		.option('-d, --data <path>', 'JSON data file (overrides mock data)')
-		.option(
-			'--version <version>',
-			'Version to render: `draft` or exact semver `X.Y.Z`',
-			'draft'
-		)
 		.option(
 			'--no-download',
 			'Skip fetching the presigned PDF URL — only emit the JSON descriptor'
 		)
 		.option('--json', 'Force JSON output even in a TTY')
-		.action(async (name: string, opts) => {
+		.action(async (spec: string, opts) => {
 			const { default: chalk } = await import('chalk');
 
 			try {
+				const { name, version } = parseTemplateSpec(spec);
 				const result = await executeRender(name, {
 					output: opts.output,
 					data: opts.data,
-					version: opts.version,
+					version,
 					noDownload: opts.download === false,
 				});
 

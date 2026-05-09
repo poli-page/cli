@@ -344,7 +344,7 @@ describe('poli push', () => {
 			expect(body).toEqual({ version: '5.0.0' });
 		});
 
-		it('--version + --bump is rejected locally', async () => {
+		it('explicit version + --bump is rejected locally', async () => {
 			await setupLinked();
 			await expect(
 				executePush({
@@ -354,10 +354,10 @@ describe('poli push', () => {
 					apiClient: createMockApiClient(),
 					homeDir: fakeHome,
 				})
-			).rejects.toThrow(/--version.*--bump|exclusive/i);
+			).rejects.toThrow(/explicit version.*--bump|combine/i);
 		});
 
-		it('--version + --track is rejected locally', async () => {
+		it('explicit version + --track is rejected locally', async () => {
 			await setupLinked();
 			await expect(
 				executePush({
@@ -367,10 +367,10 @@ describe('poli push', () => {
 					apiClient: createMockApiClient(),
 					homeDir: fakeHome,
 				})
-			).rejects.toThrow(/--version.*--track|exclusive/i);
+			).rejects.toThrow(/explicit version.*--track|combine/i);
 		});
 
-		it('rejects --version with non-exact semver', async () => {
+		it('rejects an explicit version with non-exact semver', async () => {
 			await setupLinked();
 			await expect(
 				executePush({

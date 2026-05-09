@@ -43,7 +43,7 @@ const TRACK_RE = /^\d+\.\d+$/;
 function validateExplicitVersion(version: string): void {
 	if (version === 'latest') {
 		throw new Error(
-			'`latest` was retired. Use an exact semver `X.Y.Z` with --version.'
+			'`latest` was retired. Use an exact semver like `poli push 1.2.3`.'
 		);
 	}
 	if (PARTIAL_SEMVER.test(version)) {
@@ -59,12 +59,16 @@ function validateExplicitVersion(version: string): void {
 export async function executePush(options: PushOptions = {}): Promise<VersionInfo> {
 	const cwd = options.cwd ?? process.cwd();
 
-	// Mutually-exclusive flags (api-spec §9.1)
+	// Mutually-exclusive surfaces (api-spec §9.1)
 	if (options.version && options.bump) {
-		throw new Error('Use either --version or --bump (--patch / --minor / --major), not both.');
+		throw new Error(
+			'Cannot combine an explicit version with --bump (--patch / --minor / --major).'
+		);
 	}
 	if (options.version && options.track) {
-		throw new Error('--version and --track are mutually exclusive (--version sets the version explicitly).');
+		throw new Error(
+			'Cannot combine an explicit version with --track (the version is already set explicitly).'
+		);
 	}
 	if (options.version) {
 		validateExplicitVersion(options.version);
@@ -149,20 +153,20 @@ export function registerPushCommand(program: Command) {
 	program
 		.command('push')
 		.description('Sync the local draft and push a new SANDBOX version')
+		.argument(
+			'[version]',
+			'Push an explicit semver `X.Y.Z` (mutually exclusive with --patch/--minor/--major and --track)'
+		)
 		.option('--patch', 'Bump the patch number (default)')
 		.option('--minor', 'Bump the minor number')
 		.option('--major', 'Bump the major number')
-		.option(
-			'--version <X.Y.Z>',
-			'Push an explicit version (mutually exclusive with --patch/--minor/--major)'
-		)
 		.option(
 			'--track <X.Y>',
 			'Override the manifest cloud.track (CI use). Anchors --patch/--minor on this family.'
 		)
 		.option('-m, --message <text>', 'Optional push message (max 500 chars)')
 		.option('--json', 'Force JSON output even in a TTY')
-		.action(async (opts) => {
+		.action(async (positionalVersion: string | undefined, opts) => {
 			const { default: chalk } = await import('chalk');
 			const { default: ora } = await import('ora');
 
@@ -176,7 +180,7 @@ export function registerPushCommand(program: Command) {
 			try {
 				const version = await executePush({
 					bump,
-					version: opts.version,
+					version: positionalVersion,
 					track: opts.track,
 					message: opts.message,
 				});

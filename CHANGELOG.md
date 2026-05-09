@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-05-09
+
+Fix a subtle Commander conflict on `poli push` and `poli render`. The global
+`--version` flag (registered by `program.version()` to print the CLI version)
+was shadowing the per-subcommand `--version` flag, so `poli push --version
+1.2.3` and `poli render invoice --version 1.0.0` printed the CLI version
+instead of executing the command. Rather than bend Commander out of shape
+to coexist with `--version`, we drop the flag entirely from both
+subcommands and adopt cleaner surfaces.
+
+### Changed (BREAKING)
+- **`poli push --version <X.Y.Z>` is replaced by a positional argument:
+  `poli push <X.Y.Z>`.** Aligns with `poli checkout <version>`. All other
+  flags (`--patch`, `--minor`, `--major`, `--track`, `-m`, `--json`) are
+  unchanged. Mutual-exclusion rules preserved: an explicit version cannot
+  be combined with `--bump` variants or `--track`.
+- **`poli render <name> --version <X.Y.Z>` is replaced by an npm-style
+  spec: `poli render <name>@<X.Y.Z>`.** `poli render invoice` keeps its
+  current behaviour (renders the draft); `poli render invoice@draft`
+  is the explicit equivalent. Convention shared with `npm install
+  pkg@version`, `docker pull image:tag`, `pip install pkg==version`.
+- **Friendly error messages for `latest` retired / partial semver no
+  longer mention `--version`.** They now point at the new surface
+  (`poli push 1.2.3` and `name@1.2.3`).
+
+### Migration
+- `poli push --version 1.2.3` → `poli push 1.2.3`
+- `poli render invoice --version 1.0.0` → `poli render invoice@1.0.0`
+- `poli render invoice` (draft) is unchanged.
+
 ## [0.6.1] — 2026-05-07
 
 UX cleanup pass after the 0.6.0 stabilisation. Drops the redundant
