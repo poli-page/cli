@@ -52,8 +52,14 @@ jobs:
       # exchange the GitHub-issued JWT for a publish session, scoped to
       # this repo + workflow as configured in the npm package's
       # "Trusted Publisher" settings.
+      #
+      # `--force` is required: a plain `npm install -g npm@latest` over
+      # the bundled Node 22 npm fails with `Cannot find module
+      # 'promise-retry'` because the old npm's dependency tree is left
+      # behind and conflicts with the new one. Forcing tells npm to
+      # clear the previous install before placing the new files.
       - name: Upgrade npm for Trusted Publishing
-        run: npm install -g npm@latest
+        run: npm install -g npm@latest --force
 
       - name: Publish to npm (Trusted Publishing / OIDC)
         run: npm publish --access public
