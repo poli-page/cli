@@ -15,6 +15,7 @@ import {
 import { resolveAuth } from '../auth.js';
 import { errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
+import { formatOrientationSlug } from '../format-resolver.js';
 import { parseTemplateSpec } from './render.js';
 
 export interface PreviewOptions {
@@ -118,10 +119,15 @@ export async function executePreview(
 		};
 	}
 
-	const formatOrientationSlug = `${entry.format.toLowerCase()}-${entry.orientation}`;
 	const outputPath = options.output
 		? resolve(cwd, options.output)
-		: join(projectDir, 'output', entry.name, formatOrientationSlug, 'output.html');
+		: join(
+				projectDir,
+				'output',
+				entry.name,
+				formatOrientationSlug(entry.format, entry.orientation),
+				'output.html'
+			);
 
 	await mkdir(dirname(outputPath), { recursive: true });
 	await writeFile(outputPath, apiResult.html, 'utf-8');

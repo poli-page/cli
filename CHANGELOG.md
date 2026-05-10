@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **New command `poli preview <spec>`** — renders a template to a local HTML preview file (`output/<template>/<format-orientation>/output.html` by default). Calls `POST /v1/render/preview` (no PDF, no stored document). Supports the same `<spec>` parser, `--data`, `-o`, and `--no-download` flags as `poli render`. With `--no-download`, the rendered HTML is emitted on the JSON descriptor (`html` field) instead of written to disk — useful for programmatic consumers (`poli preview invoice --no-download --json | jq '.html'`).
 - **`outputPath` in `poli render --json`** — when a PDF was actually written (i.e. not `--no-download`), the JSON descriptor printed by `poli render` now carries an `outputPath` field with the absolute path to the file. Omitted when `--no-download` was passed (consumers detect "no file" by its absence).
 
+### Changed (BREAKING)
+- **`poli render` default output path is now `output/<template>/<format-orientation>/<template>.pdf`** (was: `output/<template>/<template>.pdf`). The new path layout lets several renders of the same template at different formats / orientations coexist on disk without overwriting each other, and aligns with the layout produced by `poli preview` and the desktop editor.
+
+### Migration
+- If your scripts or CI pipelines hard-code the old default path `output/<template>/<template>.pdf`, update them to the new layout (`output/<template>/<format-orientation>/<template>.pdf`) or pass `-o <path>` explicitly to keep the previous behaviour. The format/orientation slug is lowercased (e.g. `a4-portrait`, `letter-landscape`).
+
 ## [0.7.1] — 2026-05-10
 
 ### Changed

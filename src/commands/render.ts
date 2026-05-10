@@ -15,6 +15,7 @@ import {
 import { resolveAuth } from '../auth.js';
 import { errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
+import { formatOrientationSlug } from '../format-resolver.js';
 
 export interface RenderOptions {
 	cwd?: string;
@@ -124,11 +125,20 @@ export async function executeRender(
 		return { descriptor };
 	}
 
-	// Default download target: output/<templateSlug>/<templateSlug>.pdf
-	// (one folder per template — keeps multiple renders organised).
+	// Default download target:
+	//   output/<templateSlug>/<format-orientation>/<templateSlug>.pdf
+	// The format/orientation segment lets the same template coexist on disk
+	// at multiple page formats without overwriting itself, and aligns with
+	// the layout produced by `poli preview` and the desktop editor.
 	const outputPath = options.output
 		? resolve(cwd, options.output)
-		: join(projectDir, 'output', entry.name, `${entry.name}.pdf`);
+		: join(
+				projectDir,
+				'output',
+				entry.name,
+				formatOrientationSlug(entry.format, entry.orientation),
+				`${entry.name}.pdf`
+			);
 
 	const pdfBuffer = options.fetchPdf
 		? await options.fetchPdf(descriptor.presignedPdfUrl)

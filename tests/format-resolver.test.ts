@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { resolveFormat } from '../src/format-resolver.js';
+import { resolveFormat, formatOrientationSlug } from '../src/format-resolver.js';
+
+describe('formatOrientationSlug', () => {
+	it('lowercases the format and joins with orientation by a dash', () => {
+		expect(formatOrientationSlug('A4', 'portrait')).toBe('a4-portrait');
+	});
+
+	it('preserves multi-letter format names lowercased', () => {
+		expect(formatOrientationSlug('Letter', 'landscape')).toBe('letter-landscape');
+		expect(formatOrientationSlug('Tabloid', 'portrait')).toBe('tabloid-portrait');
+	});
+});
 
 describe('resolveFormat', () => {
 	it('should resolve A4 portrait', () => {

@@ -75,3 +75,16 @@ export function resolveFormat(format: string, orientation: string): PageFormat {
 
 	return pageFormat;
 }
+
+/**
+ * Build the canonical filesystem slug for a (format, orientation) tuple.
+ *
+ * Used for the per-render output directory layout
+ * (`output/<template>/<slug>/<file>`) so that several renders of the same
+ * template at different formats coexist without collision. The slug is
+ * lowercase to stay friendly across case-insensitive filesystems and
+ * matches the convention emitted by the desktop editor's preview pipeline.
+ */
+export function formatOrientationSlug(format: string, orientation: string): string {
+	return `${format.toLowerCase()}-${orientation.toLowerCase()}`;
+}

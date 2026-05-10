@@ -277,7 +277,7 @@ describe('poli render', () => {
 	});
 
 	describe('output and download', () => {
-		it('writes the PDF to output/<name>/<name>.pdf by default', async () => {
+		it('writes the PDF to output/<name>/<format-orientation>/<name>.pdf by default', async () => {
 			const result = await executeRender('invoice', {
 				cwd: projectDir,
 				apiClient: createMockApiClient(),
@@ -285,11 +285,31 @@ describe('poli render', () => {
 				fetchPdf: fakeFetchPdf,
 			});
 
-			expect(result.outputPath).toContain(join('output', 'invoice', 'invoice.pdf'));
+			expect(result.outputPath).toContain(
+				join('output', 'invoice', 'a4-portrait', 'invoice.pdf')
+			);
 			const stats = await stat(result.outputPath!);
 			expect(stats.isFile()).toBe(true);
 			const content = await readFile(result.outputPath!);
 			expect(content).toEqual(FAKE_PDF);
+		});
+
+		it('uses the manifest format/orientation in the path slug', async () => {
+			await setupTemplate(projectDir, 'certificate', {
+				format: 'A5',
+				orientation: 'landscape',
+			});
+
+			const result = await executeRender('certificate', {
+				cwd: projectDir,
+				apiClient: createMockApiClient(),
+				homeDir: fakeHome,
+				fetchPdf: fakeFetchPdf,
+			});
+
+			expect(result.outputPath).toContain(
+				join('output', 'certificate', 'a5-landscape', 'certificate.pdf')
+			);
 		});
 
 		it('writes to a custom -o path', async () => {
