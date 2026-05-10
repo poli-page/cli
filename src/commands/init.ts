@@ -104,7 +104,11 @@ export async function executeInit(name: string, options: InitOptions = {}): Prom
 	const manifest: PoliPageManifest = {
 		project: {
 			name: projectName,
-			version: '1.0',
+			// `0.0.0` lets bump-driven first push pick the version family:
+			// `poli push --patch` → `0.0.1`, `--minor` → `0.1.0`,
+			// `--major` → `1.0.0`. Anything other than an exact semver
+			// would fall back to 0.0.0 anyway in the API (api 0.7.1+).
+			version: '0.0.0',
 		},
 		fonts: [],
 		templates: [],

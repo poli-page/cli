@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-05-10
+
+### Changed
+- **`poli init` now scaffolds `project.version: "0.0.0"`** instead of `"1.0"` (which was a partial semver and would have been rejected by the validation introduced in 0.7.0). Combined with the API 0.7.1 change to seed bump-driven first pushes from `project.version`, this means `poli push --patch` on a fresh project produces `0.0.1` (was: forced to `1.0.0`), `--minor` → `0.1.0`, `--major` → `1.0.0`. To get a 1.0.0 first release, use `poli push --major` (or `poli push 1.0.0` explicitly).
+
+### Migration
+- Existing projects scaffolded with `"1.0"` keep their manifest as-is. The API now treats partial-semver `project.version` as a fallback to `0.0.0` (so `--patch` produces `0.0.1`). To opt into a different first version, push explicitly with `poli push X.Y.Z` or update the manifest's `project.version` first.
+
 ## [0.7.0] — 2026-05-09
 
 Fix a subtle Commander conflict on `poli push` and `poli render`. The global
