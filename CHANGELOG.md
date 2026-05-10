@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Migration
 - If your scripts or CI pipelines hard-code the old default path `output/<template>/<template>.pdf`, update them to the new layout (`output/<template>/<format-orientation>/<template>.pdf`) or pass `-o <path>` explicitly to keep the previous behaviour. The format/orientation slug is lowercased (e.g. `a4-portrait`, `letter-landscape`).
 
+### Fixed
+- **`poli watch` now correctly syncs binary assets** (images and fonts). Previously the watcher read every file as UTF-8, silently corrupting `.png`/`.jpg`/`.gif`/`.svg`/`.webp` and `.woff`/`.woff2`/`.ttf`/`.otf` content on the way to the API. These extensions are now read in buffer mode and base64-encoded — the API was already decoding base64 for assets, so existing draft assets uploaded via the editor are unaffected. The wire format `{ path, content }` is unchanged; encoding is implicit in the file extension.
+- **Wire path normalisation**: `poli watch` now sends `path` entries with POSIX `/` separators on every host OS. Previously, on Windows the watcher emitted `templates\inv.html` while the API expects `templates/inv.html` — a latent issue that surfaced as templates being misclassified. Affects nobody on macOS or Linux, where the host already uses `/`.
+
 ## [0.7.1] — 2026-05-10
 
 ### Changed

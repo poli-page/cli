@@ -140,6 +140,33 @@ export async function executeWatch(options: WatchOptions): Promise<void> {
 	if (fatal) throw fatal;
 }
 
+/**
+ * File extensions that the API treats as opaque binary assets (images,
+ * fonts) and decodes via `Buffer.from(content, 'base64')`. The CLI must
+ * therefore send their content base64-encoded — reading them as utf-8
+ * silently corrupts the bytes on the way to the server. The list mirrors
+ * the API's `resolveContentType` allowlist (packages/api/src/services/
+ * project.service.ts). SVG is included even though it is XML on disk
+ * because the API treats it the same way as raster images.
+ */
+const BINARY_ASSET_EXTENSIONS = new Set([
+	'png',
+	'jpg',
+	'jpeg',
+	'gif',
+	'svg',
+	'webp',
+	'woff',
+	'woff2',
+	'ttf',
+	'otf',
+]);
+
+function isBinaryAsset(relPath: string): boolean {
+	const ext = relPath.split('.').pop()?.toLowerCase();
+	return ext !== undefined && BINARY_ASSET_EXTENSIONS.has(ext);
+}
+
 async function readAllFiles(cwd: string): Promise<Map<string, string>> {
 	const out = new Map<string, string>();
 	const entries = await readdir(cwd, { recursive: true, withFileTypes: true });
@@ -151,8 +178,16 @@ async function readAllFiles(cwd: string): Promise<Map<string, string>> {
 		const absolutePath = join(parentDir, entry.name);
 		const relPath = relative(cwd, absolutePath);
 		if (shouldIgnore(relPath)) continue;
-		const content = await readFile(absolutePath, 'utf-8');
-		out.set(relPath, content);
+		// Posix-normalise the relative path so the wire format matches
+		// the path comparisons performed by the API regardless of host OS.
+		const wirePath = relPath.split(/[\\/]/).join('/');
+		if (isBinaryAsset(wirePath)) {
+			const buffer = await readFile(absolutePath);
+			out.set(wirePath, buffer.toString('base64'));
+		} else {
+			const content = await readFile(absolutePath, 'utf-8');
+			out.set(wirePath, content);
+		}
 	}
 	return out;
 }

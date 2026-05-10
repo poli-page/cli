@@ -338,4 +338,148 @@ describe('executeWatch', () => {
 		controller.abort();
 		await runPromise;
 	});
+
+	describe('binary assets', () => {
+		it('reads .png assets as base64 and round-trips the exact bytes', async () => {
+			await setupLinkedProject(tempDir, fakeHome);
+			await mkdir(join(tempDir, 'assets', 'images'), { recursive: true });
+
+			// Bytes 0x80 and 0x81 are both invalid UTF-8 continuation bytes —
+			// reading them as utf8 collapses them to U+FFFD, so two distinct
+			// binaries become indistinguishable strings. The base64 path
+			// preserves the byte-exact difference.
+			const initialBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x80, 0x00, 0xab]);
+			const updatedBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x81, 0x00, 0xcd]);
+
+			await writeFile(join(tempDir, 'assets', 'images', 'logo.png'), initialBytes);
+
+			const events: WatchEvent[] = [];
+			const controller = new AbortController();
+			const { factory, getController } = createManualWatcherFactory();
+
+			let lastBody: PatchBody | null = null;
+			const client = makeStubClient({
+				patchFiles: async (_session, _orgId, _projectId, body) => {
+					lastBody = body as PatchBody;
+					return { syncedAt: '2026-05-09T10:00:00.000Z' };
+				},
+			});
+
+			const runPromise = executeWatch({
+				cwd: tempDir,
+				homeDir: fakeHome,
+				apiClient: client,
+				isTTY: true,
+				signal: controller.signal,
+				watcherFactory: factory,
+				onEvent: (e) => events.push(e),
+			});
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			// Replace the binary with byte-distinct content
+			await writeFile(join(tempDir, 'assets', 'images', 'logo.png'), updatedBytes);
+			await getController().emit(['assets/images/logo.png']);
+			await new Promise((r) => setTimeout(r, 50));
+
+			expect(lastBody).not.toBeNull();
+			expect(lastBody!.modified).toHaveLength(1);
+			const entry = lastBody!.modified[0];
+			expect(entry.path).toBe('assets/images/logo.png');
+			const decoded = Buffer.from(entry.content, 'base64');
+			expect(decoded.equals(updatedBytes)).toBe(true);
+
+			controller.abort();
+			await runPromise;
+		});
+
+		it('keeps text files (.html, .json, .css) as utf-8 verbatim — no base64', async () => {
+			await setupLinkedProject(tempDir, fakeHome);
+			await mkdir(join(tempDir, 'templates'), { recursive: true });
+			await writeFile(join(tempDir, 'templates', 'inv.html'), '<h1>v1</h1>');
+
+			const controller = new AbortController();
+			const { factory, getController } = createManualWatcherFactory();
+
+			let lastBody: PatchBody | null = null;
+			const client = makeStubClient({
+				patchFiles: async (_session, _orgId, _projectId, body) => {
+					lastBody = body as PatchBody;
+					return { syncedAt: '2026-05-09T10:00:00.000Z' };
+				},
+			});
+
+			const runPromise = executeWatch({
+				cwd: tempDir,
+				homeDir: fakeHome,
+				apiClient: client,
+				isTTY: true,
+				signal: controller.signal,
+				watcherFactory: factory,
+			});
+
+			await new Promise((r) => setTimeout(r, 50));
+			await writeFile(join(tempDir, 'templates', 'inv.html'), '<h1>v2 — éléphant</h1>');
+			await getController().emit(['templates/inv.html']);
+			await new Promise((r) => setTimeout(r, 50));
+
+			expect(lastBody).not.toBeNull();
+			expect(lastBody!.modified).toHaveLength(1);
+			expect(lastBody!.modified[0].content).toBe('<h1>v2 — éléphant</h1>');
+
+			controller.abort();
+			await runPromise;
+		});
+
+		it('detects new fonts (.woff2) added during the session and sends them base64', async () => {
+			await setupLinkedProject(tempDir, fakeHome);
+			await mkdir(join(tempDir, 'assets', 'fonts'), { recursive: true });
+
+			const fontBytes = Buffer.from([
+				0x77, 0x4f, 0x46, 0x32, 0x00, 0x01, 0x00, 0x00, 0xff, 0x80, 0xab,
+			]);
+
+			const controller = new AbortController();
+			const { factory, getController } = createManualWatcherFactory();
+
+			let lastBody: PatchBody | null = null;
+			const client = makeStubClient({
+				patchFiles: async (_session, _orgId, _projectId, body) => {
+					lastBody = body as PatchBody;
+					return { syncedAt: '2026-05-09T10:00:00.000Z' };
+				},
+			});
+
+			const runPromise = executeWatch({
+				cwd: tempDir,
+				homeDir: fakeHome,
+				apiClient: client,
+				isTTY: true,
+				signal: controller.signal,
+				watcherFactory: factory,
+			});
+
+			await new Promise((r) => setTimeout(r, 50));
+
+			// Font added AFTER watch started → must be picked up as `added`
+			await writeFile(join(tempDir, 'assets', 'fonts', 'inter.woff2'), fontBytes);
+			await getController().emit(['assets/fonts/inter.woff2']);
+			await new Promise((r) => setTimeout(r, 50));
+
+			expect(lastBody).not.toBeNull();
+			expect(lastBody!.added).toHaveLength(1);
+			const entry = lastBody!.added[0];
+			expect(entry.path).toBe('assets/fonts/inter.woff2');
+			expect(Buffer.from(entry.content, 'base64').equals(fontBytes)).toBe(true);
+
+			controller.abort();
+			await runPromise;
+		});
+	});
 });
+
+interface PatchBody {
+	added: Array<{ path: string; content: string }>;
+	modified: Array<{ path: string; content: string }>;
+	deleted: string[];
+}
