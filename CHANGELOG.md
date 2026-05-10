@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-05-10
+
+Improves the VS Code / Linux developer workflow: a new `poli preview`
+command for on-demand local HTML previews, harmonised output paths
+across `render` and `preview`, two latent bugs in `poli watch` fixed
+(binaries, Windows paths), and a scaffolded `.prettierignore` so Poli
+Page's template syntax no longer triggers Prettier red-squiggles in
+the editor.
+
 ### Added
 - **New command `poli preview <spec>`** — renders a template to a local HTML preview file (`output/<template>/<format-orientation>/output.html` by default). Calls `POST /v1/render/preview` (no PDF, no stored document). Supports the same `<spec>` parser, `--data`, `-o`, and `--no-download` flags as `poli render`. With `--no-download`, the rendered HTML is emitted on the JSON descriptor (`html` field) instead of written to disk — useful for programmatic consumers (`poli preview invoice --no-download --json | jq '.html'`).
 - **`outputPath` in `poli render --json`** — when a PDF was actually written (i.e. not `--no-download`), the JSON descriptor printed by `poli render` now carries an `outputPath` field with the absolute path to the file. Omitted when `--no-download` was passed (consumers detect "no file" by its absence).
