@@ -132,6 +132,19 @@ describe('poli init', () => {
 		expect(content).toContain('output/');
 	});
 
+	it('should create a .prettierignore that excludes templates HTML and output', async () => {
+		await executeInit('my-project', { cwd: tempDir });
+		const prettierIgnorePath = join(tempDir, 'my-project', '.prettierignore');
+		const content = await readFile(prettierIgnorePath, 'utf-8');
+		// Poli's template syntax ({{ }}, @for, @if, @let) is not standard HTML,
+		// so Prettier mangles or red-squiggles it. We ignore the template HTML
+		// (and partials) to keep editor noise out of the way.
+		expect(content).toContain('templates/**/*.html');
+		expect(content).toContain('partials/**/*.html');
+		// Output artefacts (PDFs, generated HTML) are never meant to be formatted.
+		expect(content).toContain('output/');
+	});
+
 	it('should throw if the directory already exists', async () => {
 		await executeInit('existing', { cwd: tempDir });
 		await expect(executeInit('existing', { cwd: tempDir })).rejects.toThrow(

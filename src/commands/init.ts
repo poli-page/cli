@@ -38,6 +38,19 @@ dist/
 .DS_Store
 `;
 
+// Templates use Poli Page's authoring syntax (`{{ interp }}`, `@for`, `@if`,
+// `@let`) which Prettier's HTML parser doesn't understand — it either
+// reformats the markup into invalid output or marks the whole file as
+// erroring in the editor. Ignoring the template HTML (and partials) keeps
+// the editor noise away while still letting Prettier handle everything else
+// (JSON mocks, tailwind.css, the manifest).
+const PRETTIERIGNORE_TEMPLATE = `# Poli Page template syntax (interpolation, @for/@if/@let) isn't HTML —
+# Prettier mangles it. Skip the template markup and any generated output.
+templates/**/*.html
+partials/**/*.html
+output/
+`;
+
 export interface InitOptions {
 	cwd?: string;
 	withTemplate?: string;
@@ -121,6 +134,7 @@ export async function executeInit(name: string, options: InitOptions = {}): Prom
 	await mkdir(join(projectDir, 'assets', 'images'), { recursive: true });
 	await writeFile(join(projectDir, 'tailwind.css'), TAILWIND_CSS_TEMPLATE, 'utf-8');
 	await writeFile(join(projectDir, '.gitignore'), GITIGNORE_TEMPLATE, 'utf-8');
+	await writeFile(join(projectDir, '.prettierignore'), PRETTIERIGNORE_TEMPLATE, 'utf-8');
 
 	if (promptResult) {
 		// Precedence for the destination template name:
