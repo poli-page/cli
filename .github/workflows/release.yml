@@ -47,19 +47,15 @@ jobs:
         run: pnpm build
 
       # Trusted Publishing (OIDC) requires npm ≥ 11.5.1 — Node 22 ships
-      # with npm 10.x, so upgrade before publishing. No NODE_AUTH_TOKEN
-      # is needed: the `id-token: write` permission above lets npm
-      # exchange the GitHub-issued JWT for a publish session, scoped to
-      # this repo + workflow as configured in the npm package's
-      # "Trusted Publisher" settings.
+      # with npm 10.x. `npm install -g npm@latest` (with or without
+      # `--force`) breaks the in-place install with `Cannot find module
+      # 'promise-retry'` (npm cannot replace itself cleanly). Workaround:
+      # use `npx` to fetch a recent npm into a temp cache and run the
+      # publish command from there — the bundled npm stays untouched.
       #
-      # `--force` is required: a plain `npm install -g npm@latest` over
-      # the bundled Node 22 npm fails with `Cannot find module
-      # 'promise-retry'` because the old npm's dependency tree is left
-      # behind and conflicts with the new one. Forcing tells npm to
-      # clear the previous install before placing the new files.
-      - name: Upgrade npm for Trusted Publishing
-        run: npm install -g npm@latest --force
-
+      # No NODE_AUTH_TOKEN is needed: the `id-token: write` permission
+      # above lets npm exchange the GitHub-issued JWT for a publish
+      # session, scoped to this repo + workflow per the package's
+      # "Trusted Publisher" settings.
       - name: Publish to npm (Trusted Publishing / OIDC)
-        run: npm publish --access public
+        run: npx --yes npm@latest publish --access public
