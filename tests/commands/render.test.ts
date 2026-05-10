@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeInit } from '../../src/commands/init.js';
 import { setupTemplate } from '../helpers/setup-template.js';
-import { executeRender, parseTemplateSpec } from '../../src/commands/render.js';
+import {
+	executeRender,
+	parseTemplateSpec,
+	formatRenderJson,
+} from '../../src/commands/render.js';
 import { writeCredentials } from '../../src/credentials.js';
 import { writeManifest, readManifest } from '../../src/manifest.js';
 import type { ApiClient, RenderResult } from '../../src/api-client.js';
@@ -92,6 +96,25 @@ function createMockApiClient(
 }
 
 const fakeFetchPdf = async (): Promise<Buffer> => FAKE_PDF;
+
+describe('formatRenderJson', () => {
+	it('includes outputPath when a file was written', () => {
+		const descriptor = makeFakeDescriptor();
+		const json = formatRenderJson({ descriptor, outputPath: '/tmp/foo.pdf' });
+		expect(json).toMatchObject({
+			documentId: 'doc_abc',
+			outputPath: '/tmp/foo.pdf',
+		});
+	});
+
+	it('omits outputPath when no file was written (e.g. --no-download)', () => {
+		const descriptor = makeFakeDescriptor();
+		const json = formatRenderJson({ descriptor });
+		expect((json as Record<string, unknown>).outputPath).toBeUndefined();
+		// All descriptor fields still present
+		expect((json as Record<string, unknown>).documentId).toBe('doc_abc');
+	});
+});
 
 describe('poli render', () => {
 	let tempDir: string;

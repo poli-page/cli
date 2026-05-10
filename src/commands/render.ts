@@ -140,6 +140,20 @@ export async function executeRender(
 	return { descriptor, outputPath };
 }
 
+/**
+ * Build the JSON payload printed by `poli render --json`.
+ *
+ * Spreads the API descriptor and conditionally adds `outputPath` so callers
+ * can locate the written PDF. `outputPath` is absent when `--no-download`
+ * was passed (no file written).
+ */
+export function formatRenderJson(result: RenderResult): unknown {
+	if (result.outputPath) {
+		return { ...result.descriptor, outputPath: result.outputPath };
+	}
+	return result.descriptor;
+}
+
 async function defaultFetchPdf(url: string): Promise<Buffer> {
 	const response = await fetch(url);
 	if (!response.ok) {
@@ -200,7 +214,7 @@ export function registerRenderCommand(program: Command) {
 				// Pipe / --json / non-TTY → JSON. TTY → human summary.
 				// Never both — picking one keeps stdout clean for either consumer.
 				if (shouldEmitJson(opts)) {
-					console.log(JSON.stringify(result.descriptor, null, 2));
+					console.log(JSON.stringify(formatRenderJson(result), null, 2));
 					return;
 				}
 

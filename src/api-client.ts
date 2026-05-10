@@ -259,6 +259,17 @@ export interface DocumentDescriptor {
  */
 export type RenderResult = DocumentDescriptor;
 
+/**
+ * Result of `POST /v1/render/preview`. No document is persisted, so the
+ * shape is intentionally minimal: just the rendered HTML, page count,
+ * and the environment the call was billed against.
+ */
+export interface PreviewApiResult {
+	html: string;
+	totalPages: number;
+	environment: 'sandbox' | 'live';
+}
+
 export interface MeResponse {
 	auth: {
 		mode: 'session' | 'api-key';
@@ -330,6 +341,11 @@ export interface ApiClient {
 		orgIdHeader: string | undefined,
 		payload: Record<string, unknown>
 	): Promise<RenderResult>;
+	renderPreview(
+		authorization: string,
+		orgIdHeader: string | undefined,
+		payload: Record<string, unknown>
+	): Promise<PreviewApiResult>;
 	getMe(authorization: string, orgIdHeader?: string): Promise<MeResponse>;
 	// `renderThumbnails` was retired with `/v1/render/thumbnails` (api-spec §11.4).
 	// Thumbnails now come from a stored document via `documentThumbnails`.
@@ -617,6 +633,22 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				body: JSON.stringify(payload),
 			});
 			return response.json() as Promise<RenderResult>;
+		},
+
+		async renderPreview(authorization, orgIdHeader, payload) {
+			const headers: Record<string, string> = {
+				'Content-Type': 'application/json',
+				Authorization: authorization,
+			};
+			if (orgIdHeader) {
+				headers['X-Poli-Org-Id'] = orgIdHeader;
+			}
+			const response = await request('/v1/render/preview', {
+				method: 'POST',
+				headers,
+				body: JSON.stringify(payload),
+			});
+			return response.json() as Promise<PreviewApiResult>;
 		},
 
 		async updateProject(session, orgId, projectId, payload) {
