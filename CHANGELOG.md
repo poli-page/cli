@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-05-11
+
+### Fixed
+- **`poli checkout <version>` placed every file at a wrong path on disk.** The API returns "naked" paths in the bundle — symmetric with the push payload built by `collectProjectPayload`: templates as `<slug>.html` / `<slug>.json` (no `templates/<slug>/` prefix) and binary assets as `images/<rel>` or `fonts/<rel>` (no `assets/` prefix). The CLI was joining those paths to `cwd` and `cwd/assets/images/` directly, producing two pathologies: every template HTML dropped at the project root (`<projectDir>/test-welcome.html` instead of `<projectDir>/templates/test-welcome/test-welcome.html`), and every binary doubly-prefixed under `assets/images/` (so fonts ended up in `assets/images/fonts/inter-400.woff2` and images in `assets/images/images/logo.svg`, in addition to the legitimate copies a previous good checkout had written). The CLI now reconstructs the project-rooted paths on its side. Regression tests pin the placement, including a "no pathological doubles" assertion. The API contract is unchanged.
+
 ## [0.8.1] — 2026-05-11
 
 ### Fixed

@@ -21,11 +21,16 @@ const FULL_BUNDLE: ProjectBundle = {
 		],
 	},
 	templates: [
-		{ path: 'templates/invoice/invoice.html', content: '<div>Invoice 1.2.3</div>' },
-		{ path: 'templates/invoice/invoice.json', content: '{"v":"1.2.3"}' },
+		// The API returns naked filenames (no `templates/<slug>/` prefix) —
+		// the CLI reconstructs the project-rooted path. See checkout.ts.
+		{ path: 'invoice.html', content: '<div>Invoice 1.2.3</div>' },
+		{ path: 'invoice.json', content: '{"v":"1.2.3"}' },
 	],
 	images: [
-		{ path: 'logo.svg', data: Buffer.from('<svg/>').toString('base64') },
+		// The API returns paths relative to `assets/` (carrying their
+		// `images/` or `fonts/` segment). The CLI joins with `cwd/assets/`.
+		{ path: 'images/logo.svg', data: Buffer.from('<svg/>').toString('base64') },
+		{ path: 'fonts/inter-400.woff2', data: Buffer.from('FONT').toString('base64') },
 	],
 	tailwindCss: '@import "tailwindcss";\n@theme { --color-x: #fff; }',
 };
@@ -272,6 +277,30 @@ describe('poli checkout', () => {
 			// Image binary written under assets/images/
 			const img = await readFile(join(projectDir, 'assets', 'images', 'logo.svg'));
 			expect(img.toString()).toBe('<svg/>');
+
+			// Font binary written under assets/fonts/ — NOT under
+			// assets/images/fonts/ (the old code joined every binary under
+			// `assets/images/`, dragging fonts into the wrong subtree).
+			const font = await readFile(
+				join(projectDir, 'assets', 'fonts', 'inter-400.woff2')
+			);
+			expect(font.toString()).toBe('FONT');
+
+			// And no pathological doubles like assets/images/images/* or
+			// assets/images/fonts/*.
+			await expect(
+				stat(join(projectDir, 'assets', 'images', 'images'))
+			).rejects.toThrow(/ENOENT/);
+			await expect(
+				stat(join(projectDir, 'assets', 'images', 'fonts'))
+			).rejects.toThrow(/ENOENT/);
+
+			// And no template HTML dropped at the project root (the old
+			// code joined `cwd + file.path`, so `invoice.html` landed at
+			// the project root instead of inside templates/invoice/).
+			await expect(
+				stat(join(projectDir, 'invoice.html'))
+			).rejects.toThrow(/ENOENT/);
 
 			// tailwind.css overwritten
 			const tw = await readFile(join(projectDir, 'tailwind.css'), 'utf-8');

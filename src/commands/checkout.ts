@@ -70,14 +70,27 @@ export async function executeCheckout(options: CheckoutOptions): Promise<void> {
 		options.version
 	);
 
+	// The API returns "naked" paths, symmetric with the push payload
+	// (`collectProjectPayload`): templates as `<slug>.html` / `<slug>.json`
+	// (no `templates/<slug>/` prefix), and binary assets as `images/<rel>`
+	// or `fonts/<rel>` (relative to `assets/`, no `assets/` prefix). The
+	// CLI rebuilds the project-rooted paths on its side. The previous
+	// behaviour — `join(cwd, file.path)` and `join(cwd, 'assets/images',
+	// img.path)` — dropped templates at the project root and produced
+	// pathological doubles like `assets/images/images/foo.png` and
+	// `assets/images/fonts/bar.woff2`.
 	for (const file of bundle.templates) {
-		const target = join(cwd, file.path);
+		const slug = file.path.replace(/\.(html|json)$/, '');
+		const target = join(cwd, 'templates', slug, file.path);
 		await mkdir(dirname(target), { recursive: true });
 		await writeFile(target, file.content, 'utf-8');
 	}
 
 	for (const img of bundle.images ?? []) {
-		const target = join(cwd, 'assets', 'images', img.path);
+		// `img.path` already carries its `images/` or `fonts/` segment
+		// (the value of `projectAssets.path` in the API DB). Joining with
+		// `assets/` reconstructs the full project-rooted path.
+		const target = join(cwd, 'assets', img.path);
 		await mkdir(dirname(target), { recursive: true });
 		await writeFile(target, Buffer.from(img.data, 'base64'));
 	}
