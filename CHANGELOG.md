@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-05-11
+
+### Fixed
+- **`poli checkout <version>` no longer hangs silently.** The handler used to start the ora spinner *before* calling `executeCheckout`, which in turn fires an interactive `confirm()` prompt asking the user to acknowledge the local overwrite. The spinner covered the prompt, so the terminal showed `Checking out X.Y.Z…` spinning forever while the program was actually waiting for invisible keyboard input. The spinner is now created up-front but only `.start()`-ed after the prompt resolves with `yes` (same pattern already used by `poli init` for its template picker). The `executeCheckout` API surface is unchanged.
+
 ## [0.8.0] — 2026-05-10
 
 Improves the VS Code / Linux developer workflow: a new `poli preview`

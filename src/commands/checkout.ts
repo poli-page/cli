@@ -13,7 +13,7 @@ export interface CheckoutOptions {
 	apiClient?: ApiClient;
 	homeDir?: string;
 	yes?: boolean;
-	confirmOverwrite?: () => Promise<boolean>;
+	confirmOverwrite?: (version: string) => Promise<boolean>;
 }
 
 const EXACT_SEMVER = /^\d+\.\d+\.\d+$/;
@@ -128,18 +128,40 @@ export function registerCheckoutCommand(program: Command) {
 			const { default: chalk } = await import('chalk');
 			const { default: ora } = await import('ora');
 
-			const spinner = ora(`Checking out ${version}...`).start();
+			// Spinner is created but NOT started — it would clobber the
+			// interactive confirm() prompt below. We start it inside the
+			// `confirmOverwrite` callback, after the prompt resolves with
+			// `true`. Same pattern as `poli init` which orchestrates a
+			// collection/template picker before any spinner UI.
+			const spinner = ora();
 			try {
-				await executeCheckout({ version, yes: opts.yes });
-				spinner.succeed(chalk.green(`Checked out version ${version}`));
+				await executeCheckout({
+					version,
+					yes: opts.yes,
+					confirmOverwrite: async (v) => {
+						const { confirm } = await import('@inquirer/prompts');
+						const ok = await confirm({
+							message: `Overwrite local files with version ${v}? Any uncommitted changes will be lost.`,
+							default: false,
+						});
+						if (ok) spinner.start(`Checking out ${v}...`);
+						return ok;
+					},
+				});
+				if (spinner.isSpinning) {
+					spinner.succeed(chalk.green(`Checked out version ${version}`));
+				}
 				console.log();
 				console.log(
 					chalk.dim('  Tip: commit your local changes before checking out another version.')
 				);
 			} catch (error) {
-				spinner.fail(
-					chalk.red(error instanceof Error ? error.message : 'Checkout failed')
-				);
+				const message = error instanceof Error ? error.message : 'Checkout failed';
+				if (spinner.isSpinning) {
+					spinner.fail(chalk.red(message));
+				} else {
+					console.error(chalk.red(message));
+				}
 				process.exitCode = errorToExitCode(error);
 			}
 		});
