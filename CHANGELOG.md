@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **New command `poli dev [template]`** — a live-reloading preview server for template authors, and the code-first alternative to the desktop editor. It watches the project, syncs each save to the cloud draft (the same delta sync `poli watch` performs), re-renders the active template through `POST /v1/render/preview`, and pushes a reload to connected browsers over Server-Sent Events. Rendering is driven by the sync-completed event — there is no polling and no guessed delay. The served page (default `http://127.0.0.1:7654`, `--port` to change, auto-incremented when busy) carries a template switcher that follows the most recently changed template, a **pin** control that freezes the view so an unrelated save cannot yank it away, a **Render PDF** action that runs the real `POST /v1/render` and displays the resulting PDF inline, and an error overlay that shows a failed compile or render — with `file:line:column` when the engine reports a position — on top of the last good render. Flags: `-p, --port <n>`, `-d, --data <path>` (mirrors `poli preview`), `--no-open`, and an optional positional template name.
+- **`poli dev` does not require a TTY.** Unlike `poli watch`, it is a server and stays usable with its stdout piped, so it composes into a project's own dev script (`concurrently`, `npm-run-all`, a Procfile). It binds to `127.0.0.1` only, and `Ctrl-C` / `SIGTERM` closes the watcher, every SSE connection, and the port.
+
+### Changed
+- **The local ⇄ cloud-draft sync used by `poli watch` moved into `src/project-sync.ts`** and is now shared with `poli dev`. `poli watch`'s behaviour, output, resilience rules, and TTY requirement are unchanged.
+
 ## [0.8.2] — 2026-05-11
 
 ### Fixed

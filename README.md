@@ -17,6 +17,7 @@ Command-line tool for [Poli Page](https://poli.page) — scaffold projects, mana
   - [Project lifecycle](#project-lifecycle)
   - [Authentication commands](#authentication-commands)
   - [Cloud sync](#cloud-sync)
+  - [Live development](#live-development)
   - [Versioning](#versioning)
   - [Render](#render)
   - [Documents](#documents)
@@ -79,9 +80,13 @@ poli promote 1.0.0
 To iterate on a template with live feedback against the cloud:
 
 ```bash
-poli watch
-# edit your template files; each save syncs to the cloud draft within 2 seconds
+poli dev
+# opens http://127.0.0.1:7654 — edit a template, save, and the browser
+# shows the freshly rendered document about a second later
 ```
+
+`poli dev` is the code-first alternative to the desktop editor. If you only want
+the sync half, without a browser, use `poli watch`.
 
 ---
 
@@ -223,7 +228,9 @@ Resilience built in:
 - `403 SYSTEM_PROJECT_LOCKED` (the `getting-started` system project) → friendly error + exit
 - Other API errors → logged, watch continues, next save retries
 
-Requires a TTY. Refused with exit `2` when run in a non-interactive context.
+Requires a TTY. Refused with exit `2` when run in a non-interactive context. If
+you need the same sync inside a script or alongside a browser preview, use
+[`poli dev`](#poli-dev-template), which has no TTY requirement.
 
 #### `poli checkout <version>`
 
@@ -236,6 +243,68 @@ poli checkout 1.0.5    # exact semver only
 `latest` and partial semver (`1.0`, `1`) are rejected with a friendly hint.
 
 Side effect: writes `cloud.track = "X.Y"` to the manifest (derived from the checked-out version). `poli push --patch` / `--minor` will then be anchored on that track — see the hotfix flow above.
+
+### Live development
+
+#### `poli dev [template]`
+
+Live-reloading preview server for template authors. On every save it syncs the
+project to the cloud draft, re-renders the active template through
+`POST /v1/render/preview`, and pushes a reload to every connected browser over
+Server-Sent Events — no polling, no fixed delay.
+
+```bash
+poli dev                 # first template in the manifest
+poli dev invoice         # start on a specific template
+poli dev --port 8123     # pick the port
+poli dev --no-open       # don't launch a browser
+poli dev -d ./big.json   # render every template against your own data
+```
+
+| Flag                 | Default            | Meaning                                                    |
+| -------------------- | ------------------ | ---------------------------------------------------------- |
+| `-p, --port <n>`     | `7654`             | Port to bind on `127.0.0.1`. Walks upwards when it is busy. |
+| `-d, --data <path>`  | the template mock  | JSON data file, same shape as `poli preview -d`.            |
+| `--no-open`          | opens the browser  | Skip launching a browser on start.                          |
+| `[template]`         | first in manifest  | Which template to show first.                               |
+
+The served page gives you:
+
+- **A template switcher.** By default the view *follows the most recently
+  changed template*: a save under `templates/<name>/` makes `<name>` the active
+  one. When a batch touches several templates, the one with the newest mtime
+  wins. A change to a file that no single template owns — a shared partial,
+  `tailwind.css`, an asset, or `poli-page.json` — belongs to all of them and so
+  moves nothing: the current template stays on screen and is re-rendered.
+- **A pin.** Click *Pin* to freeze the view on the current template so an
+  unrelated save cannot yank you away. Unpin to follow again.
+- **Render PDF.** The HTML preview is fast but approximate. This button runs the
+  real `POST /v1/render` for the active template and shows the resulting PDF
+  inline, so you can check the actual outcome — pagination, page breaks, fonts.
+  It creates a stored document, exactly like `poli render`.
+- **An error overlay.** A failed compile or render is shown with its message
+  (and `file:line:column` when the engine reports a position) on top of the last
+  good render, which stays visible behind it. The overlay clears on the next
+  successful render.
+
+Notes:
+
+- **No TTY required.** Unlike `poli watch`, `poli dev` is a server and runs
+  happily with its stdout piped, so you can compose it into your own dev script:
+
+  ```json
+  { "scripts": { "dev": "concurrently \"poli dev --no-open\" \"vite\"" } }
+  ```
+
+- It binds to `127.0.0.1` only — the rendered draft is never exposed to the
+  local network.
+- On start it pushes the whole working tree to the draft, so the first render
+  reflects your local files rather than whatever the draft last contained.
+- Failures are surfaced, not fatal: a render that errors, a rejected sync, a
+  broken `poli-page.json`, or a dropped connection leave the server up and the
+  page serving.
+- `Ctrl-C` (or `SIGTERM`) closes the watcher, every SSE connection, and the
+  port.
 
 ### Versioning
 
