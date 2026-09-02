@@ -155,3 +155,32 @@ describe('createProjectSyncer', () => {
 		expect(bodies[0].deleted).toEqual(['tailwind.css']);
 	});
 });
+
+describe('shouldIgnoreProjectPath — API allowlist', () => {
+	it.each([
+		'poli-page.json',
+		'tailwind.css',
+		'templates/invoice/invoice.html',
+		'templates/invoice/invoice.json',
+		'partials/header.html',
+		'assets/fonts/dm-sans.woff2',
+		'assets/images/logo.svg',
+	])('syncs %s', (path) => {
+		expect(shouldIgnoreProjectPath(path)).toBe(false);
+	});
+
+	// The API refuses anything outside its allowlist with a 400, which fails
+	// the whole batch. `.gitignore` and `.prettierignore` are scaffolded by
+	// `poli init` itself, so every project carries them.
+	it.each([
+		'.gitignore',
+		'.prettierignore',
+		'README.md',
+		'.env',
+		'templates/invoice/invoice.json.scaffold.bak',
+		'styles.css',
+		'notes.txt',
+	])('skips %s', (path) => {
+		expect(shouldIgnoreProjectPath(path)).toBe(true);
+	});
+});
