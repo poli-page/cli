@@ -1,12 +1,27 @@
+import type { DevError } from './commands/dev.js';
+
+/**
+ * Overlay title for each failure stage. Typed against `DevError['stage']`
+ * so a stage added without a title is a compile error, and embedded into
+ * the page verbatim so the browser shows exactly these strings.
+ */
+export const DEV_ERROR_TITLES: Record<DevError['stage'], string> = {
+	sync: 'Sync failed',
+	render: 'Render failed',
+	pdf: 'PDF render failed',
+	project: 'Project error',
+};
+
 /**
  * The `poli dev` shell page.
  *
  * Static by construction: it carries no server data at all and pulls
- * everything from `GET /state` plus the `/events` SSE stream. That keeps
- * the document free of interpolation (nothing to escape, nothing to
- * inject) and lets the rendered template live in an isolated iframe, so
- * a reload swaps the frame without losing the switcher, the pin, or the
- * scroll position of the chrome.
+ * everything from `GET /state` plus the `/events` SSE stream. The only
+ * interpolation is the compile-time `DEV_ERROR_TITLES` table above —
+ * nothing request-derived to escape or inject — and the rendered
+ * template lives in an isolated iframe, so a reload swaps the frame
+ * without losing the switcher, the pin, or the scroll position of the
+ * chrome.
  */
 export const DEV_PAGE_HTML = `<!doctype html>
 <html lang="en">
@@ -117,13 +132,25 @@ export const DEV_PAGE_HTML = `<!doctype html>
 		font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
 	}
 	.overlay .hint { margin-top: 12px; color: var(--muted); }
+	/* Off-screen but kept in the accessibility tree — unlike \`hidden\`. */
+	.visually-hidden {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+		border: 0;
+	}
 	[hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <header>
 	<span class="brand">poli dev<small id="pages"></small></span>
-	<label class="visually-hidden" for="template" hidden>Template</label>
+	<label class="visually-hidden" for="template">Template</label>
 	<select id="template" title="Template shown in the preview"></select>
 	<button id="pin" aria-pressed="false" title="Freeze the view on this template — saves elsewhere will not switch it">Pin</button>
 	<button id="pdf" title="Render the real PDF for this template">Render PDF</button>
@@ -158,6 +185,8 @@ export const DEV_PAGE_HTML = `<!doctype html>
 	var statusText = document.getElementById('statusText');
 	var dot = document.getElementById('dot');
 	var pages = document.getElementById('pages');
+
+	var stageTitles = ${JSON.stringify(DEV_ERROR_TITLES)};
 
 	var shownVersion = -1;
 	var latestVersion = -1;
@@ -198,7 +227,7 @@ export const DEV_PAGE_HTML = `<!doctype html>
 		pages.textContent = state.pageCount ? ' · ' + state.pageCount + (state.pageCount === 1 ? ' page' : ' pages') : '';
 
 		if (state.error) {
-			errTitle.textContent = state.error.stage === 'sync' ? 'Sync failed' : 'Render failed';
+			errTitle.textContent = stageTitles[state.error.stage] || 'Error';
 			var where = '';
 			if (state.error.file) {
 				where = state.error.file;
