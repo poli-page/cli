@@ -69,7 +69,19 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
 	let closed = false;
 
 	const server = createServer((req, res) => {
-		const url = new URL(req.url ?? '/', `http://${host}`);
+		// The request target is the first attacker-controlled input this
+		// listener touches, and the WHATWG parser throws on targets the
+		// HTTP parser lets through (an absolute-form URI with an
+		// out-of-range port, say). An uncaught throw here would take the
+		// whole process down — answer 400 instead.
+		let url: URL;
+		try {
+			url = new URL(req.url ?? '/', `http://${host}`);
+		} catch {
+			res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+			res.end(JSON.stringify({ error: 'Malformed request URL.' }));
+			return;
+		}
 		if (url.pathname === eventsPath) {
 			attachSseClient(req, res);
 			return;
