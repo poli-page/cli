@@ -370,6 +370,26 @@ describe('poli dev', () => {
 			).rejects.toThrow(/not linked|poli link/i);
 		});
 
+		it('rejects a legacy-linked manifest that has no projectSlug', async () => {
+			await setupTemplate(projectDir, 'invoice');
+			const manifest = await readManifest(projectDir);
+			delete manifest.cloud!.projectSlug;
+			await writeManifest(projectDir, manifest);
+
+			// Fail fast, before the server binds — same message as
+			// `poli preview` — instead of booting a server whose every
+			// render fails into the overlay.
+			await expect(
+				startDevSession(undefined, {
+					cwd: projectDir,
+					homeDir: fakeHome,
+					port: 0,
+					open: false,
+					apiClient: makeStubClient(),
+				})
+			).rejects.toThrow(/isn't linked to a cloud project.*poli link/);
+		});
+
 		it('rejects when the positional template is not in the manifest', async () => {
 			await setupTemplate(projectDir, 'invoice');
 			await expect(

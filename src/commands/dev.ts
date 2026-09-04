@@ -218,6 +218,15 @@ export async function startDevSession(
 	let manifest: PoliPageManifest = initial.manifest;
 	let templates = templateNamesOf(manifest);
 
+	// `projectSlug` is optional in the manifest schema (legacy links lack
+	// it) but every render payload needs it. Without this guard the
+	// server boots and then fails every render into the overlay forever —
+	// fail fast instead, with the same message (and exit code) as
+	// `poli preview`.
+	if (!manifest.cloud?.projectSlug) {
+		throw new Error("This folder isn't linked to a cloud project. Run `poli link` first.");
+	}
+
 	if (templateName !== undefined) {
 		// Fail fast on an unknown name given on the command line — same
 		// message (and exit code) as `poli render` / `poli preview`.
