@@ -97,12 +97,7 @@ describe('Host validation', () => {
 
 	it('rejects a state-changing POST carrying a foreign Host (CSRF / rebinding)', async () => {
 		const { server, handled } = await boot();
-		const response = await requestWithHost(
-			server.port,
-			'evil.example',
-			'/api/pdf',
-			'POST'
-		);
+		const response = await requestWithHost(server.port, 'evil.example', '/api/pdf', 'POST');
 		expect(response.status).toBe(403);
 		// The handler never ran — no PDF render was triggered.
 		expect(handled).toEqual([]);
@@ -123,10 +118,7 @@ describe('Host validation', () => {
 		const { server } = await boot();
 		expect((await requestWithHost(server.port, '127.0.0.1:1')).status).toBe(403);
 
-		const noHost = await rawRequest(
-			server.port,
-			'GET / HTTP/1.0\r\nConnection: close\r\n\r\n'
-		);
+		const noHost = await rawRequest(server.port, 'GET / HTTP/1.0\r\nConnection: close\r\n\r\n');
 		expect(noHost).toMatch(/^HTTP\/1\.[01] 403 /);
 	});
 
