@@ -754,6 +754,53 @@ describe('poli dev', () => {
 			await session.close();
 			await expect(session.close()).resolves.toBeUndefined();
 		});
+
+		it('close() waits for an in-flight watcher batch to settle', async () => {
+			await setupTemplate(projectDir, 'invoice');
+			const { factory, getController } = createManualWatcherFactory();
+
+			let blockNextSync = false;
+			let syncStarted!: () => void;
+			const syncStartedPromise = new Promise<void>((r) => (syncStarted = r));
+			let releaseSync!: () => void;
+			const syncGate = new Promise<void>((r) => (releaseSync = r));
+			let syncSettled = false;
+
+			const session = await start(undefined, {
+				apiClient: makeStubClient({
+					patchImpl: async () => {
+						if (blockNextSync) {
+							blockNextSync = false;
+							syncStarted();
+							await syncGate;
+							syncSettled = true;
+						}
+						return { syncedAt: '2026-09-01T10:00:00.000Z' };
+					},
+				}),
+				watcherFactory: factory,
+			});
+
+			blockNextSync = true;
+			await writeFile(join(projectDir, 'templates', 'invoice', 'invoice.html'), 'v2');
+			getController().emit(['templates/invoice/invoice.html']);
+			await syncStartedPromise;
+
+			let closeResolved = false;
+			const closing = session.close().then(() => {
+				closeResolved = true;
+			});
+
+			// Give a close() that ignores the batch every chance to resolve
+			// prematurely — the contract says it must not.
+			await new Promise((r) => setTimeout(r, 100));
+			expect(closeResolved).toBe(false);
+
+			releaseSync();
+			await closing;
+			expect(syncSettled).toBe(true);
+			expect(closeResolved).toBe(true);
+		});
 	});
 
 	describe('--data override', () => {

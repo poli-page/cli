@@ -256,8 +256,19 @@ export async function startDevSession(
 	const pdfCache: PdfCacheEntry[] = [];
 	let server: DevServer | null = null;
 	let stopped = false;
+	/** Set the moment `close()` is called — the session is shutting down. */
+	let closing: Promise<void> | null = null;
+	/**
+	 * The watcher batch currently being processed. `close()` awaits it so
+	 * "resolves once the in-flight sync/render work has settled" is true
+	 * even for a batch that was already past the `stopped` check.
+	 */
+	let inflightBatch: Promise<void> = Promise.resolve();
 
 	function broadcast(): void {
+		// During shutdown the SSE responses are being ended — a batch
+		// still settling must not write into them.
+		if (closing) return;
 		server?.broadcast('state', state);
 	}
 
@@ -569,16 +580,23 @@ export async function startDevSession(
 		cwd,
 		debounceMs: options.debounceMs ?? DEFAULT_DEBOUNCE_MS,
 		onBatch: () => {
-			void onBatch();
+			// Chained rather than fire-and-forget so `close()` can await
+			// the batch already in flight. `onBatch` handles its own
+			// failures; the catch only keeps a surprise rejection from
+			// wedging the chain (and with it, `close()`).
+			inflightBatch = inflightBatch.then(onBatch).catch(() => {});
 		},
 	});
 
-	let closing: Promise<void> | null = null;
 	const close = async (): Promise<void> => {
 		if (closing) return closing;
 		stopped = true;
 		closing = (async () => {
+			// No new batches once the watcher is down…
 			await watcher.close();
+			// …and the one already past the `stopped` check finishes
+			// before the SSE responses and the port go away.
+			await inflightBatch;
 			await server?.close();
 			emit({ type: 'stopped' });
 		})();
