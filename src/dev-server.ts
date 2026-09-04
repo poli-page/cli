@@ -82,6 +82,22 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
 			res.end(JSON.stringify({ error: 'Malformed request URL.' }));
 			return;
 		}
+		// Any web page can fire requests at 127.0.0.1, and with DNS
+		// rebinding it can even read the responses. The Host header is the
+		// one thing the browser pins to the page's origin, so only the
+		// names a legitimate local browser sends are answered — everything
+		// else (CSRF against the POST endpoints, rebinding against the
+		// draft preview, the SSE stream) gets a 403. Applies to every
+		// route, the SSE endpoint included.
+		if (!isAllowedHost(req.headers.host)) {
+			res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+			res.end(
+				JSON.stringify({
+					error: `Blocked request with unrecognized Host header. poli dev answers only ${host} and localhost on its own port.`,
+				})
+			);
+			return;
+		}
 		if (url.pathname === eventsPath) {
 			attachSseClient(req, res);
 			return;
@@ -106,6 +122,28 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
 			res.end(JSON.stringify({ error: message }));
 		});
 	});
+
+	/**
+	 * A Host header is acceptable when it names this server: the bind
+	 * address (or `localhost`, which resolves to it) on the port actually
+	 * bound. Parsed as a URL authority so `user@host` tricks and
+	 * malformed values fail closed.
+	 */
+	function isAllowedHost(hostHeader: string | undefined): boolean {
+		if (!hostHeader) return false;
+		let authority: URL;
+		try {
+			authority = new URL(`http://${hostHeader}`);
+		} catch {
+			return false;
+		}
+		if (authority.username !== '' || authority.password !== '') return false;
+		if (authority.hostname !== host && authority.hostname !== 'localhost') return false;
+		const address = server.address() as AddressInfo | null;
+		if (!address) return false;
+		const requestPort = authority.port === '' ? '80' : authority.port;
+		return requestPort === String(address.port);
+	}
 
 	server.on('connection', (socket) => {
 		sockets.add(socket);
