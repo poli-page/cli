@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **The local ⇄ cloud-draft sync used by `poli watch` moved into `src/project-sync.ts`** and is now shared with `poli dev`. `poli watch`'s behaviour, output, resilience rules, and TTY requirement are unchanged.
 
+### Fixed
+- **On Windows, the draft sync uploaded the contents of ignored directories.** The ignore rules split paths on `/` only, but were fed the raw backslash-separated output of `relative()` — so `node_modules\pkg\thing.json` read as a single segment, matched no directory rule, passed the `.json` allowlist, and was pushed to the cloud draft (same for `.git`, `output`, and `dist` files with syncable extensions). Affected `poli watch` and `poli dev`. Paths are now POSIX-normalised inside `shouldIgnoreProjectPath` itself, so every rule holds under both separator styles for every caller.
+
 ## [0.8.2] — 2026-05-11
 
 ### Fixed

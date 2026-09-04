@@ -41,6 +41,23 @@ describe('shouldIgnoreProjectPath', () => {
 		expect(shouldIgnoreProjectPath('templates/invoice/invoice.html')).toBe(false);
 		expect(shouldIgnoreProjectPath('tailwind.css')).toBe(false);
 	});
+
+	// On Windows `relative()` produces backslash-separated paths and the
+	// caller hands them over raw. The ignore rules must hold under both
+	// separator styles or `node_modules` ends up in the cloud draft.
+	it('applies the same rules to backslash-separated (Windows) paths', () => {
+		expect(shouldIgnoreProjectPath('node_modules\\pkg\\thing.json')).toBe(true);
+		expect(shouldIgnoreProjectPath('.git\\objects\\ab\\cdef.json')).toBe(true);
+		expect(shouldIgnoreProjectPath('output\\invoice\\a4-portrait\\output.html')).toBe(true);
+		expect(shouldIgnoreProjectPath('dist\\index.json')).toBe(true);
+		expect(shouldIgnoreProjectPath('templates\\.DS_Store')).toBe(true);
+		expect(shouldIgnoreProjectPath('logs\\debug.log')).toBe(true);
+	});
+
+	it('keeps project sources given with backslash separators', () => {
+		expect(shouldIgnoreProjectPath('templates\\invoice\\invoice.html')).toBe(false);
+		expect(shouldIgnoreProjectPath('assets\\fonts\\dm-sans.woff2')).toBe(false);
+	});
 });
 
 describe('isBinaryAsset', () => {

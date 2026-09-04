@@ -55,14 +55,20 @@ function isSyncableProjectFile(relPath: string): boolean {
 }
 
 export function shouldIgnoreProjectPath(relPath: string): boolean {
-	const segments = relPath.split('/');
+	// Callers pass the raw output of `relative()`, which is
+	// backslash-separated on Windows. Normalise here, at the public
+	// boundary, so every rule below sees POSIX segments on every host —
+	// otherwise `node_modules\\pkg\\thing.json` reads as one segment,
+	// matches no directory rule, and passes the `.json` allowlist.
+	const normalized = relPath.split(/[\\/]/).join('/');
+	const segments = normalized.split('/');
 	if (segments.includes('node_modules')) return true;
 	if (segments.includes('.git')) return true;
 	if (segments.includes('output')) return true;
 	if (segments.includes('dist')) return true;
-	if (relPath.endsWith('.DS_Store')) return true;
-	if (relPath.endsWith('.log')) return true;
-	return !isSyncableProjectFile(relPath);
+	if (normalized.endsWith('.DS_Store')) return true;
+	if (normalized.endsWith('.log')) return true;
+	return !isSyncableProjectFile(normalized);
 }
 
 /**
