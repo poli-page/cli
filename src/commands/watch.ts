@@ -1,18 +1,8 @@
 import { Command } from 'commander';
-import { readdir, readFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
-import {
-	createApiClient,
-	SystemProjectLockedError,
-	type ApiClient,
-} from '../api-client.js';
+import { SystemProjectLockedError, type ApiClient } from '../api-client.js';
 import { resolveCloudContext } from '../cloud-context.js';
-import {
-	createFileWatcher,
-	type FileWatcher,
-	type FileWatcherOptions,
-} from '../file-watcher.js';
-import { computeDelta, hashContent, syncWithRetry } from '../sync-engine.js';
+import { createFileWatcher, type FileWatcher, type FileWatcherOptions } from '../file-watcher.js';
+import { createProjectSyncer } from '../project-sync.js';
 import { errorToExitCode } from '../exit-codes.js';
 
 export type WatchEventType = 'ready' | 'syncing' | 'synced' | 'error';
@@ -41,7 +31,7 @@ export class TtyRequiredError extends Error {
 	}
 }
 
-const SYSTEM_PROJECT_FRIENDLY =
+export const SYSTEM_PROJECT_FRIENDLY =
 	'`getting-started` is read-only. Run `poli init` to start your own project.';
 
 export async function executeWatch(options: WatchOptions): Promise<void> {
@@ -58,13 +48,10 @@ export async function executeWatch(options: WatchOptions): Promise<void> {
 		homeDir: options.homeDir,
 	});
 
-	let hashes = new Map<string, string>();
-	const initialFiles = await readAllFiles(cwd);
-	for (const [path, content] of initialFiles) {
-		hashes.set(path, hashContent(content));
-	}
+	const syncer = createProjectSyncer({ cwd, client, ctx, signal: options.signal });
+	const tracked = await syncer.prime();
 
-	options.onEvent?.({ type: 'ready', message: `tracking ${hashes.size} file(s)` });
+	options.onEvent?.({ type: 'ready', message: `tracking ${tracked} file(s)` });
 
 	let fatal: Error | null = null;
 	const factory = options.watcherFactory ?? createFileWatcher;
@@ -75,30 +62,14 @@ export async function executeWatch(options: WatchOptions): Promise<void> {
 			if (options.signal?.aborted) return;
 			try {
 				options.onEvent?.({ type: 'syncing' });
-				const newFiles = await readAllFiles(cwd);
-				const delta = computeDelta(hashes, newFiles);
+				const outcome = await syncer.sync();
 
-				if (
-					delta.added.length === 0 &&
-					delta.modified.length === 0 &&
-					delta.deleted.length === 0
-				) {
-					hashes = delta.newHashes;
+				if (!outcome.changed) {
 					options.onEvent?.({ type: 'synced', message: 'no changes' });
 					return;
 				}
 
-				const result = await syncWithRetry({
-					syncFn: () =>
-						client.patchFiles(ctx.session, ctx.orgId, ctx.projectId, {
-							added: delta.added,
-							modified: delta.modified,
-							deleted: delta.deleted,
-						}),
-					signal: options.signal,
-				});
-				hashes = delta.newHashes;
-				options.onEvent?.({ type: 'synced', syncedAt: result.syncedAt });
+				options.onEvent?.({ type: 'synced', syncedAt: outcome.syncedAt });
 			} catch (err) {
 				if (err instanceof SystemProjectLockedError) {
 					options.onEvent?.({
@@ -140,75 +111,10 @@ export async function executeWatch(options: WatchOptions): Promise<void> {
 	if (fatal) throw fatal;
 }
 
-/**
- * File extensions that the API treats as opaque binary assets (images,
- * fonts) and decodes via `Buffer.from(content, 'base64')`. The CLI must
- * therefore send their content base64-encoded — reading them as utf-8
- * silently corrupts the bytes on the way to the server. The list mirrors
- * the API's `resolveContentType` allowlist (packages/api/src/services/
- * project.service.ts). SVG is included even though it is XML on disk
- * because the API treats it the same way as raster images.
- */
-const BINARY_ASSET_EXTENSIONS = new Set([
-	'png',
-	'jpg',
-	'jpeg',
-	'gif',
-	'svg',
-	'webp',
-	'woff',
-	'woff2',
-	'ttf',
-	'otf',
-]);
-
-function isBinaryAsset(relPath: string): boolean {
-	const ext = relPath.split('.').pop()?.toLowerCase();
-	return ext !== undefined && BINARY_ASSET_EXTENSIONS.has(ext);
-}
-
-async function readAllFiles(cwd: string): Promise<Map<string, string>> {
-	const out = new Map<string, string>();
-	const entries = await readdir(cwd, { recursive: true, withFileTypes: true });
-	for (const entry of entries) {
-		if (!entry.isFile()) continue;
-		const parentDir = (entry as unknown as { parentPath?: string; path?: string }).parentPath
-			?? (entry as unknown as { parentPath?: string; path?: string }).path
-			?? cwd;
-		const absolutePath = join(parentDir, entry.name);
-		const relPath = relative(cwd, absolutePath);
-		if (shouldIgnore(relPath)) continue;
-		// Posix-normalise the relative path so the wire format matches
-		// the path comparisons performed by the API regardless of host OS.
-		const wirePath = relPath.split(/[\\/]/).join('/');
-		if (isBinaryAsset(wirePath)) {
-			const buffer = await readFile(absolutePath);
-			out.set(wirePath, buffer.toString('base64'));
-		} else {
-			const content = await readFile(absolutePath, 'utf-8');
-			out.set(wirePath, content);
-		}
-	}
-	return out;
-}
-
-function shouldIgnore(relPath: string): boolean {
-	const segments = relPath.split('/');
-	if (segments.includes('node_modules')) return true;
-	if (segments.includes('.git')) return true;
-	if (segments.includes('output')) return true;
-	if (segments.includes('dist')) return true;
-	if (relPath.endsWith('.DS_Store')) return true;
-	if (relPath.endsWith('.log')) return true;
-	return false;
-}
-
 export function registerWatchCommand(program: Command): void {
 	program
 		.command('watch')
-		.description(
-			'Sync the local project to the cloud draft on each save (debounced 2s)'
-		)
+		.description('Sync the local project to the cloud draft on each save (debounced 2s)')
 		.action(async () => {
 			const { default: chalk } = await import('chalk');
 			const controller = new AbortController();
@@ -233,7 +139,9 @@ export function registerWatchCommand(program: Command): void {
 								break;
 							case 'synced':
 								process.stdout.write(
-									chalk.green(`\r[${ts}] ✓ synced${e.message ? ` — ${e.message}` : ''}\n`)
+									chalk.green(
+										`\r[${ts}] ✓ synced${e.message ? ` — ${e.message}` : ''}\n`
+									)
 								);
 								break;
 							case 'error':
