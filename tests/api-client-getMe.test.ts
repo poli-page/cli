@@ -88,7 +88,7 @@ describe('api-client getMe', () => {
 
 	it('propagates typed errors from /v1/me (MISSING_ORG_CONTEXT)', async () => {
 		mockFetch(
-			{ error: { code: 'MISSING_ORG_CONTEXT', message: 'no org header' } },
+			{ error: 'MISSING_ORG_CONTEXT', detail: 'no org header', requestId: 'req-test' },
 			400
 		);
 		const client = createApiClient('https://api.test');

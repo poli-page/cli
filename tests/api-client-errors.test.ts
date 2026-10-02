@@ -4,7 +4,7 @@ import {
 	ApiError,
 	QuotaExceededError,
 	OverageCapError,
-	PaymentRequiredError,
+	OrgPaymentGraceError,
 	OrgCancelledError,
 	OrgPurgedError,
 	OrgMigratingError,
@@ -21,6 +21,8 @@ import {
 	InvalidTrackFormatError,
 	VersionConflictError,
 } from '../src/api-client.js';
+import { ExitCode, errorToExitCode } from '../src/exit-codes.js';
+import realResponses from './fixtures/api-error-responses.json';
 
 function mockFetchOnce(
 	status: number,
@@ -35,6 +37,18 @@ function mockFetchOnce(
 		'fetch',
 		vi.fn().mockResolvedValue(response)
 	);
+}
+
+/**
+ * The API error envelope (api-spec §4.1, `packages/api/src/middleware/error-handler.ts`):
+ * the code is a string in `error`, the human-readable reason is the optional `detail`.
+ */
+function envelope(code: string, detail?: string) {
+	return {
+		error: code,
+		...(detail !== undefined ? { detail } : {}),
+		requestId: 'req-test',
+	};
 }
 
 describe('api-client error mapping', () => {
@@ -52,187 +66,123 @@ describe('api-client error mapping', () => {
 	}
 
 	describe('typed error classes for known API codes', () => {
-		it('maps 429 QUOTA_EXCEEDED → QuotaExceededError + Retry-After', async () => {
-			mockFetchOnce(
-				429,
-				{ error: { code: 'QUOTA_EXCEEDED', message: 'Free plan: 100/mo' } },
-				{ 'Retry-After': '12345' }
-			);
+		it('maps 429 QUOTA_EXCEEDED → QuotaExceededError, message from detail, Retry-After', async () => {
+			mockFetchOnce(429, envelope('QUOTA_EXCEEDED', 'Free plan: 100/mo'), {
+				'Retry-After': '12345',
+			});
 			const err = await callAnyEndpoint().catch((e) => e);
 			expect(err).toBeInstanceOf(QuotaExceededError);
 			expect(err).toBeInstanceOf(ApiError);
 			expect(err.code).toBe('QUOTA_EXCEEDED');
 			expect(err.httpStatus).toBe(429);
 			expect(err.retryAfter).toBe(12345);
-			expect(err.message).toMatch(/Free plan/);
+			expect(err.message).toBe('Free plan: 100/mo');
 		});
 
-		it('maps 429 OVERAGE_CAP_EXCEEDED → OverageCapError', async () => {
-			mockFetchOnce(429, {
-				error: { code: 'OVERAGE_CAP_EXCEEDED', message: 'cap reached' },
-			});
-			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(OverageCapError);
-		});
+		const typedCases: Array<[string, number, new (message: string) => ApiError]> = [
+			['QUOTA_EXCEEDED', 429, QuotaExceededError],
+			['OVERAGE_CAP_EXCEEDED', 429, OverageCapError],
+			['ORGANIZATION_PAYMENT_GRACE', 403, OrgPaymentGraceError],
+			['ORGANIZATION_CANCELLED', 403, OrgCancelledError],
+			['ORGANIZATION_PURGED', 410, OrgPurgedError],
+			['ORGANIZATION_MIGRATING', 503, OrgMigratingError],
+			['INVALID_VERSION_FORMAT', 400, InvalidVersionFormatError],
+			['INVALID_VERSION_FOR_KEY_ENV', 400, InvalidVersionForKeyEnvError],
+			['VERSION_REQUIRED', 400, VersionRequiredError],
+			['MISSING_ORG_CONTEXT', 400, MissingOrgContextError],
+			['NOT_A_MEMBER', 403, NotAMemberError],
+			['THUMBNAILS_NOT_AVAILABLE', 403, ThumbnailsNotAvailableError],
+			['DOCUMENT_NOT_FOUND', 404, DocumentNotFoundError],
+			['DOCUMENT_GONE', 410, DocumentGoneError],
+			['SYSTEM_PROJECT_LOCKED', 403, SystemProjectLockedError],
+			['SYSTEM_PROJECT_IMMUTABLE', 403, SystemProjectImmutableError],
+			['INVALID_TRACK_FORMAT', 400, InvalidTrackFormatError],
+			['VERSION_CONFLICT', 409, VersionConflictError],
+		];
 
-		it('maps 402 PAYMENT_REQUIRED → PaymentRequiredError', async () => {
-			mockFetchOnce(402, {
-				error: { code: 'PAYMENT_REQUIRED', message: 'past due' },
-			});
-			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(PaymentRequiredError);
-		});
+		it.each(typedCases)(
+			'maps %s (%i) with a detail → typed error carrying the detail',
+			async (code, status, ctor) => {
+				mockFetchOnce(status, envelope(code, `why ${code} happened`));
+				const err = await callAnyEndpoint().catch((e) => e);
+				expect(err).toBeInstanceOf(ctor);
+				expect(err.code).toBe(code);
+				expect(err.httpStatus).toBe(status);
+				expect(err.message).toBe(`why ${code} happened`);
+			}
+		);
 
-		it('maps 403 ORGANIZATION_CANCELLED → OrgCancelledError', async () => {
-			mockFetchOnce(403, {
-				error: { code: 'ORGANIZATION_CANCELLED', message: 'cancelled' },
-			});
-			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(OrgCancelledError);
-		});
+		it.each(typedCases)(
+			'maps %s (%i) without a detail → typed error, message names status + code',
+			async (code, status, ctor) => {
+				mockFetchOnce(status, envelope(code));
+				const err = await callAnyEndpoint().catch((e) => e);
+				expect(err).toBeInstanceOf(ctor);
+				expect(err.message).toBe(`${status} ${code}`);
+			}
+		);
 
-		it('maps 410 ORGANIZATION_PURGED → OrgPurgedError', async () => {
-			mockFetchOnce(410, {
-				error: { code: 'ORGANIZATION_PURGED', message: 'purged' },
-			});
-			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(OrgPurgedError);
-		});
-
-		it('maps 503 ORGANIZATION_MIGRATING → OrgMigratingError', async () => {
-			mockFetchOnce(503, {
-				error: { code: 'ORGANIZATION_MIGRATING', message: 'migrating' },
-			});
-			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(OrgMigratingError);
-		});
-
-		it('maps 400 INVALID_VERSION_FORMAT → InvalidVersionFormatError', async () => {
-			mockFetchOnce(400, {
-				error: { code: 'INVALID_VERSION_FORMAT', message: 'bad format' },
-			});
-			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(
-				InvalidVersionFormatError
-			);
-		});
-
-		it('maps 400 INVALID_VERSION_FOR_KEY_ENV → InvalidVersionForKeyEnvError', async () => {
-			mockFetchOnce(400, {
-				error: {
-					code: 'INVALID_VERSION_FOR_KEY_ENV',
-					message: 'mismatch',
-				},
-			});
-			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(
-				InvalidVersionForKeyEnvError
-			);
-		});
-
-		it('maps 400 VERSION_REQUIRED → VersionRequiredError', async () => {
-			mockFetchOnce(400, {
-				error: { code: 'VERSION_REQUIRED', message: 'version required' },
-			});
-			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(VersionRequiredError);
-		});
-
-		it('maps 400 MISSING_ORG_CONTEXT → MissingOrgContextError', async () => {
-			mockFetchOnce(400, {
-				error: { code: 'MISSING_ORG_CONTEXT', message: 'no org header' },
-			});
-			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(MissingOrgContextError);
-		});
-
-		it('maps 403 NOT_A_MEMBER → NotAMemberError', async () => {
-			mockFetchOnce(403, {
-				error: { code: 'NOT_A_MEMBER', message: 'no membership' },
-			});
-			await expect(callAnyEndpoint()).rejects.toBeInstanceOf(NotAMemberError);
-		});
-
-		it('maps 403 THUMBNAILS_NOT_AVAILABLE → ThumbnailsNotAvailableError', async () => {
-			mockFetchOnce(403, {
-				error: {
-					code: 'THUMBNAILS_NOT_AVAILABLE',
-					message: 'Thumbnails require a paid plan.',
-				},
-			});
+		it('has no typed class for PAYMENT_REQUIRED: the payment-grace block is 403 ORGANIZATION_PAYMENT_GRACE (#399)', async () => {
+			mockFetchOnce(402, envelope('PAYMENT_REQUIRED'));
 			const err = await callAnyEndpoint().catch((e) => e);
-			expect(err).toBeInstanceOf(ThumbnailsNotAvailableError);
-			expect(err.code).toBe('THUMBNAILS_NOT_AVAILABLE');
-			expect(err.httpStatus).toBe(403);
+			expect(err.constructor).toBe(ApiError);
+			expect(err.code).toBe('PAYMENT_REQUIRED');
+			expect(err.httpStatus).toBe(402);
 		});
 
-		it('maps 404 DOCUMENT_NOT_FOUND → DocumentNotFoundError', async () => {
-			mockFetchOnce(404, {
-				error: { code: 'DOCUMENT_NOT_FOUND', message: 'unknown id' },
-			});
+		it('a typed error built from the real envelope reaches its documented exit code', async () => {
+			mockFetchOnce(403, envelope('NOT_A_MEMBER'));
 			const err = await callAnyEndpoint().catch((e) => e);
-			expect(err).toBeInstanceOf(DocumentNotFoundError);
-			expect(err.httpStatus).toBe(404);
-		});
-
-		it('maps 410 DOCUMENT_GONE → DocumentGoneError', async () => {
-			mockFetchOnce(410, {
-				error: { code: 'DOCUMENT_GONE', message: 'soft-deleted' },
-			});
-			const err = await callAnyEndpoint().catch((e) => e);
-			expect(err).toBeInstanceOf(DocumentGoneError);
-			expect(err.httpStatus).toBe(410);
-		});
-
-		it('maps 403 SYSTEM_PROJECT_LOCKED → SystemProjectLockedError', async () => {
-			mockFetchOnce(403, {
-				error: {
-					code: 'SYSTEM_PROJECT_LOCKED',
-					message: 'getting-started is read-only',
-				},
-			});
-			const err = await callAnyEndpoint().catch((e) => e);
-			expect(err).toBeInstanceOf(SystemProjectLockedError);
-			expect(err.httpStatus).toBe(403);
-		});
-
-		it('maps 403 SYSTEM_PROJECT_IMMUTABLE → SystemProjectImmutableError', async () => {
-			mockFetchOnce(403, {
-				error: {
-					code: 'SYSTEM_PROJECT_IMMUTABLE',
-					message: 'cannot rename system project',
-				},
-			});
-			const err = await callAnyEndpoint().catch((e) => e);
-			expect(err).toBeInstanceOf(SystemProjectImmutableError);
-			expect(err.httpStatus).toBe(403);
-		});
-
-		it('maps 400 INVALID_TRACK_FORMAT → InvalidTrackFormatError', async () => {
-			mockFetchOnce(400, {
-				error: {
-					code: 'INVALID_TRACK_FORMAT',
-					message: 'Track must match major.minor',
-				},
-			});
-			const err = await callAnyEndpoint().catch((e) => e);
-			expect(err).toBeInstanceOf(InvalidTrackFormatError);
-			expect(err.httpStatus).toBe(400);
-		});
-
-		it('maps 409 VERSION_CONFLICT → VersionConflictError', async () => {
-			mockFetchOnce(409, {
-				error: {
-					code: 'VERSION_CONFLICT',
-					message: 'Version 1.0.5 already exists',
-				},
-			});
-			const err = await callAnyEndpoint().catch((e) => e);
-			expect(err).toBeInstanceOf(VersionConflictError);
-			expect(err.httpStatus).toBe(409);
+			expect(errorToExitCode(err)).toBe(ExitCode.NOT_AUTHORIZED);
 		});
 	});
 
 	describe('fallback for unmapped errors', () => {
-		it('throws a generic ApiError when the code is unknown', async () => {
-			mockFetchOnce(500, {
-				error: { code: 'INTERNAL_ERROR', message: 'oops' },
-			});
+		it('throws a generic ApiError carrying the code when the code is unknown', async () => {
+			mockFetchOnce(500, envelope('INTERNAL_ERROR', 'An unexpected error occurred'));
 			const err = await callAnyEndpoint().catch((e) => e);
-			expect(err).toBeInstanceOf(ApiError);
+			expect(err.constructor).toBe(ApiError);
 			expect(err.code).toBe('INTERNAL_ERROR');
 			expect(err.httpStatus).toBe(500);
+			expect(err.message).toBe('An unexpected error occurred');
+		});
+
+		it('appends validation issues to the detail', async () => {
+			mockFetchOnce(400, {
+				...envelope('VALIDATION_ERROR', 'Request validation failed'),
+				issues: { name: ['Too short', 'Bad chars'], slug: ['Required'] },
+			});
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err.code).toBe('VALIDATION_ERROR');
+			expect(err.message).toBe(
+				'Request validation failed: name: Too short, Bad chars; slug: Required'
+			);
+		});
+
+		it('reads the Better Auth shape { code, message } (/api/auth/* routes)', async () => {
+			mockFetchOnce(422, {
+				code: 'USER_ALREADY_EXISTS',
+				message: 'User already exists. Use another email.',
+			});
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err.code).toBe('USER_ALREADY_EXISTS');
+			expect(err.httpStatus).toBe(422);
+			expect(err.message).toBe('User already exists. Use another email.');
+		});
+
+		it('ignores the nested { error: { code } } shape, which no route the CLI calls sends', async () => {
+			mockFetchOnce(403, { error: { code: 'NOT_A_MEMBER', message: 'nested' } });
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err).not.toBeInstanceOf(NotAMemberError);
+			expect(err.code).toBe('UNKNOWN');
+		});
+
+		it('uses a bare { message } body (e.g. an API Gateway error) as the message', async () => {
+			mockFetchOnce(503, { message: 'Service Unavailable' });
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err.code).toBe('UNKNOWN');
+			expect(err.httpStatus).toBe(503);
+			expect(err.message).toBe('Service Unavailable');
 		});
 
 		it('throws a generic ApiError when the body is not JSON', async () => {
@@ -242,6 +192,28 @@ describe('api-client error mapping', () => {
 			expect(err.httpStatus).toBe(500);
 			expect(err.message).toMatch(/plain text body/);
 		});
+
+		it('names the status when the body is empty', async () => {
+			mockFetchOnce(502, '');
+			const err = await callAnyEndpoint().catch((e) => e);
+			expect(err.code).toBe('UNKNOWN');
+			expect(err.message).toBe('HTTP 502');
+		});
+	});
+
+	describe('real API responses (tests/fixtures/api-error-responses.json, captured from api-develop)', () => {
+		it.each(realResponses.responses.map((r) => [r.name, r] as const))(
+			'%s',
+			async (_name, fixture) => {
+				mockFetchOnce(fixture.status, fixture.body);
+				const err = await callAnyEndpoint().catch((e) => e);
+				expect(err).toBeInstanceOf(ApiError);
+				expect(err.code).toBe(fixture.expectedCode);
+				expect(err.httpStatus).toBe(fixture.status);
+				expect(err.message).toBe(fixture.expectedMessage);
+				expect(err.message).not.toMatch(/requestId/);
+			}
+		);
 	});
 
 	describe('network failure (fetch threw)', () => {
