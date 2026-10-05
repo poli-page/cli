@@ -27,6 +27,7 @@ import {
 	ApiError,
 	NotAMemberError,
 	OrgCancelledError,
+	OrgPaymentGraceError,
 	OrgPurgedError,
 	OrgMigratingError,
 	SystemProjectLockedError,
@@ -55,9 +56,10 @@ export function errorToExitCode(err: unknown): ExitCodeValue {
 
 	if (err instanceof Error) {
 		// Auth-domain typed errors map to "not authorised" (insufficient role,
-		// org cancelled/purged, system project locked).
+		// org in payment grace/cancelled/purged, system project locked).
 		if (
 			err instanceof NotAMemberError ||
+			err instanceof OrgPaymentGraceError ||
 			err instanceof OrgCancelledError ||
 			err instanceof OrgPurgedError ||
 			err instanceof SystemProjectLockedError ||

@@ -3,6 +3,7 @@ import { ExitCode, errorToExitCode } from '../src/exit-codes.js';
 import {
 	NotAMemberError,
 	OrgCancelledError,
+	OrgPaymentGraceError,
 	OrgMigratingError,
 	SystemProjectLockedError,
 	ThumbnailsNotAvailableError,
@@ -43,6 +44,12 @@ describe('errorToExitCode', () => {
 
 	it('returns NOT_AUTHORIZED (5) for OrgCancelledError', () => {
 		expect(errorToExitCode(new OrgCancelledError('cancelled'))).toBe(
+			ExitCode.NOT_AUTHORIZED
+		);
+	});
+
+	it('returns NOT_AUTHORIZED (5) for OrgPaymentGraceError (same shape as cancelled)', () => {
+		expect(errorToExitCode(new OrgPaymentGraceError('payment grace'))).toBe(
 			ExitCode.NOT_AUTHORIZED
 		);
 	});

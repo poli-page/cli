@@ -1,0 +1,53 @@
+{
+	"_comment": "Real error responses captured from https://api-develop.poli.page on 2026-10-02 with curl (no credentials). Bodies are verbatim; do not edit them by hand. Re-capture with the command in each entry.",
+	"responses": [
+		{
+			"name": "session route without a session",
+			"capture": "curl -s -i https://api-develop.poli.page/api/organizations",
+			"status": 401,
+			"body": "{\"error\":\"UNAUTHORIZED\",\"requestId\":\"31e7990b-d81c-4e0d-9b1f-53ced4dbfe1b\"}",
+			"expectedCode": "UNAUTHORIZED",
+			"expectedMessage": "401 UNAUTHORIZED"
+		},
+		{
+			"name": "/v1 route without an API key",
+			"capture": "curl -s -i https://api-develop.poli.page/v1/me",
+			"status": 401,
+			"body": "{\"error\":\"MISSING_API_KEY\",\"requestId\":\"53fe3b7f-9560-4356-a810-d86763529cf1\"}",
+			"expectedCode": "MISSING_API_KEY",
+			"expectedMessage": "401 MISSING_API_KEY"
+		},
+		{
+			"name": "/v1 route with an unknown API key",
+			"capture": "curl -s -i -X POST -H 'Authorization: Bearer pp_test_notarealkey' -H 'Content-Type: application/json' -d '{}' https://api-develop.poli.page/v1/render",
+			"status": 401,
+			"body": "{\"error\":\"INVALID_API_KEY\",\"requestId\":\"b67d06eb-48f9-41b2-8416-5cf47f1d6d2f\"}",
+			"expectedCode": "INVALID_API_KEY",
+			"expectedMessage": "401 INVALID_API_KEY"
+		},
+		{
+			"name": "device poll with an unknown device code",
+			"capture": "curl -s -i -X POST -H 'Content-Type: application/json' -d '{\"deviceCode\":\"nope\"}' https://api-develop.poli.page/api/device/poll",
+			"status": 404,
+			"body": "{\"error\":\"DEVICE_CODE_NOT_FOUND\",\"requestId\":\"8d66d763-080c-4295-a432-62a9e5f7d12d\"}",
+			"expectedCode": "DEVICE_CODE_NOT_FOUND",
+			"expectedMessage": "404 DEVICE_CODE_NOT_FOUND"
+		},
+		{
+			"name": "device poll with an invalid body (zod validation)",
+			"capture": "curl -s -i -X POST -H 'Content-Type: application/json' -d '{}' https://api-develop.poli.page/api/device/poll",
+			"status": 400,
+			"body": "{\"error\":\"VALIDATION_ERROR\",\"requestId\":\"ca43a5bc-097d-4b09-9e77-52dfba5f4f52\",\"detail\":\"Request validation failed\",\"issues\":{\"deviceCode\":[\"Invalid input: expected string, received undefined\"]}}",
+			"expectedCode": "VALIDATION_ERROR",
+			"expectedMessage": "Request validation failed: deviceCode: Invalid input: expected string, received undefined"
+		},
+		{
+			"name": "Better Auth sign-in with wrong credentials",
+			"capture": "curl -s -i -X POST -H 'Content-Type: application/json' -H 'Origin: https://api-develop.poli.page' -d '{\"email\":\"nobody-401-fixture@example.com\",\"password\":\"wrong-password-123\"}' https://api-develop.poli.page/api/auth/sign-in/email",
+			"status": 401,
+			"body": "{\"message\":\"Invalid email or password\",\"code\":\"INVALID_EMAIL_OR_PASSWORD\"}",
+			"expectedCode": "INVALID_EMAIL_OR_PASSWORD",
+			"expectedMessage": "Invalid email or password"
+		}
+	]
+}

@@ -24,9 +24,9 @@ export class OverageCapError extends ApiError {
 		super('OVERAGE_CAP_EXCEEDED', 429, message, retryAfter);
 	}
 }
-export class PaymentRequiredError extends ApiError {
+export class OrgPaymentGraceError extends ApiError {
 	constructor(message: string, retryAfter?: number) {
-		super('PAYMENT_REQUIRED', 402, message, retryAfter);
+		super('ORGANIZATION_PAYMENT_GRACE', 403, message, retryAfter);
 	}
 }
 export class OrgCancelledError extends ApiError {
@@ -110,7 +110,7 @@ type TypedErrorCtor = new (message: string, retryAfter?: number) => ApiError;
 const TYPED_ERROR_REGISTRY: Record<string, TypedErrorCtor> = {
 	QUOTA_EXCEEDED: QuotaExceededError,
 	OVERAGE_CAP_EXCEEDED: OverageCapError,
-	PAYMENT_REQUIRED: PaymentRequiredError,
+	ORGANIZATION_PAYMENT_GRACE: OrgPaymentGraceError,
 	ORGANIZATION_CANCELLED: OrgCancelledError,
 	ORGANIZATION_PURGED: OrgPurgedError,
 	ORGANIZATION_MIGRATING: OrgMigratingError,
@@ -794,31 +794,68 @@ export function createApiClient(baseUrl?: string): ApiClient {
 async function buildApiError(response: Response): Promise<ApiError> {
 	const text = await response.text();
 	const retryAfter = parseRetryAfter(response.headers.get('Retry-After'));
+	const { code, message } = parseErrorBody(text, response.status);
 
-	let code: string | undefined;
-	let message = text;
-
-	try {
-		const parsed = JSON.parse(text) as {
-			error?: { code?: string; message?: string };
-			detail?: string;
-			message?: string;
-		};
-		if (parsed.error?.code) {
-			code = parsed.error.code;
-			message = parsed.error.message ?? text;
-		} else {
-			message = parsed.detail ?? parsed.message ?? text;
-		}
-	} catch {
-		// Body is not JSON — fall through with the raw text.
-	}
-
-	if (code && TYPED_ERROR_REGISTRY[code]) {
-		return new TYPED_ERROR_REGISTRY[code](message, retryAfter);
+	const typed = code ? TYPED_ERROR_REGISTRY[code] : undefined;
+	if (typed) {
+		return new typed(message, retryAfter);
 	}
 
 	return new ApiError(code ?? 'UNKNOWN', response.status, message, retryAfter);
+}
+
+/**
+ * Read the code and a human-readable message from an error response body.
+ * Two JSON shapes reach the CLI:
+ *
+ *  - the API envelope (api-spec §4.1): `{ error: "<CODE>", detail?, issues?, requestId }`.
+ *    `detail` is optional: most errors carry only the code.
+ *  - Better Auth, for `/api/auth/*` (sign-in, sign-up): `{ code, message }`.
+ *
+ * Anything else (a non-JSON body, an API Gateway `{ message }`) has no code.
+ */
+function parseErrorBody(text: string, status: number): { code?: string; message: string } {
+	let body: unknown;
+	try {
+		body = JSON.parse(text);
+	} catch {
+		return { message: text.trim() === '' ? `HTTP ${status}` : text };
+	}
+	if (typeof body !== 'object' || body === null) {
+		return { message: text };
+	}
+
+	const fields = body as Record<string, unknown>;
+	const code =
+		typeof fields.error === 'string'
+			? fields.error
+			: typeof fields.code === 'string'
+				? fields.code
+				: undefined;
+	const reason =
+		typeof fields.detail === 'string'
+			? fields.detail
+			: typeof fields.message === 'string'
+				? fields.message
+				: undefined;
+	const issues = formatIssues(fields.issues);
+
+	if (reason !== undefined) {
+		return { code, message: issues ? `${reason}: ${issues}` : reason };
+	}
+	if (code !== undefined) {
+		return { code, message: issues ? `${status} ${code}: ${issues}` : `${status} ${code}` };
+	}
+	return { message: text };
+}
+
+/** `{ name: ['Too short'], slug: ['Required'] }` → `name: Too short; slug: Required`. */
+function formatIssues(issues: unknown): string | undefined {
+	if (typeof issues !== 'object' || issues === null) return undefined;
+	const parts = Object.entries(issues as Record<string, unknown>)
+		.filter((entry): entry is [string, unknown[]] => Array.isArray(entry[1]))
+		.map(([field, messages]) => `${field}: ${messages.map(String).join(', ')}`);
+	return parts.length > 0 ? parts.join('; ') : undefined;
 }
 
 function parseRetryAfter(header: string | null): number | undefined {
