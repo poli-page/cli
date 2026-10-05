@@ -1,0 +1,78 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit config for poli-page repos. PRs here are mostly opened and fixed by automated agents
+# (the poli-page auto loop and issue pipeline), which read CodeRabbit's findings and its commit status.
+language: en-US
+early_access: false
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  allow_author_approval: true
+  # The summary goes in the walkthrough, never in the PR description: the merge gate reads the description.
+  high_level_summary: false
+  high_level_summary_in_walkthrough: true
+  review_status: true
+  review_details: false
+  # The loop decides "reviewed this head" from the CodeRabbit commit status ("Review completed").
+  review_progress: true
+  commit_status: true
+  fail_commit_status: false
+  collapse_walkthrough: true
+  changed_files_summary: true
+  sequence_diagrams: true
+  estimate_code_review_effort: true
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+  suggested_labels: true
+  # PR labels are the closed issues' labels; CodeRabbit only suggests.
+  auto_apply_labels: false
+  suggested_reviewers: true
+  auto_assign_reviewers: false
+  in_progress_fortune: false
+  poem: false
+  enable_prompt_for_ai_agents: true
+  abort_on_close: true
+  disable_cache: false
+  slop_detection:
+    enabled: true
+    include_all_authors: false
+  auto_review:
+    enabled: true
+    drafts: false
+    # Every push of a fix round must be reviewed, and never auto-paused (the loop allows up to 5 rounds).
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 0
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+  path_filters:
+    - "!pnpm-lock.yaml"
+    - "!dist/**"
+    - "!coverage/**"
+  path_instructions:
+    - path: "src/commands/**"
+      instructions: >-
+        Command handlers must use the ExitCode constants from src/exit-codes.ts (never hardcode
+        process.exitCode), and emit JSON vs human output through shouldEmitJson in src/output.ts.
+        API errors follow the `{ error: { code, message } }` shape and map to typed errors.
+    - path: "src/program.ts"
+      instructions: >-
+        The command and flag surface is public. Renaming or removing a command, flag or exit code is a
+        breaking change that needs a major version. User-facing command/flag changes must be reflected
+        in the poli-page monorepo (docs/spec/ and packages/docs).
+    - path: "src/api-client.ts"
+      instructions: >-
+        Must stay consistent with the Poli Page API specification (docs/spec/api-specification.md in
+        the poli-page monorepo). Never log or print API keys or session tokens.
+    - path: "src/{auth,credentials}.ts"
+      instructions: >-
+        Credentials handling: no secrets in logs or output, API key via POLI_PAGE_API_KEY only, stored
+        credentials with restrictive file permissions.
+    - path: "tests/**"
+      instructions: >-
+        Every command and public behavior needs a Vitest test, including error and exit-code paths.
+        Tests must not hit the real network or write outside a temp directory.
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns: []
