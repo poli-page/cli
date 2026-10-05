@@ -54,7 +54,7 @@ reviews:
       instructions: >-
         Command handlers must use the ExitCode constants from src/exit-codes.ts (never hardcode
         process.exitCode), and emit JSON vs human output through shouldEmitJson in src/output.ts.
-        API errors follow the `{ error: { code, message } }` shape and map to typed errors.
+        API errors follow the `{ error: CODE_STRING, detail?, issues? } (flat, API spec §4.1)` shape and map to typed errors.
     - path: "src/program.ts"
       instructions: >-
         The command and flag surface is public. Renaming or removing a command, flag or exit code is a
