@@ -1,12 +1,9 @@
 import { Command } from 'commander';
-import { writeFile, mkdir } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
 import {
 	type ApiClient,
 	type VersionInfo,
 	type VersionState,
 } from '../api-client.js';
-import { MANIFEST_FILENAME } from '../constants.js';
 import { resolveCloudContext } from '../cloud-context.js';
 import { registerVersionStateSubcommands } from './version-state.js';
 import { errorToExitCode } from '../exit-codes.js';
@@ -43,75 +40,6 @@ export interface VersionsListOptions {
 export async function executeVersionsList(options: VersionsListOptions): Promise<VersionInfo[]> {
 	const { client, ctx } = await resolveCloudContext(options);
 	return client.listVersions(ctx.session, ctx.orgId, ctx.projectId);
-}
-
-// ─── versions download ─────────────────────────────────────────────────────────
-
-export interface VersionsDownloadOptions {
-	version: string;
-	outputDir: string;
-	cwd?: string;
-	apiClient?: ApiClient;
-	homeDir?: string;
-}
-
-export async function executeVersionsDownload(options: VersionsDownloadOptions): Promise<void> {
-	const { client, ctx } = await resolveCloudContext(options);
-	const bundle = await client.downloadVersion(
-		ctx.session,
-		ctx.orgId,
-		ctx.projectId,
-		options.version,
-	);
-
-	const targetDir = options.outputDir;
-	await mkdir(targetDir, { recursive: true });
-
-	const manifest = bundle.manifest as Record<string, any>;
-
-	// Write templates
-	for (const tpl of manifest.templates ?? []) {
-		const templateDir = join(targetDir, 'templates', tpl.name);
-		await mkdir(templateDir, { recursive: true });
-
-		const htmlFile = bundle.templates.find(
-			(f) => f.path === tpl.template || f.path === `${tpl.name}.html`,
-		);
-		if (htmlFile) {
-			await writeFile(join(templateDir, tpl.template), htmlFile.content, 'utf-8');
-		}
-
-		if (tpl.mock) {
-			const mockFile = bundle.templates.find(
-				(f) => f.path === tpl.mock || f.path === `${tpl.name}.json`,
-			);
-			if (mockFile) {
-				await writeFile(join(templateDir, tpl.mock), mockFile.content, 'utf-8');
-			}
-		}
-	}
-
-	// Write assets
-	if (bundle.images) {
-		for (const img of bundle.images) {
-			const assetPath = join(targetDir, 'assets', img.path);
-			await mkdir(dirname(assetPath), { recursive: true });
-			await writeFile(assetPath, Buffer.from(img.data, 'base64'));
-		}
-	}
-
-	// Write tailwind.css
-	if (bundle.tailwindCss) {
-		await writeFile(join(targetDir, 'tailwind.css'), bundle.tailwindCss, 'utf-8');
-	}
-
-	// Write manifest with cloud metadata
-	manifest.cloud = { orgSlug: ctx.orgSlug, projectId: ctx.projectId };
-	await writeFile(
-		join(targetDir, MANIFEST_FILENAME),
-		JSON.stringify(manifest, null, '\t') + '\n',
-		'utf-8',
-	);
 }
 
 // ─── CLI registration ───────────────────────────────────────────────────────────
@@ -159,24 +87,6 @@ export function registerVersionsCommands(program: Command) {
 				}
 			} catch (error) {
 				console.error(chalk.red(error instanceof Error ? error.message : 'Failed'));
-				process.exitCode = errorToExitCode(error);
-			}
-		});
-
-	versions
-		.command('download <version>')
-		.description('Download a published version to a local directory')
-		.option('-o, --output <dir>', 'Output directory', '.')
-		.action(async (version: string, opts: { output: string }) => {
-			const { default: chalk } = await import('chalk');
-			const { default: ora } = await import('ora');
-
-			try {
-				const spinner = ora(`Downloading version ${version}...`).start();
-				await executeVersionsDownload({ version, outputDir: opts.output });
-				spinner.succeed(chalk.green(`Version ${version} downloaded to ${opts.output}`));
-			} catch (error) {
-				console.error(chalk.red(error instanceof Error ? error.message : 'Download failed'));
 				process.exitCode = errorToExitCode(error);
 			}
 		});

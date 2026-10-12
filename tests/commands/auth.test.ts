@@ -95,7 +95,6 @@ function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
 			createdAt: new Date().toISOString(),
 		}),
 		listVersions: async () => [],
-		downloadVersion: async () => ({ manifest: {}, templates: [] }),
 		getMe: async () => sessionMe(),
 		...overrides,
 	};

@@ -90,7 +90,6 @@ function makeStubClient(overrides: Partial<ApiClient> = {}): ApiClient {
 			state: 'SANDBOX' as const,
 			createdAt: '',
 		}),
-		downloadVersion: async () => ({ manifest: {}, templates: [] }),
 		getDocument: async () => {
 			throw new Error('not implemented in stub');
 		},

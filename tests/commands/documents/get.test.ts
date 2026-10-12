@@ -115,10 +115,6 @@ function makeStubClient(overrides: Partial<ApiClient> = {}): ApiClient {
 			state: 'SANDBOX' as const,
 			createdAt: '',
 		}),
-		downloadVersion: async () => ({
-			manifest: {},
-			templates: [],
-		}),
 		getDocument: async () => fakeDoc,
 		deleteDocument: async () => {},
 		documentThumbnails: async () => [],

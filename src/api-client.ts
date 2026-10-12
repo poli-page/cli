@@ -175,14 +175,6 @@ export interface UnpromotePreview {
 	recentLiveCalls: number;
 }
 
-export interface ProjectBundle {
-	version?: string;
-	manifest: Record<string, unknown>;
-	templates: Array<{ path: string; content: string }>;
-	images?: Array<{ path: string; data: string }>;
-	tailwindCss?: string;
-}
-
 export interface DeviceRequestResult {
 	deviceCode: string;
 	userCode: string;
@@ -408,12 +400,6 @@ export interface ApiClient {
 		projectId: string,
 		version: string
 	): Promise<VersionInfo>;
-	downloadVersion(
-		session: string,
-		orgId: string,
-		projectId: string,
-		version: string
-	): Promise<ProjectBundle>;
 }
 
 export function createApiClient(baseUrl?: string): ApiClient {
@@ -774,19 +760,6 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				}
 			);
 			return response.json() as Promise<VersionInfo[]>;
-		},
-
-		async downloadVersion(session, orgId, projectId, version) {
-			const response = await request(
-				`/api/organizations/${orgId}/projects/${projectId}/versions/${version}/download`,
-				{
-					headers: {
-						'Content-Type': 'application/json',
-						Authorization: `Bearer ${session}`,
-					},
-				}
-			);
-			return response.json() as Promise<ProjectBundle>;
 		},
 	};
 }

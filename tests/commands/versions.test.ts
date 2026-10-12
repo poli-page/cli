@@ -1,10 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm, readFile, writeFile, mkdir } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeInit } from '../../src/commands/init.js';
-import { executeVersionsList, executeVersionsDownload } from '../../src/commands/versions.js';
+import { executeVersionsList } from '../../src/commands/versions.js';
 import { writeCredentials } from '../../src/credentials.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import type { ApiClient } from '../../src/api-client.js';
@@ -37,23 +36,6 @@ const sampleVersions = [
 	},
 ];
 
-const sampleBundle = {
-	version: '1.0.0',
-	manifest: {
-		project: { name: 'test-project', version: '1.0.0' },
-		fonts: [],
-		templates: [{ name: 'invoice', template: 'invoice.html', mock: 'invoice.json' }],
-	},
-	templates: [
-		{ path: 'invoice.html', content: '<html>Invoice</html>' },
-		{ path: 'invoice.json', content: '{"number":"INV-001"}' },
-	],
-	images: [
-		{ path: 'images/logo.png', data: Buffer.from('fake-png').toString('base64') },
-	],
-	tailwindCss: '@import "tailwindcss";',
-};
-
 function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
 	return {
 		signIn: async () => ({
@@ -77,7 +59,6 @@ function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
 		render: async () => { throw new Error('not implemented in stub'); },
 		pushVersion: async () => sampleVersions[0],
 		listVersions: vi.fn(async () => sampleVersions),
-		downloadVersion: vi.fn(async () => sampleBundle),
 		...overrides,
 	};
 }
@@ -144,73 +125,6 @@ describe('poli versions', () => {
 					homeDir: fakeHome,
 				}),
 			).rejects.toThrow(/not linked/);
-		});
-	});
-
-	describe('versions download', () => {
-		it('should download version bundle and extract files', async () => {
-			const outputDir = join(tempDir, 'downloaded');
-			await mkdir(outputDir, { recursive: true });
-
-			const client = createMockApiClient();
-			await executeVersionsDownload({
-				version: '1.0.0',
-				outputDir,
-				cwd: projectDir,
-				apiClient: client,
-				homeDir: fakeHome,
-			});
-
-			expect(client.downloadVersion).toHaveBeenCalledWith(
-				'mock-session',
-				'org_1',
-				'proj_abc123',
-				'1.0.0',
-			);
-
-			// Check manifest was written
-			const manifest = JSON.parse(
-				await readFile(join(outputDir, MANIFEST_FILENAME), 'utf-8'),
-			);
-			expect(manifest.project.name).toBe('test-project');
-			expect(manifest.cloud).toEqual({
-				orgSlug: 'acme-corp',
-				projectId: 'proj_abc123',
-			});
-
-			// Check template files
-			const html = await readFile(
-				join(outputDir, 'templates', 'invoice', 'invoice.html'),
-				'utf-8',
-			);
-			expect(html).toContain('Invoice');
-
-			const mock = await readFile(
-				join(outputDir, 'templates', 'invoice', 'invoice.json'),
-				'utf-8',
-			);
-			expect(JSON.parse(mock).number).toBe('INV-001');
-
-			// Check assets
-			expect(existsSync(join(outputDir, 'assets', 'images', 'logo.png'))).toBe(true);
-
-			// Check tailwind.css
-			const tw = await readFile(join(outputDir, 'tailwind.css'), 'utf-8');
-			expect(tw).toContain('tailwindcss');
-		});
-
-		it('should throw if not logged in', async () => {
-			const emptyHome = await mkdtemp(join(tmpdir(), 'poli-nologin-'));
-			await expect(
-				executeVersionsDownload({
-					version: '1.0.0',
-					outputDir: tempDir,
-					cwd: projectDir,
-					apiClient: createMockApiClient(),
-					homeDir: emptyHome,
-				}),
-			).rejects.toThrow(/Not logged in/);
-			await rm(emptyHome, { recursive: true, force: true });
 		});
 	});
 });
