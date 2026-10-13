@@ -64,7 +64,6 @@ function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
 		render: async () => { throw new Error('not implemented in stub'); },
 		pushVersion: async () => ver('SANDBOX'),
 		listVersions: async () => [],
-		downloadVersion: async () => ({ manifest: {}, templates: [] }),
 		promoteVersion: vi.fn(async () => ver('LIVE')),
 		unpromoteVersion: vi.fn(async () => ver('SANDBOX')),
 		unpromotePreview: vi.fn(async () => preview()),

@@ -13,6 +13,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { createProgram } from '../src/program.js';
+import { createApiClient } from '../src/api-client.js';
 
 function findCommand(name: string) {
 	const program = createProgram();
@@ -65,5 +66,25 @@ describe('cli program shape — render', () => {
 		expect(longs).toEqual(
 			expect.arrayContaining(['--output', '--data', '--no-download', '--json'])
 		);
+	});
+});
+
+// The API no longer serves project or version bundles (no pull, no
+// checkout: the local project is the source of truth). The commands that
+// downloaded them are gone, and so is the client call they used.
+describe('cli program shape — no bundle download (pull / checkout)', () => {
+	it('has no `checkout` command', () => {
+		const names = createProgram().commands.map((c) => c.name());
+		expect(names).not.toContain('checkout');
+	});
+
+	it('has no `versions download` subcommand', () => {
+		const versions = findCommand('versions');
+		const names = versions.commands.map((c) => c.name());
+		expect(names).not.toContain('download');
+	});
+
+	it('the API client has no bundle download call', () => {
+		expect(createApiClient()).not.toHaveProperty('downloadVersion');
 	});
 });

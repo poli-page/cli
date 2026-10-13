@@ -6,7 +6,6 @@ import { registerRenderCommand } from './commands/render.js';
 import { registerPreviewCommand } from './commands/preview.js';
 import { registerAuthCommands } from './commands/auth.js';
 import { registerLinkCommands } from './commands/link.js';
-import { registerCheckoutCommand } from './commands/checkout.js';
 import { registerVersionStateCommands } from './commands/version-state.js';
 import { registerPushCommand } from './commands/push.js';
 import { registerVersionsCommands } from './commands/versions.js';
@@ -63,7 +62,6 @@ export function createProgram() {
 	registerPreviewCommand(program);
 	registerAuthCommands(program);
 	registerLinkCommands(program);
-	registerCheckoutCommand(program);
 	registerVersionStateCommands(program);
 	registerPushCommand(program);
 	registerVersionsCommands(program);

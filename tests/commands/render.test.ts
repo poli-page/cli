@@ -91,7 +91,6 @@ function createMockApiClient(
 			createdAt: new Date().toISOString(),
 		}),
 		listVersions: async () => [],
-		downloadVersion: async () => ({ manifest: {}, templates: [] }),
 	} as unknown as ApiClient;
 }
 

@@ -49,7 +49,6 @@ function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
 		render: async () => { throw new Error('not implemented in stub'); },
 		pushVersion: vi.fn(async () => sandboxVersion()),
 		listVersions: async () => [],
-		downloadVersion: async () => ({ manifest: {}, templates: [] }),
 		getMe: async () => ({
 			auth: { mode: 'session', keyType: 'session', environment: null },
 			user: null,

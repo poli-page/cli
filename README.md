@@ -232,18 +232,6 @@ Requires a TTY. Refused with exit `2` when run in a non-interactive context. If
 you need the same sync inside a script or alongside a browser preview, use
 [`poli dev`](#poli-dev-template), which has no TTY requirement.
 
-#### `poli checkout <version>`
-
-Restore a specific published version locally. **Destructive** — overwrites any local file with the same path. Always commit your work before running.
-
-```bash
-poli checkout 1.0.5    # exact semver only
-```
-
-`latest` and partial semver (`1.0`, `1`) are rejected with a friendly hint.
-
-Side effect: writes `cloud.track = "X.Y"` to the manifest (derived from the checked-out version). `poli push --patch` / `--minor` will then be anchored on that track — see the hotfix flow above.
-
 ### Live development
 
 #### `poli dev [template]`
@@ -312,7 +300,7 @@ Notes:
 
 Sync the current local draft and create a new SANDBOX version. The body shape is one of two mutually exclusive forms (api-spec §9.1):
 
-- Bump-driven: `--patch` (default), `--minor`, or `--major`. Anchored on the manifest's `cloud.track` (set by `poli checkout`).
+- Bump-driven: `--patch` (default), `--minor`, or `--major`. Anchored on the manifest's `cloud.track` (set by the previous push, or by `--track`).
 - Explicit: pass an exact semver as a positional argument (`poli push 1.0.2`). The server returns 409 `VERSION_CONFLICT` if the version already exists in any state.
 
 ```bash
@@ -328,9 +316,9 @@ poli push --track 1.0 --patch                       # override the manifest trac
 **Hotfix flow** — 1.0.1 LIVE in prod, 2.0.0 SANDBOX in dev:
 
 ```bash
-poli checkout 1.0.1     # writes cloud.track = "1.0"
+git checkout v1.0.1                # restore 1.0.1 from your own history: the local project is the source of truth
 # fix the bug…
-poli push --patch       # produces 1.0.2 (anchored on track 1.0), not 2.0.1
+poli push --track 1.0 --patch      # produces 1.0.2 (anchored on track 1.0), not 2.0.1
 poli promote 1.0.2
 ```
 
@@ -368,10 +356,6 @@ Mark a SANDBOX version as DEPRECATED.
 #### `poli versions un-deprecate <version>`
 
 Move a DEPRECATED version back to SANDBOX.
-
-#### `poli versions download <version> [-o <dir>]`
-
-Download a published version's content to a local directory (read-only inspection or hotfix base).
 
 ### Render
 
@@ -532,7 +516,7 @@ Either the summary **or** the JSON — never both at once. Errors always go to s
 
 Commands that take this contract: `render`, `documents get`, `documents preview`, `documents thumbnails`, `whoami`, `versions list`, `push`, `promote`, `unpromote`, `versions deprecate`, `versions un-deprecate`.
 
-Imperative commands (`init`, `new`, `link`, `unlink`, `checkout`, `logout`, `documents delete`, `watch`, `login`) don't have a JSON payload to forward — they just acknowledge with a `✓` line on success.
+Imperative commands (`init`, `new`, `link`, `unlink`, `logout`, `documents delete`, `watch`, `login`) don't have a JSON payload to forward — they just acknowledge with a `✓` line on success.
 
 ---
 
