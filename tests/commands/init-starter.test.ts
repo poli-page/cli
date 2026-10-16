@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { executeInitStarter } from '../../src/commands/init.js';
+import { describeUnlinked, executeInitStarter } from '../../src/commands/init.js';
+import { createProgram } from '../../src/program.js';
 import { writeCredentials } from '../../src/credentials.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import type { ApiClient } from '../../src/api-client.js';
@@ -341,5 +342,67 @@ describe('poli init --starter', () => {
 			})
 		).rejects.toThrow(/Unknown starter "nope"/);
 		await expect(stat(join(tempDir, 'nope'))).rejects.toThrow();
+	});
+});
+
+describe('poli init --starter: command output', () => {
+	it('says how to link for each unlinked reason', () => {
+		expect(
+			describeUnlinked({ status: 'unlinked', reason: 'not-logged-in' }, 'getting-started')
+		).toBe(
+			'Not linked: you are not logged in. Run `poli login`, then `poli link` in the project.'
+		);
+		expect(describeUnlinked({ status: 'unlinked', reason: 'no-org' }, 'getting-started')).toBe(
+			'Not linked: your account has no organization yet. Create one in the dashboard, then run `poli link`.'
+		);
+		expect(
+			describeUnlinked({ status: 'unlinked', reason: 'several-orgs' }, 'getting-started')
+		).toBe(
+			'Not linked: you belong to several organizations. Re-run with `--org <slug>`, or run `poli link` in the project.'
+		);
+		expect(
+			describeUnlinked(
+				{ status: 'unlinked', reason: 'no-project', orgSlug: 'acme' },
+				'getting-started'
+			)
+		).toBe(
+			'Not linked: organization "acme" has no "getting-started" project. Run `poli link` in the project to link it.'
+		);
+	});
+
+	describe('usage errors', () => {
+		let savedExitCode: typeof process.exitCode;
+		let errors: string[];
+
+		beforeEach(() => {
+			savedExitCode = process.exitCode;
+			process.exitCode = undefined;
+			errors = [];
+			vi.spyOn(console, 'error').mockImplementation((msg: unknown) => {
+				errors.push(String(msg));
+			});
+		});
+
+		afterEach(() => {
+			process.exitCode = savedExitCode;
+			vi.restoreAllMocks();
+		});
+
+		it('refuses --starter with --with-template (exit 2)', async () => {
+			await createProgram().parseAsync(
+				['init', '--starter', 'getting-started', '--with-template', 'showcase/invoice'],
+				{ from: 'user' }
+			);
+			expect(process.exitCode).toBe(2);
+			expect(errors.join('\n')).toContain(
+				'--starter cannot be combined with --with-template'
+			);
+		});
+
+		it('refuses a bare `poli init` without a name (exit 2)', async () => {
+			await createProgram().parseAsync(['init'], { from: 'user' });
+			expect(process.exitCode).toBe(2);
+			expect(errors.join('\n')).toContain('Missing project name');
+		});
 	});
 });

@@ -6,6 +6,7 @@ import { parseManifest, type PoliPageManifest } from '../manifest.schema.js';
 import { readCredentials } from '../credentials.js';
 import { createApiClient, type ApiClient } from '../api-client.js';
 import { MANIFEST_FILENAME } from '../constants.js';
+import { findOrganization, promptForOrganization, type Organization } from './link.js';
 import {
 	fetchStarter,
 	importTemplate,
@@ -161,12 +162,6 @@ export async function executeInit(name: string, options: InitOptions = {}): Prom
 	return projectDir;
 }
 
-interface Org {
-	id: string;
-	name: string;
-	slug: string;
-}
-
 export interface InitStarterOptions {
 	cwd?: string;
 	source?: string | TemplateSource;
@@ -179,7 +174,7 @@ export interface InitStarterOptions {
 	/** Organization to link to; needed only when the user has several. */
 	org?: string;
 	/** Asks which organization to link to when there are several and no `org`. */
-	selectOrg?: (orgs: Org[]) => Promise<string>;
+	selectOrg?: (orgs: Organization[]) => Promise<string>;
 }
 
 export type StarterLink =
@@ -264,11 +259,7 @@ async function linkStarter(
 		else if (options.selectOrg) orgSlug = await options.selectOrg(orgs);
 		else return { link: { status: 'unlinked', reason: 'several-orgs' } };
 	}
-	const org = orgs.find((o) => o.slug === orgSlug);
-	if (!org) {
-		const available = orgs.map((o) => o.slug).join(', ') || 'none';
-		throw new Error(`Organization "${orgSlug}" not found. Available: ${available}`);
-	}
+	const org = findOrganization(orgs, orgSlug);
 
 	const projects = await client.listProjects(credentials.session, org.id);
 	const project = projects.find((p) => p.slug === projectSlug);
@@ -282,7 +273,10 @@ async function linkStarter(
 	};
 }
 
-function describeUnlinked(link: Extract<StarterLink, { status: 'unlinked' }>, starter: string) {
+export function describeUnlinked(
+	link: Extract<StarterLink, { status: 'unlinked' }>,
+	starter: string
+) {
 	switch (link.reason) {
 		case 'not-logged-in':
 			return 'Not linked: you are not logged in. Run `poli login`, then `poli link` in the project.';
@@ -316,21 +310,13 @@ async function runInitStarter(name: string | undefined, opts: InitCommandOptions
 		return;
 	}
 	try {
-		const { select } = await import('@inquirer/prompts');
 		const result = await executeInitStarter(opts.starter, name, {
 			source: opts.source,
 			noCache: opts.cache === false,
 			force: opts.force,
 			org: opts.org,
 			selectOrg: process.stdin.isTTY
-				? (orgs) =>
-						select({
-							message: 'Select the organization to link to:',
-							choices: orgs.map((org) => ({
-								name: `${org.name} (${org.slug})`,
-								value: org.slug,
-							})),
-						})
+				? (orgs) => promptForOrganization(orgs, 'Select the organization to link to:')
 				: undefined,
 		});
 		console.log(chalk.green(`✓ Starter "${opts.starter}" written to ${result.projectDir}`));
