@@ -4,10 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeWatch, type WatchEvent } from '../../src/commands/watch.js';
 import { writeCredentials } from '../../src/credentials.js';
-import {
-	type ApiClient,
-	SystemProjectLockedError,
-} from '../../src/api-client.js';
+import { type ApiClient, SystemProjectLockedError } from '../../src/api-client.js';
 import type { FileWatcher, FileWatcherOptions } from '../../src/file-watcher.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 
@@ -32,7 +29,9 @@ function makeStubClient(overrides: Partial<ApiClient> = {}): ApiClient {
 			key: 'pp_test_x',
 			info: { id: 'k', name: 'n', environment: 'test' },
 		}),
-		render: async () => { throw new Error('not implemented in stub'); },
+		render: async () => {
+			throw new Error('not implemented in stub');
+		},
 		getMe: async () => {
 			throw new Error('not implemented in stub');
 		},
@@ -127,10 +126,7 @@ function createManualWatcherFactory(): {
 	return { factory, getController: () => controller! };
 }
 
-async function setupLinkedProject(
-	tempDir: string,
-	fakeHome: string
-): Promise<void> {
+async function setupLinkedProject(tempDir: string, fakeHome: string): Promise<void> {
 	await writeFile(
 		join(tempDir, MANIFEST_FILENAME),
 		JSON.stringify({
@@ -264,7 +260,9 @@ describe('executeWatch', () => {
 		expect(getController().closed).toBe(true);
 	});
 
-	it('translates SYSTEM_PROJECT_LOCKED into a friendly message and aborts', async () => {
+	it('reports SYSTEM_PROJECT_LOCKED like any other API error and keeps watching', async () => {
+		// `getting-started` is a normal project now: no read-only guard,
+		// no "run poli init" message.
 		await setupLinkedProject(tempDir, fakeHome);
 		await writeFile(join(tempDir, 'a.html'), 'init');
 
@@ -272,9 +270,12 @@ describe('executeWatch', () => {
 		const controller = new AbortController();
 		const { factory, getController } = createManualWatcherFactory();
 
+		let calls = 0;
 		const client = makeStubClient({
 			patchFiles: async () => {
-				throw new SystemProjectLockedError('system project');
+				calls += 1;
+				if (calls === 1) throw new SystemProjectLockedError('system project');
+				return { syncedAt: '2026-05-06T10:00:00.000Z' };
 			},
 		});
 
@@ -286,18 +287,23 @@ describe('executeWatch', () => {
 			signal: controller.signal,
 			watcherFactory: factory,
 			onEvent: (e) => events.push(e),
-		}).catch((err) => err);
+		});
 
 		await new Promise((r) => setTimeout(r, 50));
 		await writeFile(join(tempDir, 'a.html'), 'change');
 		await getController().emit(['a.html']);
 
-		const result = await runPromise;
-		expect(result).toBeInstanceOf(SystemProjectLockedError);
+		await vi.waitFor(() =>
+			expect(events.find((e) => e.type === 'error')?.message).toBe('system project')
+		);
 
-		const errorEvent = events.find((e) => e.type === 'error');
-		expect(errorEvent).toBeDefined();
-		expect(errorEvent!.message).toMatch(/getting-started|read-only|poli init/i);
+		await writeFile(join(tempDir, 'a.html'), 'change again');
+		await getController().emit(['a.html']);
+		await vi.waitFor(() => expect(events.at(-1)?.type).toBe('synced'));
+		expect(calls).toBe(2);
+
+		controller.abort();
+		await expect(runPromise).resolves.toBeUndefined();
 	});
 
 	it('emits "synced" with no patchFiles call when the batch contains no real changes', async () => {

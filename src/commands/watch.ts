@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { SystemProjectLockedError, type ApiClient } from '../api-client.js';
+import type { ApiClient } from '../api-client.js';
 import { resolveCloudContext } from '../cloud-context.js';
 import { createFileWatcher, type FileWatcher, type FileWatcherOptions } from '../file-watcher.js';
 import { createProjectSyncer } from '../project-sync.js';
@@ -31,9 +31,6 @@ export class TtyRequiredError extends Error {
 	}
 }
 
-export const SYSTEM_PROJECT_FRIENDLY =
-	'`getting-started` is read-only. Run `poli init` to start your own project.';
-
 export async function executeWatch(options: WatchOptions): Promise<void> {
 	const cwd = options.cwd ?? process.cwd();
 	const isTTY = options.isTTY ?? Boolean(process.stdout.isTTY);
@@ -53,7 +50,6 @@ export async function executeWatch(options: WatchOptions): Promise<void> {
 
 	options.onEvent?.({ type: 'ready', message: `tracking ${tracked} file(s)` });
 
-	let fatal: Error | null = null;
 	const factory = options.watcherFactory ?? createFileWatcher;
 	const watcher = factory({
 		cwd,
@@ -71,14 +67,6 @@ export async function executeWatch(options: WatchOptions): Promise<void> {
 
 				options.onEvent?.({ type: 'synced', syncedAt: outcome.syncedAt });
 			} catch (err) {
-				if (err instanceof SystemProjectLockedError) {
-					options.onEvent?.({
-						type: 'error',
-						message: SYSTEM_PROJECT_FRIENDLY,
-					});
-					fatal = err;
-					return;
-				}
 				options.onEvent?.({
 					type: 'error',
 					message: err instanceof Error ? err.message : 'Unknown error',
@@ -88,27 +76,15 @@ export async function executeWatch(options: WatchOptions): Promise<void> {
 	});
 
 	await new Promise<void>((resolve) => {
-		const finish = () => resolve();
-		if (options.signal) {
-			if (options.signal.aborted) {
-				finish();
-				return;
-			}
-			options.signal.addEventListener('abort', finish, { once: true });
+		if (!options.signal) return;
+		if (options.signal.aborted) {
+			resolve();
+			return;
 		}
-		// Also resolve when a fatal error has been recorded — poll briefly.
-		const interval = setInterval(() => {
-			if (fatal) {
-				clearInterval(interval);
-				finish();
-			}
-		}, 25);
-		// Cleanup after the resolver fires.
-		setTimeout(() => clearInterval(interval), 60_000).unref?.();
+		options.signal.addEventListener('abort', () => resolve(), { once: true });
 	});
 
 	await watcher.close();
-	if (fatal) throw fatal;
 }
 
 export function registerWatchCommand(program: Command): void {

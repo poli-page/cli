@@ -4,6 +4,7 @@ import { basename, dirname, extname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { readManifest, writeManifest } from './manifest.js';
+import { MANIFEST_FILENAME } from './constants.js';
 
 export interface TemplateSource {
 	owner: string;
@@ -80,6 +81,7 @@ export interface ImportTemplateResult {
 export const DEFAULT_SOURCE: TemplateSource = { owner: 'poli-page', repo: 'templates' };
 
 const RAW_GITHUB = 'https://raw.githubusercontent.com';
+const GITHUB_API = 'https://api.github.com';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const SOURCE_RE = /^(?:github:)?([^/:]+)\/([^/:]+)$/;
 const TEMPLATE_REF_RE = /^([^/]+)\/([^/]+)$/;
@@ -87,9 +89,7 @@ const TEMPLATE_REF_RE = /^([^/]+)\/([^/]+)$/;
 export function parseSource(spec: string): TemplateSource {
 	const m = spec.match(SOURCE_RE);
 	if (!m) {
-		throw new Error(
-			`Invalid source format. Expected github:<owner>/<repo>, got "${spec}".`
-		);
+		throw new Error(`Invalid source format. Expected github:<owner>/<repo>, got "${spec}".`);
 	}
 	return { owner: m[1], repo: m[2] };
 }
@@ -215,11 +215,7 @@ export async function importTemplate(
 		`${tplBase}/${tplManifest.template.template}`,
 		fetchOpts
 	);
-	const mockBuf = await fetchRaw(
-		source,
-		`${tplBase}/${tplManifest.template.mock}`,
-		fetchOpts
-	);
+	const mockBuf = await fetchRaw(source, `${tplBase}/${tplManifest.template.mock}`, fetchOpts);
 	const taBuf = await fetchRaw(source, `${tplBase}/tailwind-additions.css`, fetchOpts);
 	const tailwindAdditions = taBuf.toString('utf-8');
 
@@ -283,11 +279,7 @@ export async function importTemplate(
 	let appendedTailwind = false;
 	if (!existingTailwind.includes(startMarker)) {
 		const newBlock = `\n${startMarker}\n${tailwindAdditions.trimEnd()}\n${endMarker}\n`;
-		await writeFile(
-			tailwindPath,
-			existingTailwind.trimEnd() + newBlock,
-			'utf-8'
-		);
+		await writeFile(tailwindPath, existingTailwind.trimEnd() + newBlock, 'utf-8');
 		appendedTailwind = true;
 	}
 
@@ -319,6 +311,63 @@ export async function importTemplate(
 	await writeManifest(options.projectDir, projectManifest);
 
 	return { destTemplateName: destName, copiedImages, copiedFonts, appendedTailwind };
+}
+
+export interface StarterFile {
+	/** Path relative to the starter folder, POSIX separators. */
+	path: string;
+	content: Buffer;
+}
+
+interface GitTreeResponse {
+	tree?: Array<{ path: string; type: string }>;
+	truncated?: boolean;
+}
+
+// Per-template metadata the templates repo keeps for `--with-template`
+// imports. A project never carries them (the API seeds without them too).
+const STARTER_IMPORT_ONLY_RE = /^templates\/[^/]+\/(?:manifest\.json|tailwind-additions\.css)$/;
+
+/**
+ * Fetch every file of a starter project — a top-level folder of the
+ * source repo holding a `poli-page.json` (e.g. `getting-started/`).
+ *
+ * Raw GitHub URLs cannot list a folder, so the file list comes from the
+ * repo's git tree (one GitHub API call, not cached); each file is then
+ * fetched like any template file (raw URL, 24h cache). Nothing is
+ * written to disk.
+ */
+export async function fetchStarter(
+	starter: string,
+	source: TemplateSource = DEFAULT_SOURCE,
+	options: FetchOptions = {}
+): Promise<StarterFile[]> {
+	const fetcher = options.fetcher ?? ((url: string) => fetch(url));
+	const treeUrl = `${GITHUB_API}/repos/${source.owner}/${source.repo}/git/trees/main?recursive=1`;
+	const response = await fetcher(treeUrl);
+	if (!response.ok) {
+		throw new Error(`Failed to list ${source.owner}/${source.repo} (HTTP ${response.status}).`);
+	}
+	const tree = (await response.json()) as GitTreeResponse;
+	if (tree.truncated) {
+		throw new Error(`The file list of ${source.owner}/${source.repo} is too large to read.`);
+	}
+
+	const prefix = `${starter}/`;
+	const paths = (tree.tree ?? [])
+		.filter((entry) => entry.type === 'blob' && entry.path.startsWith(prefix))
+		.map((entry) => entry.path.slice(prefix.length))
+		.filter((path) => !STARTER_IMPORT_ONLY_RE.test(path));
+
+	if (!paths.includes(MANIFEST_FILENAME)) {
+		throw new Error(`Unknown starter "${starter}" in source ${source.owner}/${source.repo}.`);
+	}
+
+	const files: StarterFile[] = [];
+	for (const path of paths) {
+		files.push({ path, content: await fetchRaw(source, `${prefix}${path}`, options) });
+	}
+	return files;
 }
 
 async function writeAssetWithConflict(

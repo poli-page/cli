@@ -18,7 +18,12 @@ import { writeCredentials } from '../../src/credentials.js';
 import { readManifest, writeManifest } from '../../src/manifest.js';
 import { setupTemplate } from '../helpers/setup-template.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
-import { ApiError, type ApiClient, type PatchFilesBody } from '../../src/api-client.js';
+import {
+	ApiError,
+	SystemProjectLockedError,
+	type ApiClient,
+	type PatchFilesBody,
+} from '../../src/api-client.js';
 import type { FileWatcher, FileWatcherOptions } from '../../src/file-watcher.js';
 
 interface RenderCall {
@@ -698,6 +703,29 @@ describe('poli dev', () => {
 			expect(session.getState().error!.message).toContain('draft rejected');
 			expect((await fetch(`${session.url}/state`)).status).toBe(200);
 			expect((await fetch(session.url)).status).toBe(200);
+		});
+
+		it('reports SYSTEM_PROJECT_LOCKED like any other sync error and still renders', async () => {
+			// `getting-started` is a normal project now: no read-only guard,
+			// no "run poli init" message, no stopped loop.
+			await setupTemplate(projectDir, 'invoice');
+			const events: DevEvent[] = [];
+			const previewCalls: RenderCall[] = [];
+
+			await start(undefined, {
+				apiClient: makeStubClient({
+					previewCalls,
+					patchImpl: async () => {
+						throw new SystemProjectLockedError('system project');
+					},
+				}),
+				onEvent: (e) => events.push(e),
+			});
+
+			expect(events.find((e) => e.type === 'error')).toMatchObject({
+				message: 'system project',
+			});
+			expect(previewCalls).toHaveLength(1);
 		});
 	});
 
