@@ -295,6 +295,71 @@ function describeUnlinked(link: Extract<StarterLink, { status: 'unlinked' }>, st
 	}
 }
 
+interface InitCommandOptions {
+	starter: string;
+	org?: string;
+	force?: boolean;
+	withTemplate?: string;
+	templateName?: string;
+	source?: string;
+	cache?: boolean;
+}
+
+async function runInitStarter(name: string | undefined, opts: InitCommandOptions) {
+	const { default: chalk } = await import('chalk');
+
+	if (opts.withTemplate || opts.templateName) {
+		console.error(
+			chalk.red('--starter cannot be combined with --with-template or --template-name.')
+		);
+		process.exitCode = ExitCode.INVALID_USAGE;
+		return;
+	}
+	try {
+		const { select } = await import('@inquirer/prompts');
+		const result = await executeInitStarter(opts.starter, name, {
+			source: opts.source,
+			noCache: opts.cache === false,
+			force: opts.force,
+			org: opts.org,
+			selectOrg: process.stdin.isTTY
+				? (orgs) =>
+						select({
+							message: 'Select the organization to link to:',
+							choices: orgs.map((org) => ({
+								name: `${org.name} (${org.slug})`,
+								value: org.slug,
+							})),
+						})
+				: undefined,
+		});
+		console.log(chalk.green(`✓ Starter "${opts.starter}" written to ${result.projectDir}`));
+		if (result.link.status === 'linked') {
+			console.log(
+				chalk.green(`✓ Linked to the "${opts.starter}" project of ${result.link.orgSlug}`)
+			);
+		} else {
+			console.log(chalk.yellow(`⚠ ${describeUnlinked(result.link, opts.starter)}`));
+		}
+		console.log();
+		console.log(`  ${chalk.bold('Next steps:')}`);
+		console.log(`  ${chalk.cyan(`cd ${name ?? opts.starter}`)}`);
+		console.log(
+			`  ${chalk.cyan('poli watch')}                  — live sync of your edits to the cloud draft`
+		);
+		console.log(
+			`  ${chalk.cyan('poli publish --env sandbox')}  — publish to the sandbox environment`
+		);
+		console.log('  Then re-run the dashboard snippet to see your change.');
+		console.log();
+	} catch (error) {
+		console.error(
+			chalk.red(error instanceof Error ? error.message : 'Failed to write the starter')
+		);
+		process.exitCode = errorToExitCode(error);
+	}
+}
+
 export function registerInitCommand(program: Command) {
 	program
 		.command('init')
@@ -326,66 +391,7 @@ export function registerInitCommand(program: Command) {
 			const { default: chalk } = await import('chalk');
 
 			if (opts.starter) {
-				if (opts.withTemplate || opts.templateName) {
-					console.error(
-						chalk.red(
-							'--starter cannot be combined with --with-template or --template-name.'
-						)
-					);
-					process.exitCode = ExitCode.INVALID_USAGE;
-					return;
-				}
-				try {
-					const { select } = await import('@inquirer/prompts');
-					const result = await executeInitStarter(opts.starter, name, {
-						source: opts.source,
-						noCache: opts.cache === false,
-						force: opts.force,
-						org: opts.org,
-						selectOrg: process.stdin.isTTY
-							? (orgs) =>
-									select({
-										message: 'Select the organization to link to:',
-										choices: orgs.map((org) => ({
-											name: `${org.name} (${org.slug})`,
-											value: org.slug,
-										})),
-									})
-							: undefined,
-					});
-					console.log(
-						chalk.green(`✓ Starter "${opts.starter}" written to ${result.projectDir}`)
-					);
-					if (result.link.status === 'linked') {
-						console.log(
-							chalk.green(
-								`✓ Linked to the "${opts.starter}" project of ${result.link.orgSlug}`
-							)
-						);
-					} else {
-						console.log(
-							chalk.yellow(`⚠ ${describeUnlinked(result.link, opts.starter)}`)
-						);
-					}
-					console.log();
-					console.log(`  ${chalk.bold('Next steps:')}`);
-					console.log(`  ${chalk.cyan(`cd ${name ?? opts.starter}`)}`);
-					console.log(
-						`  ${chalk.cyan('poli watch')}                  — live sync of your edits to the cloud draft`
-					);
-					console.log(
-						`  ${chalk.cyan('poli publish --env sandbox')}  — publish to the sandbox environment`
-					);
-					console.log('  Then re-run the dashboard snippet to see your change.');
-					console.log();
-				} catch (error) {
-					console.error(
-						chalk.red(
-							error instanceof Error ? error.message : 'Failed to write the starter'
-						)
-					);
-					process.exitCode = errorToExitCode(error);
-				}
+				await runInitStarter(name, opts);
 				return;
 			}
 
