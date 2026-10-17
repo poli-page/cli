@@ -727,6 +727,34 @@ describe('poli dev', () => {
 			});
 			expect(previewCalls).toHaveLength(1);
 		});
+
+		it('keeps a failed initial sync visible after the first render succeeds', async () => {
+			await setupTemplate(projectDir, 'invoice');
+			let failSync = true;
+			const { factory, getController } = createManualWatcherFactory();
+
+			const session = await start(undefined, {
+				apiClient: makeStubClient({
+					patchImpl: async () => {
+						if (failSync) throw new ApiError('BAD_REQUEST', 400, 'draft rejected');
+						return { syncedAt: '2026-09-01T10:00:00.000Z' };
+					},
+				}),
+				watcherFactory: factory,
+			});
+
+			// The preview rendered the stale draft: the local files are not in it.
+			expect(session.getState().renderVersion).toBe(1);
+			expect(session.getState().error).toMatchObject({ stage: 'sync' });
+			expect(session.getState().error!.message).toContain('draft rejected');
+
+			// The next successful sync clears it.
+			failSync = false;
+			await writeFile(join(projectDir, 'templates', 'invoice', 'invoice.html'), 'x');
+			getController().emit(['templates/invoice/invoice.html']);
+			await waitFor(() => session.getState().renderVersion === 2, 'a second render');
+			expect(session.getState().error).toBeNull();
+		});
 	});
 
 	describe('render PDF', () => {

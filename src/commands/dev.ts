@@ -264,6 +264,9 @@ export async function startDevSession(
 	const pdfCache: PdfCacheEntry[] = [];
 	let server: DevServer | null = null;
 	let stopped = false;
+	// The last sync failure, until a sync succeeds: a render of the (stale)
+	// draft must not hide that the local files were not uploaded.
+	let syncError: DevError | null = null;
 	/** Set the moment `close()` is called — the session is shutting down. */
 	let closing: Promise<void> | null = null;
 	/**
@@ -371,7 +374,7 @@ export async function startDevSession(
 			state.pageCount = result.totalPages;
 			state.renderVersion += 1;
 			state.lastRenderedAt = new Date().toISOString();
-			state.error = null;
+			state.error = syncError;
 			emit({
 				type: 'rendered',
 				template,
@@ -406,7 +409,7 @@ export async function startDevSession(
 			pdfCache.push({ id, template, buffer });
 			while (pdfCache.length > PDF_CACHE_LIMIT) pdfCache.shift();
 
-			state.error = null;
+			state.error = syncError;
 			emit({ type: 'pdf', template, message: `${descriptor.pageCount} page(s)` });
 			broadcast();
 			return { url: `/pdf/${id}` };
@@ -424,6 +427,7 @@ export async function startDevSession(
 			setStatus('syncing');
 			emit({ type: 'syncing' });
 			const outcome = await syncer.sync();
+			syncError = null;
 
 			if (!(await refreshManifest())) {
 				setStatus('idle');
@@ -444,7 +448,7 @@ export async function startDevSession(
 			await render();
 		} catch (err) {
 			if (options.signal?.aborted) return;
-			state.error = toDevError('sync', err);
+			syncError = state.error = toDevError('sync', err);
 			emit({ type: 'error', message: state.error.message });
 			setStatus('idle');
 		}
@@ -481,7 +485,7 @@ export async function startDevSession(
 			}
 			if (requested !== state.activeTemplate) {
 				state.activeTemplate = requested;
-				state.error = null;
+				state.error = syncError;
 				sendJson(res, 200, state);
 				broadcast();
 				await render();
@@ -558,7 +562,7 @@ export async function startDevSession(
 		emit({ type: 'syncing' });
 		await syncer.syncAll();
 	} catch (err) {
-		state.error = toDevError('sync', err);
+		syncError = state.error = toDevError('sync', err);
 		emit({ type: 'error', message: state.error.message });
 	}
 	state.status = 'idle';
