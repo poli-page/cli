@@ -462,6 +462,30 @@ describe('poli init --starter: command output', () => {
 			await stat(join(dir, MANIFEST_FILENAME));
 		});
 
+		it('reports a failure on stderr with exit 1 and prints nothing on stdout', async () => {
+			const dir = join(tempDir, 'gs');
+			await mkdir(dir);
+			await writeFile(join(dir, 'keep.txt'), 'mine');
+			const errors: string[] = [];
+			vi.spyOn(console, 'error').mockImplementation((msg: unknown) => {
+				errors.push(String(msg));
+			});
+			const savedExitCode = process.exitCode;
+			process.exitCode = undefined;
+			try {
+				await createProgram().parseAsync(
+					['init', '--starter', 'getting-started', dir, '--no-cache'],
+					{ from: 'user' }
+				);
+				expect(process.exitCode).toBe(1);
+			} finally {
+				process.exitCode = savedExitCode;
+			}
+
+			expect(errors.join('\n')).toContain('is not empty');
+			expect(logs).toEqual([]);
+		});
+
 		it('ends with next steps that use registered commands', async () => {
 			const savedTty = process.stdout.isTTY;
 			Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
