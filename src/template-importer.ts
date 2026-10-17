@@ -328,6 +328,9 @@ interface GitTreeResponse {
 // imports. A project never carries them (the API seeds without them too).
 const STARTER_IMPORT_ONLY_RE = /^templates\/[^/]+\/(?:manifest\.json|tailwind-additions\.css)$/;
 
+// A starter is one top-level folder of the source: no `/`, no `.` or `..`.
+const STARTER_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
 /**
  * Fetch every file of a starter project — a top-level folder of the
  * source repo holding a `poli-page.json` (e.g. `getting-started/`).
@@ -342,6 +345,11 @@ export async function fetchStarter(
 	source: TemplateSource = DEFAULT_SOURCE,
 	options: FetchOptions = {}
 ): Promise<StarterFile[]> {
+	if (!STARTER_NAME_RE.test(starter)) {
+		throw new Error(
+			`Invalid starter name "${starter}": a starter is a top-level folder of the source (e.g. getting-started).`
+		);
+	}
 	const fetcher = options.fetcher ?? ((url: string) => fetch(url));
 	const treeUrl = `${GITHUB_API}/repos/${source.owner}/${source.repo}/git/trees/main?recursive=1`;
 	const response = await fetcher(treeUrl);
