@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { readFile, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { ServerResponse } from 'node:http';
-import { SystemProjectLockedError, type ApiClient, type PreviewApiResult } from '../api-client.js';
+import type { ApiClient, PreviewApiResult } from '../api-client.js';
 import { resolveCloudContext } from '../cloud-context.js';
 import { createFileWatcher, type FileWatcher, type FileWatcherOptions } from '../file-watcher.js';
 import { createProjectSyncer } from '../project-sync.js';
@@ -23,7 +23,6 @@ import {
 	type DevServerRequest,
 } from '../dev-server.js';
 import { DEV_PAGE_HTML, DEV_PLACEHOLDER_HTML } from '../dev-page.js';
-import { SYSTEM_PROJECT_FRIENDLY } from './watch.js';
 
 const DEFAULT_DEBOUNCE_MS = 300;
 const PDF_CACHE_LIMIT = 4;
@@ -265,6 +264,9 @@ export async function startDevSession(
 	const pdfCache: PdfCacheEntry[] = [];
 	let server: DevServer | null = null;
 	let stopped = false;
+	// The last sync failure, until a sync succeeds: a render of the (stale)
+	// draft must not hide that the local files were not uploaded.
+	let syncError: DevError | null = null;
 	/** Set the moment `close()` is called — the session is shutting down. */
 	let closing: Promise<void> | null = null;
 	/**
@@ -372,7 +374,7 @@ export async function startDevSession(
 			state.pageCount = result.totalPages;
 			state.renderVersion += 1;
 			state.lastRenderedAt = new Date().toISOString();
-			state.error = null;
+			state.error = syncError;
 			emit({
 				type: 'rendered',
 				template,
@@ -407,7 +409,7 @@ export async function startDevSession(
 			pdfCache.push({ id, template, buffer });
 			while (pdfCache.length > PDF_CACHE_LIMIT) pdfCache.shift();
 
-			state.error = null;
+			state.error = syncError;
 			emit({ type: 'pdf', template, message: `${descriptor.pageCount} page(s)` });
 			broadcast();
 			return { url: `/pdf/${id}` };
@@ -425,6 +427,7 @@ export async function startDevSession(
 			setStatus('syncing');
 			emit({ type: 'syncing' });
 			const outcome = await syncer.sync();
+			syncError = null;
 
 			if (!(await refreshManifest())) {
 				setStatus('idle');
@@ -445,16 +448,7 @@ export async function startDevSession(
 			await render();
 		} catch (err) {
 			if (options.signal?.aborted) return;
-			if (err instanceof SystemProjectLockedError) {
-				// Permanent for this project — keep serving so the message
-				// stays visible, but stop hammering the API on every save.
-				state.error = { stage: 'sync', message: SYSTEM_PROJECT_FRIENDLY };
-				stopped = true;
-				emit({ type: 'error', message: SYSTEM_PROJECT_FRIENDLY });
-				setStatus('idle');
-				return;
-			}
-			state.error = toDevError('sync', err);
+			syncError = state.error = toDevError('sync', err);
 			emit({ type: 'error', message: state.error.message });
 			setStatus('idle');
 		}
@@ -491,7 +485,7 @@ export async function startDevSession(
 			}
 			if (requested !== state.activeTemplate) {
 				state.activeTemplate = requested;
-				state.error = null;
+				state.error = syncError;
 				sendJson(res, 200, state);
 				broadcast();
 				await render();
@@ -568,14 +562,8 @@ export async function startDevSession(
 		emit({ type: 'syncing' });
 		await syncer.syncAll();
 	} catch (err) {
-		if (err instanceof SystemProjectLockedError) {
-			state.error = { stage: 'sync', message: SYSTEM_PROJECT_FRIENDLY };
-			stopped = true;
-			emit({ type: 'error', message: SYSTEM_PROJECT_FRIENDLY });
-		} else {
-			state.error = toDevError('sync', err);
-			emit({ type: 'error', message: state.error.message });
-		}
+		syncError = state.error = toDevError('sync', err);
+		emit({ type: 'error', message: state.error.message });
 	}
 	state.status = 'idle';
 

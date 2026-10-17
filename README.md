@@ -134,7 +134,7 @@ This means a developer can keep `POLI_PAGE_API_KEY` set in `.zshrc` for occasion
 
 ### Project lifecycle
 
-#### `poli init <name>`
+#### `poli init <name>` / `poli init --starter <name> [dir]`
 
 Scaffold a new Poli Page project. Creates the directory, the `poli-page.json` manifest, `templates/`, `partials/`, `assets/{fonts,images}/`, `tailwind.css`, and `.gitignore`.
 
@@ -153,6 +153,31 @@ Flags:
 - `--template-name <name>` — override the imported template's destination name
 - `--source <repo>` — source repo, format `github:<owner>/<repo>` (default: `github:poli-page/templates`)
 - `--no-cache` — bypass the 24-hour template cache
+
+##### `--starter getting-started` — start from your org's getting-started project
+
+```bash
+poli init --starter getting-started            # writes ./getting-started
+poli init --starter getting-started my-start   # writes ./my-start
+```
+
+Writes the whole `getting-started/` project of [`poli-page/templates`](https://github.com/poli-page/templates) (templates, mocks, `poli-page.json`, `tailwind.css`, fonts and images) into `dir` (default: `./getting-started`). The files come from the public templates repo — the same source your org's `getting-started` project was created from — nothing is downloaded from the cloud. The written `poli-page.json` has no `project.version`.
+
+When you are logged in, the folder is linked to the **existing** `getting-started` project of your organization (it never creates a cloud project). If you belong to several organizations, pass `--org <slug>` (or pick one at the prompt). Logged out, or when the organization has no `getting-started` project, the starter is written unlinked and the command tells you how to link it (`poli login`, then `poli link`).
+
+A non-empty target directory is refused unless you pass `--force`. Then:
+
+```bash
+cd getting-started
+poli watch   # live sync of your edits to the cloud draft
+poli push    # push a new sandbox version
+```
+
+and re-run the dashboard snippet to see your change.
+
+Piped, or with `--json`, it prints `{ starter, projectDir, link }` as JSON instead (`link` is `{ status: "linked", orgSlug }` or `{ status: "unlinked", reason }`) and never prompts. `<name>` is one top-level folder of the source (no `/`).
+
+Flags: `--starter <name>`, `--org <slug>`, `--force`, `--json`, plus `--source` and `--no-cache` as above.
 
 #### `poli new <name>`
 
@@ -225,7 +250,6 @@ Resilience built in:
 
 - Network errors → exponential backoff (1s, 2s, 4s, 8s, 16s, 30s capped, reset on success)
 - `503 ORGANIZATION_MIGRATING` → 5-second retry
-- `403 SYSTEM_PROJECT_LOCKED` (the `getting-started` system project) → friendly error + exit
 - Other API errors → logged, watch continues, next save retries
 
 Requires a TTY. Refused with exit `2` when run in a non-interactive context. If
@@ -272,8 +296,9 @@ The served page gives you:
   It creates a stored document, exactly like `poli render`.
 - **An error overlay.** A failed compile or render is shown with its message
   (and `file:line:column` when the engine reports a position) on top of the last
-  good render, which stays visible behind it. The overlay clears on the next
-  successful render.
+  good render, which stays visible behind it. A render error clears on the next
+  successful render; a failed sync stays shown until a sync succeeds, even when
+  a render succeeds in between (the cloud draft is still out of date).
 
 Notes:
 
@@ -514,9 +539,9 @@ Every command that returns a payload (renders, descriptors, lists, version mutat
 
 Either the summary **or** the JSON — never both at once. Errors always go to stderr with a clear message.
 
-Commands that take this contract: `render`, `documents get`, `documents preview`, `documents thumbnails`, `whoami`, `versions list`, `push`, `promote`, `unpromote`, `versions deprecate`, `versions un-deprecate`.
+Commands that take this contract: `render`, `documents get`, `documents preview`, `documents thumbnails`, `whoami`, `versions list`, `push`, `promote`, `unpromote`, `versions deprecate`, `versions un-deprecate`, `init --starter`.
 
-Imperative commands (`init`, `new`, `link`, `unlink`, `logout`, `documents delete`, `watch`, `login`) don't have a JSON payload to forward — they just acknowledge with a `✓` line on success.
+Imperative commands (`init` without `--starter`, `new`, `link`, `unlink`, `logout`, `documents delete`, `watch`, `login`) don't have a JSON payload to forward — they just acknowledge with a `✓` line on success.
 
 ---
 

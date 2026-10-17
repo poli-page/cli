@@ -21,6 +21,36 @@ function toKebabCase(name: string): string {
 		.replace(/^-+|-+$/g, '');
 }
 
+export interface Organization {
+	id: string;
+	name: string;
+	slug: string;
+}
+
+export function findOrganization(orgs: Organization[], slug: string): Organization {
+	const org = orgs.find((o) => o.slug === slug);
+	if (!org) {
+		const available = orgs.map((o) => o.slug).join(', ') || 'none';
+		throw new Error(`Organization "${slug}" not found. Available: ${available}`);
+	}
+	return org;
+}
+
+/** Interactive organization picker (TTY only); resolves to the chosen slug. */
+export async function promptForOrganization(
+	orgs: Organization[],
+	message = 'Select an organization:'
+): Promise<string> {
+	const { select } = await import('@inquirer/prompts');
+	return select({
+		message,
+		choices: orgs.map((org) => ({
+			name: `${org.name} (${org.slug})`,
+			value: org.slug,
+		})),
+	});
+}
+
 export async function executeLink(options: LinkOptions): Promise<void> {
 	const cwd = options.cwd ?? process.cwd();
 	const client = options.apiClient ?? createApiClient();
@@ -45,13 +75,7 @@ export async function executeLink(options: LinkOptions): Promise<void> {
 	}
 
 	const orgs = await client.getOrganizations(session);
-	const org = orgs.find((o) => o.slug === options.orgSlug);
-	if (!org) {
-		const available = orgs.map((o) => o.slug).join(', ') || 'none';
-		throw new Error(
-			`Organization "${options.orgSlug}" not found. Available: ${available}`
-		);
-	}
+	const org = findOrganization(orgs, options.orgSlug);
 
 	const projectSlug = toKebabCase(manifest.project.name);
 	const existingProjects = await client.listProjects(session, org.id);
@@ -113,7 +137,6 @@ export function registerLinkCommands(program: Command) {
 		.action(async () => {
 			const { default: chalk } = await import('chalk');
 			const { default: ora } = await import('ora');
-			const { select } = await import('@inquirer/prompts');
 
 			let spinner: ReturnType<typeof ora> | undefined;
 			try {
@@ -137,13 +160,7 @@ export function registerLinkCommands(program: Command) {
 					return;
 				}
 
-				const orgSlug = await select({
-					message: 'Select an organization:',
-					choices: orgs.map((org) => ({
-						name: `${org.name} (${org.slug})`,
-						value: org.slug,
-					})),
-				});
+				const orgSlug = await promptForOrganization(orgs);
 
 				spinner = ora('Linking project...').start();
 				await executeLink({ orgSlug, apiClient: client });

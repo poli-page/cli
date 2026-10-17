@@ -33,7 +33,13 @@ describe('manifest schema validation', () => {
 					{ family: 'Inter', src: 'fonts/inter-400.woff2', weight: 400, style: 'normal' },
 				],
 				templates: [
-					{ name: 'invoice', template: 'invoice.html', mock: 'invoice.json', format: 'A4', orientation: 'portrait' },
+					{
+						name: 'invoice',
+						template: 'invoice.html',
+						mock: 'invoice.json',
+						format: 'A4',
+						orientation: 'portrait',
+					},
 				],
 				cloud: {
 					orgSlug: 'acme',
@@ -54,6 +60,13 @@ describe('manifest schema validation', () => {
 			expect(m.project.name).toBe('p');
 			expect(m.fonts).toBeUndefined();
 			expect(m.cloud).toBeUndefined();
+		});
+
+		it('parses a manifest without project.version (F3: starters carry none)', async () => {
+			await writeRaw({ project: { name: 'getting-started' } });
+			const m = await readManifest(dir);
+			expect(m.project.name).toBe('getting-started');
+			expect(m.project.version).toBeUndefined();
 		});
 
 		it('accepts a legacy cloud section with only orgSlug + projectId (compat)', async () => {
@@ -103,11 +116,7 @@ describe('manifest schema validation', () => {
 		});
 
 		it('throws when JSON is malformed', async () => {
-			await writeFile(
-				join(dir, MANIFEST_FILENAME),
-				'{ "project": invalid }',
-				'utf-8'
-			);
+			await writeFile(join(dir, MANIFEST_FILENAME), '{ "project": invalid }', 'utf-8');
 			await expect(readManifest(dir)).rejects.toThrow();
 		});
 	});

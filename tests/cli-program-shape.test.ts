@@ -26,8 +26,9 @@ describe('cli program shape — push', () => {
 	const cmd = findCommand('push');
 
 	it('exposes a single optional positional argument named "version"', () => {
-		const args = (cmd as unknown as { registeredArguments: { name(): string; required: boolean }[] })
-			.registeredArguments;
+		const args = (
+			cmd as unknown as { registeredArguments: { name(): string; required: boolean }[] }
+		).registeredArguments;
 		expect(args).toHaveLength(1);
 		expect(args[0].name()).toBe('version');
 		expect(args[0].required).toBe(false);
@@ -41,7 +42,14 @@ describe('cli program shape — push', () => {
 	it('still exposes --patch / --minor / --major / --track / -m / --json', () => {
 		const longs = cmd.options.map((o) => o.long);
 		expect(longs).toEqual(
-			expect.arrayContaining(['--patch', '--minor', '--major', '--track', '--message', '--json'])
+			expect.arrayContaining([
+				'--patch',
+				'--minor',
+				'--major',
+				'--track',
+				'--message',
+				'--json',
+			])
 		);
 	});
 });
@@ -50,8 +58,9 @@ describe('cli program shape — render', () => {
 	const cmd = findCommand('render');
 
 	it('takes a single required positional argument (template spec)', () => {
-		const args = (cmd as unknown as { registeredArguments: { name(): string; required: boolean }[] })
-			.registeredArguments;
+		const args = (
+			cmd as unknown as { registeredArguments: { name(): string; required: boolean }[] }
+		).registeredArguments;
 		expect(args).toHaveLength(1);
 		expect(args[0].required).toBe(true);
 	});
@@ -86,5 +95,23 @@ describe('cli program shape — no bundle download (pull / checkout)', () => {
 
 	it('the API client has no bundle download call', () => {
 		expect(createApiClient()).not.toHaveProperty('downloadVersion');
+	});
+});
+
+describe('cli program shape — init', () => {
+	const cmd = findCommand('init');
+
+	it('takes an optional positional (project name, or the starter directory)', () => {
+		const args = (
+			cmd as unknown as { registeredArguments: { name(): string; required: boolean }[] }
+		).registeredArguments;
+		expect(args).toHaveLength(1);
+		expect(args[0].required).toBe(false);
+	});
+
+	it('exposes --starter, --org and --force for the starter project', () => {
+		const longs = cmd.options.map((o) => o.long);
+		expect(longs).toEqual(expect.arrayContaining(['--starter', '--org', '--force']));
+		expect(cmd.helpInformation()).toContain('getting-started');
 	});
 });

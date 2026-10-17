@@ -32,10 +32,7 @@ const cloudSchema = z
 		orgId: z.string().optional(),
 		projectSlug: z.string().optional(),
 		projectId: z.string(),
-		track: z
-			.string()
-			.regex(TRACK_RE, 'Track must be `major.minor` (e.g. "1.0")')
-			.optional(),
+		track: z.string().regex(TRACK_RE, 'Track must be `major.minor` (e.g. "1.0")').optional(),
 		apiUrl: z.string().optional(),
 	})
 	.passthrough();
@@ -43,7 +40,8 @@ const cloudSchema = z
 const projectSchema = z
 	.object({
 		name: z.string(),
-		version: z.string(),
+		// Optional: a starter (`poli init --starter`) carries no version (F3).
+		version: z.string().optional(),
 		description: z.string().optional(),
 	})
 	.passthrough();
@@ -95,13 +93,8 @@ export function parseManifest(raw: unknown): PoliPageManifest {
 		path: formatPath(issue.path),
 		message: issue.message,
 	}));
-	const summary = issues
-		.map((i) => (i.path ? `${i.path}: ${i.message}` : i.message))
-		.join('; ');
-	throw new ManifestValidationError(
-		`Invalid poli-page.json — ${summary}`,
-		issues
-	);
+	const summary = issues.map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join('; ');
+	throw new ManifestValidationError(`Invalid poli-page.json — ${summary}`, issues);
 }
 
 function formatPath(path: ReadonlyArray<PropertyKey>): string {

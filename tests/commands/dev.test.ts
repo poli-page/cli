@@ -18,7 +18,12 @@ import { writeCredentials } from '../../src/credentials.js';
 import { readManifest, writeManifest } from '../../src/manifest.js';
 import { setupTemplate } from '../helpers/setup-template.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
-import { ApiError, type ApiClient, type PatchFilesBody } from '../../src/api-client.js';
+import {
+	ApiError,
+	SystemProjectLockedError,
+	type ApiClient,
+	type PatchFilesBody,
+} from '../../src/api-client.js';
 import type { FileWatcher, FileWatcherOptions } from '../../src/file-watcher.js';
 
 interface RenderCall {
@@ -698,6 +703,57 @@ describe('poli dev', () => {
 			expect(session.getState().error!.message).toContain('draft rejected');
 			expect((await fetch(`${session.url}/state`)).status).toBe(200);
 			expect((await fetch(session.url)).status).toBe(200);
+		});
+
+		it('reports SYSTEM_PROJECT_LOCKED like any other sync error and still renders', async () => {
+			// `getting-started` is a normal project now: no read-only guard,
+			// no "run poli init" message, no stopped loop.
+			await setupTemplate(projectDir, 'invoice');
+			const events: DevEvent[] = [];
+			const previewCalls: RenderCall[] = [];
+
+			await start(undefined, {
+				apiClient: makeStubClient({
+					previewCalls,
+					patchImpl: async () => {
+						throw new SystemProjectLockedError('system project');
+					},
+				}),
+				onEvent: (e) => events.push(e),
+			});
+
+			expect(events.find((e) => e.type === 'error')).toMatchObject({
+				message: 'system project',
+			});
+			expect(previewCalls).toHaveLength(1);
+		});
+
+		it('keeps a failed initial sync visible after the first render succeeds', async () => {
+			await setupTemplate(projectDir, 'invoice');
+			let failSync = true;
+			const { factory, getController } = createManualWatcherFactory();
+
+			const session = await start(undefined, {
+				apiClient: makeStubClient({
+					patchImpl: async () => {
+						if (failSync) throw new ApiError('BAD_REQUEST', 400, 'draft rejected');
+						return { syncedAt: '2026-09-01T10:00:00.000Z' };
+					},
+				}),
+				watcherFactory: factory,
+			});
+
+			// The preview rendered the stale draft: the local files are not in it.
+			expect(session.getState().renderVersion).toBe(1);
+			expect(session.getState().error).toMatchObject({ stage: 'sync' });
+			expect(session.getState().error!.message).toContain('draft rejected');
+
+			// The next successful sync clears it.
+			failSync = false;
+			await writeFile(join(projectDir, 'templates', 'invoice', 'invoice.html'), 'x');
+			getController().emit(['templates/invoice/invoice.html']);
+			await waitFor(() => session.getState().renderVersion === 2, 'a second render');
+			expect(session.getState().error).toBeNull();
 		});
 	});
 
