@@ -175,7 +175,9 @@ poli publish --env sandbox   # publish to the sandbox environment
 
 and re-run the dashboard snippet to see your change.
 
-Flags: `--starter <name>`, `--org <slug>`, `--force`, plus `--source` and `--no-cache` as above.
+Piped, or with `--json`, it prints `{ starter, projectDir, link }` as JSON instead (`link` is `{ status: "linked", orgSlug }` or `{ status: "unlinked", reason }`) and never prompts. `<name>` is one top-level folder of the source (no `/`).
+
+Flags: `--starter <name>`, `--org <slug>`, `--force`, `--json`, plus `--source` and `--no-cache` as above.
 
 #### `poli new <name>`
 
@@ -536,9 +538,9 @@ Every command that returns a payload (renders, descriptors, lists, version mutat
 
 Either the summary **or** the JSON — never both at once. Errors always go to stderr with a clear message.
 
-Commands that take this contract: `render`, `documents get`, `documents preview`, `documents thumbnails`, `whoami`, `versions list`, `push`, `promote`, `unpromote`, `versions deprecate`, `versions un-deprecate`.
+Commands that take this contract: `render`, `documents get`, `documents preview`, `documents thumbnails`, `whoami`, `versions list`, `push`, `promote`, `unpromote`, `versions deprecate`, `versions un-deprecate`, `init --starter`.
 
-Imperative commands (`init`, `new`, `link`, `unlink`, `logout`, `documents delete`, `watch`, `login`) don't have a JSON payload to forward — they just acknowledge with a `✓` line on success.
+Imperative commands (`init` without `--starter`, `new`, `link`, `unlink`, `logout`, `documents delete`, `watch`, `login`) don't have a JSON payload to forward — they just acknowledge with a `✓` line on success.
 
 ---
 

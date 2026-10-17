@@ -343,6 +343,23 @@ describe('poli init --starter', () => {
 		).rejects.toThrow(/Unknown starter "nope"/);
 		await expect(stat(join(tempDir, 'nope'))).rejects.toThrow();
 	});
+
+	it.each(['../getting-started', 'getting-started/templates', '.', ''])(
+		'rejects %j: a starter is one top-level folder of the source',
+		async (starter) => {
+			const requested: string[] = [];
+			await expect(
+				executeInitStarter(starter, join(tempDir, 'out'), {
+					cwd: tempDir,
+					homeDir: fakeHome,
+					fetcher: makeFetcher(requested),
+					apiClient: makeClient([]),
+				})
+			).rejects.toThrow(/Invalid starter name/);
+			expect(requested).toEqual([]);
+			await expect(stat(join(tempDir, 'out'))).rejects.toThrow();
+		}
+	);
 });
 
 describe('poli init --starter: command output', () => {
@@ -403,6 +420,46 @@ describe('poli init --starter: command output', () => {
 			await createProgram().parseAsync(['init'], { from: 'user' });
 			expect(process.exitCode).toBe(2);
 			expect(errors.join('\n')).toContain('Missing project name');
+		});
+	});
+
+	describe('--json', () => {
+		let tempDir: string;
+		let fakeHome: string;
+		let logs: string[];
+
+		beforeEach(async () => {
+			tempDir = await mkdtemp(join(tmpdir(), 'poli-init-starter-json-'));
+			fakeHome = await mkdtemp(join(tmpdir(), 'poli-home-'));
+			vi.stubEnv('HOME', fakeHome);
+			vi.stubGlobal('fetch', makeFetcher([]));
+			logs = [];
+			vi.spyOn(console, 'log').mockImplementation((msg: unknown = '') => {
+				logs.push(String(msg));
+			});
+		});
+
+		afterEach(async () => {
+			vi.unstubAllEnvs();
+			vi.unstubAllGlobals();
+			vi.restoreAllMocks();
+			await rm(tempDir, { recursive: true, force: true });
+			await rm(fakeHome, { recursive: true, force: true });
+		});
+
+		it('prints the result as JSON', async () => {
+			const dir = join(tempDir, 'gs');
+			await createProgram().parseAsync(
+				['init', '--starter', 'getting-started', dir, '--json', '--no-cache'],
+				{ from: 'user' }
+			);
+
+			expect(JSON.parse(logs.join('\n'))).toEqual({
+				starter: 'getting-started',
+				projectDir: dir,
+				link: { status: 'unlinked', reason: 'not-logged-in' },
+			});
+			await stat(join(dir, MANIFEST_FILENAME));
 		});
 	});
 });

@@ -18,6 +18,7 @@ import {
 } from '../template-importer.js';
 import { promptForStarterTemplate, type TemplatePromptResult } from '../template-prompt.js';
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
+import { shouldEmitJson } from '../output.js';
 
 function toKebabCase(name: string): string {
 	return name
@@ -297,6 +298,7 @@ interface InitCommandOptions {
 	templateName?: string;
 	source?: string;
 	cache?: boolean;
+	json?: boolean;
 }
 
 async function runInitStarter(name: string | undefined, opts: InitCommandOptions) {
@@ -309,16 +311,23 @@ async function runInitStarter(name: string | undefined, opts: InitCommandOptions
 		process.exitCode = ExitCode.INVALID_USAGE;
 		return;
 	}
+	const emitJson = shouldEmitJson(opts);
 	try {
 		const result = await executeInitStarter(opts.starter, name, {
 			source: opts.source,
 			noCache: opts.cache === false,
 			force: opts.force,
 			org: opts.org,
-			selectOrg: process.stdin.isTTY
-				? (orgs) => promptForOrganization(orgs, 'Select the organization to link to:')
-				: undefined,
+			// No prompt in JSON mode: it would mix with the JSON on stdout.
+			selectOrg:
+				process.stdin.isTTY && !emitJson
+					? (orgs) => promptForOrganization(orgs, 'Select the organization to link to:')
+					: undefined,
 		});
+		if (emitJson) {
+			console.log(JSON.stringify({ starter: opts.starter, ...result }, null, 2));
+			return;
+		}
 		console.log(chalk.green(`✓ Starter "${opts.starter}" written to ${result.projectDir}`));
 		if (result.link.status === 'linked') {
 			console.log(
@@ -363,6 +372,7 @@ export function registerInitCommand(program: Command) {
 			'With --starter: organization to link to, when you belong to several'
 		)
 		.option('--force', 'With --starter: write into a non-empty directory')
+		.option('--json', 'With --starter: print the result as JSON, even in a TTY')
 		.option(
 			'--with-template <ref>',
 			'Pre-install a starter template, format <collection>/<template> (e.g. showcase/invoice)'
