@@ -169,8 +169,8 @@ A non-empty target directory is refused unless you pass `--force`. Then:
 
 ```bash
 cd getting-started
-poli watch                   # live sync of your edits to the cloud draft
-poli publish --env sandbox   # publish to the sandbox environment
+poli watch   # live sync of your edits to the cloud draft
+poli push    # push a new sandbox version
 ```
 
 and re-run the dashboard snippet to see your change.

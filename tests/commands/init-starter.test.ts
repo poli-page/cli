@@ -423,7 +423,7 @@ describe('poli init --starter: command output', () => {
 		});
 	});
 
-	describe('--json', () => {
+	describe('printed result', () => {
 		let tempDir: string;
 		let fakeHome: string;
 		let logs: string[];
@@ -460,6 +460,27 @@ describe('poli init --starter: command output', () => {
 				link: { status: 'unlinked', reason: 'not-logged-in' },
 			});
 			await stat(join(dir, MANIFEST_FILENAME));
+		});
+
+		it('ends with next steps that use registered commands', async () => {
+			const savedTty = process.stdout.isTTY;
+			Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+			try {
+				await createProgram().parseAsync(
+					['init', '--starter', 'getting-started', join(tempDir, 'gs'), '--no-cache'],
+					{ from: 'user' }
+				);
+			} finally {
+				Object.defineProperty(process.stdout, 'isTTY', {
+					value: savedTty,
+					configurable: true,
+				});
+			}
+
+			const output = logs.join('\n');
+			expect(output).toContain('poli watch');
+			expect(output).toContain('poli push');
+			expect(output).not.toContain('poli publish');
 		});
 	});
 });
