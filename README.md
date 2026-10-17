@@ -296,8 +296,9 @@ The served page gives you:
   It creates a stored document, exactly like `poli render`.
 - **An error overlay.** A failed compile or render is shown with its message
   (and `file:line:column` when the engine reports a position) on top of the last
-  good render, which stays visible behind it. The overlay clears on the next
-  successful render.
+  good render, which stays visible behind it. A render error clears on the next
+  successful render; a failed sync stays shown until a sync succeeds, even when
+  a render succeeds in between (the cloud draft is still out of date).
 
 Notes:
 
