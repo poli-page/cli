@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -49,6 +49,35 @@ describe('credentials', () => {
 			expect(stats.isDirectory()).toBe(true);
 		});
 
+		describe('permissions', () => {
+			let previousUmask: number;
+
+			beforeEach(() => {
+				previousUmask = process.umask(0o000);
+			});
+
+			afterEach(() => {
+				process.umask(previousUmask);
+			});
+
+			it('should write the file as 0600 in a 0700 directory regardless of umask', async () => {
+				await writeCredentials(mockCredentials, fakeHome);
+				const dir = join(fakeHome, CREDENTIALS_DIR);
+				expect((await stat(dir)).mode & 0o777).toBe(0o700);
+				expect((await stat(join(dir, CREDENTIALS_FILENAME))).mode & 0o777).toBe(0o600);
+			});
+
+			it('should tighten an existing directory and file', async () => {
+				const dir = join(fakeHome, CREDENTIALS_DIR);
+				const path = join(dir, CREDENTIALS_FILENAME);
+				await mkdir(dir, { mode: 0o755 });
+				await writeFile(path, '{}\n', { mode: 0o644 });
+				await writeCredentials(mockCredentials, fakeHome);
+				expect((await stat(dir)).mode & 0o777).toBe(0o700);
+				expect((await stat(path)).mode & 0o777).toBe(0o600);
+			});
+		});
+
 		it('should return null if no credentials file', async () => {
 			const result = await readCredentials(fakeHome);
 			expect(result).toBeNull();
@@ -85,9 +114,9 @@ describe('credentials', () => {
 		});
 
 		it('should throw if not logged in', async () => {
-			await expect(
-				updateOrgKeys('org', { testKey: 'key' }, fakeHome)
-			).rejects.toThrow(/Not logged in/);
+			await expect(updateOrgKeys('org', { testKey: 'key' }, fakeHome)).rejects.toThrow(
+				/Not logged in/
+			);
 		});
 	});
 
@@ -124,9 +153,7 @@ describe('credentials', () => {
 		});
 
 		it('should throw if not logged in', async () => {
-			await expect(getApiKey('acme-corp', 'test', fakeHome)).rejects.toThrow(
-				/Not logged in/
-			);
+			await expect(getApiKey('acme-corp', 'test', fakeHome)).rejects.toThrow(/Not logged in/);
 		});
 	});
 });

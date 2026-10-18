@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { CREDENTIALS_DIR, CREDENTIALS_FILENAME } from './constants.js';
@@ -47,8 +47,17 @@ export async function writeCredentials(
 ): Promise<void> {
 	const dir = getCredentialsDir(homeDir);
 	const path = getCredentialsPath(homeDir);
-	await mkdir(dir, { recursive: true });
-	await writeFile(path, JSON.stringify(credentials, null, '\t') + '\n', 'utf-8');
+	// mkdir/writeFile modes only apply on creation and go through the umask:
+	// chmod both so an existing or umask-widened dir/file ends up 0700/0600.
+	await mkdir(dir, { recursive: true, mode: 0o700 });
+	await chmod(dir, 0o700);
+	// Tighten an existing file before the new secrets go in.
+	await chmod(path, 0o600).catch(() => {});
+	await writeFile(path, JSON.stringify(credentials, null, '\t') + '\n', {
+		encoding: 'utf-8',
+		mode: 0o600,
+	});
+	await chmod(path, 0o600);
 }
 
 export async function clearCredentials(homeDir?: string): Promise<void> {
