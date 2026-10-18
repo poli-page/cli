@@ -51,8 +51,10 @@ export async function writeCredentials(
 	// chmod both so an existing or umask-widened dir/file ends up 0700/0600.
 	await mkdir(dir, { recursive: true, mode: 0o700 });
 	await chmod(dir, 0o700);
-	// Tighten an existing file before the new secrets go in.
-	await chmod(path, 0o600).catch(() => {});
+	// Tighten an existing file before the new secrets go in; fail closed if we can't.
+	await chmod(path, 0o600).catch((error: NodeJS.ErrnoException) => {
+		if (error.code !== 'ENOENT') throw error;
+	});
 	await writeFile(path, JSON.stringify(credentials, null, '\t') + '\n', {
 		encoding: 'utf-8',
 		mode: 0o600,
