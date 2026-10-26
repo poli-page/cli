@@ -86,9 +86,7 @@ export function errorToExitCode(err: unknown): ExitCodeValue {
 			err instanceof DocumentNotFoundError ||
 			err instanceof EnvironmentNotFoundError ||
 			err instanceof UnsupportedFileTypeError ||
-			/Invalid version|exact semver|Template .+ not found|template not found|Missing <documentId>/i.test(
-				err.message
-			)
+			/Template .+ not found|template not found|Missing <documentId>/i.test(err.message)
 		) {
 			return ExitCode.INVALID_USAGE;
 		}
