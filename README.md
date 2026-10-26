@@ -348,6 +348,33 @@ poli publish --env live --yes      # protected environment, no prompt (scripts)
 
 On success it prints the environment, the project, the short bundle hash, the file count and the publish log id.
 
+#### `poli env list`
+
+Lists your organization's environments, with your `poli login` session (any member of the organization can run it).
+
+```bash
+poli env list                # in a linked folder: the project's state in each environment
+poli env list --org acme     # elsewhere, or for another organization
+poli env list --json
+```
+
+| Flag           | Meaning                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------- |
+| `--org <slug>` | The organization to list. Default: the linked project's organization, else your only one.   |
+| `--json`       | Print the API response as JSON (also the default when stdout is not a TTY).                  |
+
+In a linked folder, each environment shows whether it is protected and read-only, whether the project is published there, and the project's last publish in it: its status (`succeeded`, `in-progress`, or `failed` with the API's error code), its date (UTC), its author, its short bundle hash and its message, or `not published`. The last publish is the latest attempt, so a failed one shows even when an earlier publish is still the one served.
+
+```
+Environments of acme, project invoices:
+
+  ENVIRONMENT  PROTECTED  READ-ONLY  PUBLISHED  LAST PUBLISH
+  sandbox      no         no         yes        succeeded  2026-10-26 10:00 UTC  Ada Lovelace  0123456789ab  Invoice footer fix
+  live         yes        no         no         not published
+```
+
+Outside a linked folder, or with `--org` naming another organization, it lists the organization's environments with their protected and read-only flags and how many projects are published in each (`PROJECTS`). When you belong to several organizations and no project is linked, `--org` is required: without it the command exits `2` and lists your organizations' slugs. An environment is read-only when the organization's plan no longer covers it.
+
 ### Versioning
 
 #### `poli push`
@@ -568,7 +595,7 @@ Every command that returns a payload (renders, descriptors, lists, version mutat
 
 Either the summary **or** the JSON — never both at once. Errors always go to stderr with a clear message.
 
-Commands that take this contract: `render`, `documents get`, `documents preview`, `documents thumbnails`, `whoami`, `versions list`, `publish`, `push`, `promote`, `unpromote`, `versions deprecate`, `versions un-deprecate`, `init --starter`.
+Commands that take this contract: `render`, `documents get`, `documents preview`, `documents thumbnails`, `whoami`, `versions list`, `publish`, `env list`, `push`, `promote`, `unpromote`, `versions deprecate`, `versions un-deprecate`, `init --starter`.
 
 Imperative commands (`init` without `--starter`, `new`, `link`, `unlink`, `logout`, `documents delete`, `watch`, `login`) don't have a JSON payload to forward — they just acknowledge with a `✓` line on success.
 

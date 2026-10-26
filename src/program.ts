@@ -9,6 +9,7 @@ import { registerLinkCommands } from './commands/link.js';
 import { registerVersionStateCommands } from './commands/version-state.js';
 import { registerPushCommand } from './commands/push.js';
 import { registerPublishCommand } from './commands/publish.js';
+import { registerEnvCommands } from './commands/env.js';
 import { registerVersionsCommands } from './commands/versions.js';
 import { registerDocumentsCommands } from './commands/documents/index.js';
 import { registerWatchCommand } from './commands/watch.js';
@@ -66,6 +67,7 @@ export function createProgram() {
 	registerVersionStateCommands(program);
 	registerPushCommand(program);
 	registerPublishCommand(program);
+	registerEnvCommands(program);
 	registerVersionsCommands(program);
 	registerDocumentsCommands(program);
 	registerWatchCommand(program);

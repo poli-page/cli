@@ -272,6 +272,32 @@ export interface EnvironmentInfo {
 	projectCount: number;
 }
 
+/** One publish attempt in a project's publish log (api-spec §9.3). */
+export interface PublishLogEntry {
+	id: string;
+	status: 'in-progress' | 'succeeded' | 'failed';
+	errorCode: string | null;
+	startedAt: string;
+	publishedAt: string | null;
+	author: { type: 'user' | 'service-key'; id: string; displayName: string };
+	message: string | null;
+	/** `sha256:<64 hex>` */
+	bundleHash: string;
+	fileCount: number;
+	totalBytes: number;
+}
+
+/** A project's state in one environment of its organization (api-spec §9.3). */
+export interface ProjectEnvironmentState {
+	environment: string;
+	kind: 'sandbox' | 'standard';
+	protected: boolean;
+	readOnly: boolean;
+	published: boolean;
+	/** The newest attempt of any status, so a failed one shows here too. */
+	lastPublish: PublishLogEntry | null;
+}
+
 export interface PatchFilesResult {
 	syncedAt: string;
 }
@@ -375,6 +401,11 @@ export interface ApiClient {
 		body: PatchFilesBody
 	): Promise<PatchFilesResult>;
 	listEnvironments(session: string, orgId: string): Promise<EnvironmentInfo[]>;
+	getProjectEnvironments(
+		session: string,
+		orgId: string,
+		projectId: string
+	): Promise<ProjectEnvironmentState[]>;
 	publish(
 		session: string,
 		orgId: string,
@@ -761,6 +792,26 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				}
 			);
 			return response.json() as Promise<EnvironmentInfo[]>;
+		},
+
+		async getProjectEnvironments(session, orgId, projectId) {
+			// Dot segments survive encodeURIComponent and the URL parser resolves them.
+			if (orgId === '.' || orgId === '..') {
+				throw new Error('Invalid organization ID.');
+			}
+			if (projectId === '.' || projectId === '..') {
+				throw new Error('Invalid project ID.');
+			}
+			const response = await request(
+				`/api/organizations/${encodeURIComponent(orgId)}/projects/${encodeURIComponent(projectId)}/environments`,
+				{
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${session}`,
+					},
+				}
+			);
+			return response.json() as Promise<ProjectEnvironmentState[]>;
 		},
 
 		async publish(session, orgId, project, body) {

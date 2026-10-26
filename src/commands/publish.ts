@@ -162,6 +162,11 @@ export async function executePublish(options: PublishOptions): Promise<PublishRe
 	}
 }
 
+/** The first 12 hex digits of a `sha256:<64 hex>` bundle hash. */
+export function shortBundleHash(bundleHash: string): string {
+	return bundleHash.replace(/^sha256:/, '').slice(0, 12);
+}
+
 function confirmProtectedPublish(environment: string): Promise<boolean> {
 	return confirmPrompt({
 		message: `"${environment}" is a protected environment. Publish to it?`,
@@ -191,9 +196,10 @@ export function registerPublishCommand(program: Command) {
 					console.log(JSON.stringify(result, null, 2));
 					return;
 				}
-				const shortHash = result.bundleHash.replace(/^sha256:/, '').slice(0, 12);
 				console.log(chalk.green(`✓ Published ${result.project} to ${result.environment}`));
-				console.log(`  ${chalk.dim('Bundle:')}  ${shortHash} (${result.fileCount} files)`);
+				console.log(
+					`  ${chalk.dim('Bundle:')}  ${shortBundleHash(result.bundleHash)} (${result.fileCount} files)`
+				);
 				console.log(`  ${chalk.dim('Log id:')}  ${result.logId}`);
 			} catch (err) {
 				console.error(chalk.red(err instanceof Error ? err.message : 'Publish failed'));
