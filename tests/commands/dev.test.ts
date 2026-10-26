@@ -28,21 +28,26 @@ import {
 import type { FileWatcher, FileWatcherOptions } from '../../src/file-watcher.js';
 
 interface RenderCall {
+	authorization: string;
+	orgIdHeader: string | undefined;
 	payload: Record<string, unknown>;
 }
 
 interface StubOptions {
-	previewCalls?: RenderCall[];
-	pdfCalls?: RenderCall[];
+	draftCalls?: RenderCall[];
 	patchBodies?: PatchFilesBody[];
-	previewImpl?: (payload: Record<string, unknown>) => Promise<{
-		html: string;
-		totalPages: number;
-		environment: 'sandbox' | 'live';
-	}>;
+	draftImpl?: (payload: Record<string, unknown>) => Promise<Buffer>;
 	patchImpl?: (body: PatchFilesBody) => Promise<{ syncedAt: string }>;
 }
 
+function fakePdf(label: string): Buffer {
+	return Buffer.from(`%PDF-1.7\n${label}`);
+}
+
+/**
+ * Stubs only the sync and the draft render: any call to `render` or
+ * `renderPreview` rejects through the shared fake.
+ */
 function makeStubClient(options: StubOptions = {}): ApiClient {
 	return createFakeApiClient({
 		getOrganizations: async () => [{ id: 'org_1', name: 'Acme', slug: 'acme' }],
@@ -51,39 +56,18 @@ function makeStubClient(options: StubOptions = {}): ApiClient {
 			if (options.patchImpl) return options.patchImpl(body);
 			return { syncedAt: '2026-09-01T10:00:00.000Z' };
 		},
-		renderPreview: async (_authorization, _orgIdHeader, payload) => {
-			options.previewCalls?.push({ payload });
-			if (options.previewImpl) return options.previewImpl(payload);
-			return {
-				html: `<html><body>render of ${String(payload.template)}</body></html>`,
-				totalPages: 3,
-				environment: 'sandbox' as const,
-			};
-		},
-		render: async (_authorization, _orgIdHeader, payload) => {
-			options.pdfCalls?.push({ payload });
-			return {
-				documentId: 'doc_1',
-				organizationId: 'org_1',
-				projectId: 'proj_1',
-				projectSlug: 'demo',
-				templateId: 'tpl_1',
-				templateSlug: String(payload.template),
-				version: null,
-				environment: 'sandbox' as const,
-				apiKeyId: null,
-				createdAt: '2026-09-01T10:00:00.000Z',
-				pageCount: 3,
-				sizeBytes: 1024,
-				format: 'A4',
-				orientation: 'portrait',
-				locale: null,
-				metadata: {},
-				presignedPdfUrl: 'https://example.invalid/doc_1.pdf',
-				expiresAt: '2026-09-01T11:00:00.000Z',
-			};
+		renderDraft: async (authorization, orgIdHeader, payload) => {
+			options.draftCalls?.push({ authorization, orgIdHeader, payload });
+			if (options.draftImpl) return options.draftImpl(payload);
+			return fakePdf(`draft of ${String(payload.template)}`);
 		},
 	});
+}
+
+async function fetchPdfText(baseUrl: string): Promise<string> {
+	const response = await fetch(`${baseUrl}/pdf`);
+	expect(response.headers.get('content-type')).toBe('application/pdf');
+	return Buffer.from(await response.arrayBuffer()).toString();
 }
 
 interface ManualWatcher {
@@ -236,7 +220,9 @@ describe('poli dev', () => {
 
 		it('is registered on the program', () => {
 			expect(cmd).toBeDefined();
-			expect(cmd!.description()).toMatch(/live-reloading|preview/i);
+			expect(cmd!.description()).toMatch(/PDF/);
+			expect(cmd!.description()).toMatch(/draft/);
+			expect(cmd!.description()).toMatch(/session/);
 		});
 
 		it('takes an optional positional template argument', () => {
@@ -303,10 +289,10 @@ describe('poli dev', () => {
 		it('pushes the whole working tree once, then renders the first template', async () => {
 			await setupTemplate(projectDir, 'invoice');
 			const patchBodies: PatchFilesBody[] = [];
-			const previewCalls: RenderCall[] = [];
+			const draftCalls: RenderCall[] = [];
 
 			await start(undefined, {
-				apiClient: makeStubClient({ patchBodies, previewCalls }),
+				apiClient: makeStubClient({ patchBodies, draftCalls }),
 			});
 
 			expect(patchBodies).toHaveLength(1);
@@ -316,17 +302,32 @@ describe('poli dev', () => {
 			expect(paths).toContain('poli-page.json');
 			expect(paths).toContain('templates/invoice/invoice.html');
 
-			expect(previewCalls).toHaveLength(1);
-			expect(previewCalls[0].payload).toMatchObject({
+			expect(draftCalls).toHaveLength(1);
+			// The draft renders through the signed-in session only: the body
+			// names no environment and no version.
+			expect(draftCalls[0].authorization).toBe('Bearer sess-tok');
+			expect(draftCalls[0].orgIdHeader).toBe('org_1');
+			expect(draftCalls[0].payload).toEqual({
 				project: 'demo',
 				template: 'invoice',
-				version: 'draft',
+				data: { title: 'Sample', content: 'Hello' },
 				format: 'A4',
 				orientation: 'portrait',
+				locale: 'en',
 			});
 		});
 
-		it('serves the shell page and the rendered preview', async () => {
+		it('renders with the session even when POLI_PAGE_API_KEY is set', async () => {
+			await setupTemplate(projectDir, 'invoice');
+			process.env.POLI_PAGE_API_KEY = 'pp_sandbox_0123456789abcdef0123456789abcdef';
+			const draftCalls: RenderCall[] = [];
+
+			await start(undefined, { apiClient: makeStubClient({ draftCalls }) });
+
+			expect(draftCalls.map((call) => call.authorization)).toEqual(['Bearer sess-tok']);
+		});
+
+		it('serves the shell page and the draft PDF inline', async () => {
 			await setupTemplate(projectDir, 'invoice');
 			const session = await start(undefined, { apiClient: makeStubClient() });
 
@@ -336,10 +337,41 @@ describe('poli dev', () => {
 			const shellHtml = await shell.text();
 			expect(shellHtml).toContain('EventSource');
 			expect(shellHtml).toContain('id="template"');
-			expect(shellHtml).toContain('Render PDF');
 
-			const preview = await fetch(`${session.url}/preview`);
-			expect(await preview.text()).toContain('render of invoice');
+			const pdf = await fetch(`${session.url}/pdf?v=1`);
+			expect(pdf.status).toBe(200);
+			expect(pdf.headers.get('content-type')).toBe('application/pdf');
+			expect(pdf.headers.get('content-disposition')).toBe('inline; filename="invoice.pdf"');
+			expect(pdf.headers.get('cache-control')).toBe('no-store');
+			expect(Buffer.from(await pdf.arrayBuffer()).equals(fakePdf('draft of invoice'))).toBe(
+				true
+			);
+		});
+
+		it('serves a placeholder page on /pdf until a render succeeds', async () => {
+			await setupTemplate(projectDir, 'invoice');
+			const session = await start(undefined, {
+				apiClient: makeStubClient({
+					draftImpl: async () => {
+						throw new ApiError('TEMPLATE_COMPILE_ERROR', 422, 'broken');
+					},
+				}),
+			});
+
+			const response = await fetch(`${session.url}/pdf`);
+			expect(response.status).toBe(200);
+			expect(response.headers.get('content-type')).toMatch(/text\/html/);
+			expect(await response.text()).toContain('Waiting for the first render');
+		});
+
+		it('creates no stored document and keeps no page count', async () => {
+			await setupTemplate(projectDir, 'invoice');
+			const session = await start(undefined, { apiClient: makeStubClient() });
+
+			// The routes of the removed "Render PDF" button are gone.
+			expect((await fetch(`${session.url}/api/pdf`, { method: 'POST' })).status).toBe(404);
+			expect((await fetch(`${session.url}/preview`)).status).toBe(404);
+			expect(session.getState()).not.toHaveProperty('pageCount');
 		});
 
 		it('starts on the requested port and walks upwards when it is busy', async () => {
@@ -437,11 +469,11 @@ describe('poli dev', () => {
 		it('syncs the delta, re-renders and pushes new state over SSE', async () => {
 			await setupTemplate(projectDir, 'invoice');
 			const patchBodies: PatchFilesBody[] = [];
-			const previewCalls: RenderCall[] = [];
+			const draftCalls: RenderCall[] = [];
 			const { factory, getController } = createManualWatcherFactory();
 
 			const session = await start(undefined, {
-				apiClient: makeStubClient({ patchBodies, previewCalls }),
+				apiClient: makeStubClient({ patchBodies, draftCalls }),
 				watcherFactory: factory,
 			});
 
@@ -464,7 +496,7 @@ describe('poli dev', () => {
 			expect(patchBodies[1].modified.map((e) => e.path)).toEqual([
 				'templates/invoice/invoice.html',
 			]);
-			expect(previewCalls).toHaveLength(2);
+			expect(draftCalls).toHaveLength(2);
 
 			await waitFor(
 				() =>
@@ -481,11 +513,11 @@ describe('poli dev', () => {
 		it('emits a rendering → rendered event pair, never a timer-driven render', async () => {
 			await setupTemplate(projectDir, 'invoice');
 			const events: DevEvent[] = [];
-			const previewCalls: RenderCall[] = [];
+			const draftCalls: RenderCall[] = [];
 			const { factory } = createManualWatcherFactory();
 
 			await start(undefined, {
-				apiClient: makeStubClient({ previewCalls }),
+				apiClient: makeStubClient({ draftCalls }),
 				watcherFactory: factory,
 				onEvent: (e) => events.push(e),
 			});
@@ -499,7 +531,7 @@ describe('poli dev', () => {
 
 			// No watcher batch → no further renders, however long we wait.
 			await new Promise((r) => setTimeout(r, 250));
-			expect(previewCalls).toHaveLength(1);
+			expect(draftCalls).toHaveLength(1);
 		});
 	});
 
@@ -511,9 +543,9 @@ describe('poli dev', () => {
 
 		it('switches the active template through POST /api/select', async () => {
 			await twoTemplates();
-			const previewCalls: RenderCall[] = [];
+			const draftCalls: RenderCall[] = [];
 			const session = await start(undefined, {
-				apiClient: makeStubClient({ previewCalls }),
+				apiClient: makeStubClient({ draftCalls }),
 			});
 
 			expect(session.getState().activeTemplate).toBe('invoice');
@@ -524,7 +556,7 @@ describe('poli dev', () => {
 			expect(response.status).toBe(200);
 
 			await waitFor(
-				() => previewCalls.some((c) => c.payload.template === 'receipt'),
+				() => draftCalls.some((c) => c.payload.template === 'receipt'),
 				'a render of the newly selected template'
 			);
 			expect(session.getState().activeTemplate).toBe('receipt');
@@ -569,9 +601,9 @@ describe('poli dev', () => {
 			await writeFile(join(projectDir, 'partials', 'header.html'), '<header></header>');
 
 			const { factory, getController } = createManualWatcherFactory();
-			const previewCalls: RenderCall[] = [];
+			const draftCalls: RenderCall[] = [];
 			const session = await start('receipt', {
-				apiClient: makeStubClient({ previewCalls }),
+				apiClient: makeStubClient({ draftCalls }),
 				watcherFactory: factory,
 			});
 			expect(session.getState().activeTemplate).toBe('receipt');
@@ -582,18 +614,18 @@ describe('poli dev', () => {
 			);
 			getController().emit(['partials/header.html']);
 
-			await waitFor(() => previewCalls.length === 2, 're-render after the shared edit');
+			await waitFor(() => draftCalls.length === 2, 're-render after the shared edit');
 			// A shared partial names no single template — the view stays put.
 			expect(session.getState().activeTemplate).toBe('receipt');
-			expect(previewCalls[1].payload.template).toBe('receipt');
+			expect(draftCalls[1].payload.template).toBe('receipt');
 		});
 
 		it('pin freezes the view so an unrelated save does not yank it away', async () => {
 			await twoTemplates();
 			const { factory, getController } = createManualWatcherFactory();
-			const previewCalls: RenderCall[] = [];
+			const draftCalls: RenderCall[] = [];
 			const session = await start(undefined, {
-				apiClient: makeStubClient({ previewCalls }),
+				apiClient: makeStubClient({ draftCalls }),
 				watcherFactory: factory,
 			});
 
@@ -606,9 +638,9 @@ describe('poli dev', () => {
 			);
 			getController().emit(['templates/receipt/receipt.html']);
 
-			await waitFor(() => previewCalls.length === 2, 're-render after the save');
+			await waitFor(() => draftCalls.length === 2, 're-render after the save');
 			expect(session.getState().activeTemplate).toBe('invoice');
-			expect(previewCalls[1].payload.template).toBe('invoice');
+			expect(draftCalls[1].payload.template).toBe('invoice');
 
 			// Unpinning restores the follow behaviour on the *next* change.
 			await fetch(`${session.url}/api/pin?value=false`, { method: 'POST' });
@@ -632,7 +664,7 @@ describe('poli dev', () => {
 
 			const session = await start(undefined, {
 				apiClient: makeStubClient({
-					previewImpl: async (payload) => {
+					draftImpl: async (payload) => {
 						if (failNext) {
 							throw new ApiError(
 								'TEMPLATE_COMPILE_ERROR',
@@ -640,11 +672,7 @@ describe('poli dev', () => {
 								'Unexpected token at templates/invoice/invoice.html:42:7'
 							);
 						}
-						return {
-							html: `<html><body>good ${String(payload.template)}</body></html>`,
-							totalPages: 1,
-							environment: 'sandbox' as const,
-						};
+						return fakePdf(`good ${String(payload.template)}`);
 					},
 				}),
 				watcherFactory: factory,
@@ -672,7 +700,7 @@ describe('poli dev', () => {
 			expect(state.error!.message).toContain('Unexpected token');
 			// Last good render survives behind the overlay.
 			expect(state.renderVersion).toBe(goodVersion);
-			expect(await (await fetch(`${session.url}/preview`)).text()).toContain('good invoice');
+			expect(await fetchPdfText(session.url)).toContain('good invoice');
 
 			// Recovering clears the overlay.
 			failNext = false;
@@ -711,11 +739,11 @@ describe('poli dev', () => {
 			// no "run poli init" message, no stopped loop.
 			await setupTemplate(projectDir, 'invoice');
 			const events: DevEvent[] = [];
-			const previewCalls: RenderCall[] = [];
+			const draftCalls: RenderCall[] = [];
 
 			await start(undefined, {
 				apiClient: makeStubClient({
-					previewCalls,
+					draftCalls,
 					patchImpl: async () => {
 						throw new SystemProjectLockedError('system project');
 					},
@@ -726,7 +754,7 @@ describe('poli dev', () => {
 			expect(events.find((e) => e.type === 'error')).toMatchObject({
 				message: 'system project',
 			});
-			expect(previewCalls).toHaveLength(1);
+			expect(draftCalls).toHaveLength(1);
 		});
 
 		it('keeps a failed initial sync visible after the first render succeeds', async () => {
@@ -758,46 +786,60 @@ describe('poli dev', () => {
 		});
 	});
 
-	describe('render PDF', () => {
-		it('renders the real PDF and serves it inline', async () => {
+	describe('stale-render guard', () => {
+		it('drops a render that finishes after a newer one', async () => {
 			await setupTemplate(projectDir, 'invoice');
-			const pdfCalls: RenderCall[] = [];
-			const pdfBytes = Buffer.from('%PDF-1.7\nreal pdf bytes');
+			await setupTemplate(projectDir, 'receipt');
+			const { factory, getController } = createManualWatcherFactory();
+			let blockInvoice = false;
+			let invoiceStarted!: () => void;
+			const invoiceStartedPromise = new Promise<void>((r) => (invoiceStarted = r));
+			let releaseInvoice!: () => void;
+			const invoiceGate = new Promise<void>((r) => (releaseInvoice = r));
+			let staleReturned = false;
+			const draftCalls: RenderCall[] = [];
 
 			const session = await start(undefined, {
-				apiClient: makeStubClient({ pdfCalls }),
-				fetchPdf: async () => pdfBytes,
+				apiClient: makeStubClient({
+					draftCalls,
+					draftImpl: async (payload) => {
+						if (payload.template === 'invoice' && blockInvoice) {
+							invoiceStarted();
+							await invoiceGate;
+							staleReturned = true;
+							return fakePdf('stale invoice');
+						}
+						return fakePdf(`draft of ${String(payload.template)}`);
+					},
+				}),
+				watcherFactory: factory,
 			});
+			expect(session.getState().renderVersion).toBe(1);
 
-			const response = await fetch(`${session.url}/api/pdf`, { method: 'POST' });
-			expect(response.status).toBe(200);
-			const body = (await response.json()) as { url: string };
-			expect(body.url).toMatch(/^\/pdf\/\d+$/);
-			expect(pdfCalls).toHaveLength(1);
-			expect(pdfCalls[0].payload.template).toBe('invoice');
+			// A shared edit re-renders invoice, which hangs in flight…
+			blockInvoice = true;
+			getController().emit(['tailwind.css']);
+			await invoiceStartedPromise;
 
-			const pdf = await fetch(`${session.url}${body.url}`);
-			expect(pdf.status).toBe(200);
-			expect(pdf.headers.get('content-type')).toBe('application/pdf');
-			expect(Buffer.from(await pdf.arrayBuffer()).equals(pdfBytes)).toBe(true);
-		});
+			// …while the user switches to receipt, which lands first.
+			await fetch(`${session.url}/api/select?template=receipt`, { method: 'POST' });
+			await waitFor(() => session.getState().renderVersion === 2, 'the receipt render');
 
-		it('reports a failing PDF render without crashing the server', async () => {
-			await setupTemplate(projectDir, 'invoice');
-			const session = await start(undefined, {
-				apiClient: makeStubClient(),
-				fetchPdf: async () => {
-					throw new Error('Failed to download PDF from presigned URL (HTTP 403).');
-				},
-			});
+			releaseInvoice();
+			await waitFor(() => staleReturned, 'the stale invoice render to return');
+			// Its continuation in the session is microtasks only: one timer
+			// turn lets it run to the end.
+			await new Promise((r) => setTimeout(r, 0));
 
-			const response = await fetch(`${session.url}/api/pdf`, { method: 'POST' });
-			expect(response.status).toBe(502);
-			expect((await response.json()) as { error: string }).toMatchObject({
-				error: expect.stringContaining('HTTP 403'),
-			});
-			expect(session.getState().error?.stage).toBe('pdf');
-			expect((await fetch(session.url)).status).toBe(200);
+			expect(draftCalls.map((call) => call.payload.template)).toEqual([
+				'invoice',
+				'invoice',
+				'receipt',
+			]);
+
+			expect(session.getState().renderVersion).toBe(2);
+			expect(session.getState().activeTemplate).toBe('receipt');
+			expect(await fetchPdfText(session.url)).toContain('draft of receipt');
 		});
 	});
 
@@ -890,14 +932,14 @@ describe('poli dev', () => {
 				JSON.stringify({ locale: 'fr', data: { title: 'From override' } })
 			);
 
-			const previewCalls: RenderCall[] = [];
+			const draftCalls: RenderCall[] = [];
 			await start(undefined, {
-				apiClient: makeStubClient({ previewCalls }),
+				apiClient: makeStubClient({ draftCalls }),
 				data: 'custom.json',
 			});
 
-			expect(previewCalls[0].payload.data).toEqual({ title: 'From override' });
-			expect(previewCalls[0].payload.locale).toBe('fr');
+			expect(draftCalls[0].payload.data).toEqual({ title: 'From override' });
+			expect(draftCalls[0].payload.locale).toBe('fr');
 		});
 	});
 

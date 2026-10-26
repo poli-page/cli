@@ -8,7 +8,6 @@ import type { DevError } from './commands/dev.js';
 export const DEV_ERROR_TITLES: Record<DevError['stage'], string> = {
 	sync: 'Sync failed',
 	render: 'Render failed',
-	pdf: 'PDF render failed',
 	project: 'Project error',
 };
 
@@ -18,10 +17,10 @@ export const DEV_ERROR_TITLES: Record<DevError['stage'], string> = {
  * Static by construction: it carries no server data at all and pulls
  * everything from `GET /state` plus the `/events` SSE stream. The only
  * interpolation is the compile-time `DEV_ERROR_TITLES` table above —
- * nothing request-derived to escape or inject — and the rendered
- * template lives in an isolated iframe, so a reload swaps the frame
- * without losing the switcher, the pin, or the scroll position of the
- * chrome.
+ * nothing request-derived to escape or inject — and the draft PDF
+ * lives in an iframe, shown by the browser's own PDF viewer, so a reload
+ * swaps the frame without losing the switcher, the pin, or the scroll
+ * position of the chrome.
  */
 export const DEV_PAGE_HTML = `<!doctype html>
 <html lang="en">
@@ -95,18 +94,6 @@ export const DEV_PAGE_HTML = `<!doctype html>
 	@keyframes pulse { 50% { opacity: 0.25; } }
 	.stage { position: relative; flex: 1; min-height: 0; }
 	iframe { width: 100%; height: 100%; border: 0; background: #fff; }
-	.badge {
-		position: absolute;
-		left: 50%;
-		bottom: 16px;
-		transform: translateX(-50%);
-		background: var(--accent);
-		color: #fff;
-		border: 0;
-		border-radius: 999px;
-		padding: 6px 14px;
-		box-shadow: 0 6px 20px rgba(0,0,0,0.25);
-	}
 	.overlay {
 		position: absolute;
 		inset: 0;
@@ -149,24 +136,21 @@ export const DEV_PAGE_HTML = `<!doctype html>
 </head>
 <body>
 <header>
-	<span class="brand">poli dev<small id="pages"></small></span>
+	<span class="brand">poli dev<small>draft</small></span>
 	<label class="visually-hidden" for="template">Template</label>
 	<select id="template" title="Template shown in the preview"></select>
 	<button id="pin" aria-pressed="false" title="Freeze the view on this template — saves elsewhere will not switch it">Pin</button>
-	<button id="pdf" title="Render the real PDF for this template">Render PDF</button>
-	<button id="live" hidden title="Go back to the live HTML preview">Live preview</button>
 	<span class="spacer"></span>
 	<span class="status"><span class="dot" id="dot"></span><span id="statusText">connecting…</span></span>
 </header>
 <div class="stage">
-	<iframe id="frame" src="/preview" title="Rendered document"></iframe>
-	<button class="badge" id="newRender" hidden>New render available — show live preview</button>
+	<iframe id="frame" src="/pdf" title="Draft PDF"></iframe>
 	<div class="overlay" id="overlay" hidden>
 		<div class="overlay-card">
 			<h2 id="errTitle">Render failed</h2>
 			<div class="where" id="errWhere"></div>
 			<pre id="errMessage"></pre>
-			<div class="hint">The last good render is still behind this overlay. Fix the file and save — the overlay clears on the next successful render.</div>
+			<div class="hint">The last good PDF is still behind this overlay. Fix the file and save — the overlay clears on the next successful render.</div>
 		</div>
 	</div>
 </div>
@@ -175,37 +159,26 @@ export const DEV_PAGE_HTML = `<!doctype html>
 	var frame = document.getElementById('frame');
 	var select = document.getElementById('template');
 	var pinBtn = document.getElementById('pin');
-	var pdfBtn = document.getElementById('pdf');
-	var liveBtn = document.getElementById('live');
-	var newRenderBtn = document.getElementById('newRender');
 	var overlay = document.getElementById('overlay');
 	var errTitle = document.getElementById('errTitle');
 	var errWhere = document.getElementById('errWhere');
 	var errMessage = document.getElementById('errMessage');
 	var statusText = document.getElementById('statusText');
 	var dot = document.getElementById('dot');
-	var pages = document.getElementById('pages');
 
 	var stageTitles = ${JSON.stringify(DEV_ERROR_TITLES)};
 
 	var shownVersion = -1;
-	var latestVersion = -1;
-	var mode = 'preview';
 	// Optimistic: the very first /state fetch races the EventSource open
 	// event, and a one-frame "disconnected" flash would be a lie.
 	var connected = true;
 
-	function showPreview(version) {
-		mode = 'preview';
+	function showPdf(version) {
 		shownVersion = version;
-		liveBtn.hidden = true;
-		newRenderBtn.hidden = true;
-		frame.src = '/preview?v=' + version;
+		frame.src = '/pdf?v=' + version;
 	}
 
 	function apply(state) {
-		latestVersion = state.renderVersion;
-
 		if (state.templates.join('\\u0000') !== Array.prototype.map.call(select.options, function (o) { return o.value; }).join('\\u0000')) {
 			select.textContent = '';
 			state.templates.forEach(function (name) {
@@ -223,8 +196,6 @@ export const DEV_PAGE_HTML = `<!doctype html>
 		pinBtn.title = state.pinned
 			? 'Pinned to ' + (state.activeTemplate || 'this template') + ' — click to follow the most recently changed template again'
 			: 'Following the most recently changed template — click to freeze this one';
-
-		pages.textContent = state.pageCount ? ' · ' + state.pageCount + (state.pageCount === 1 ? ' page' : ' pages') : '';
 
 		if (state.error) {
 			errTitle.textContent = stageTitles[state.error.stage] || 'Error';
@@ -257,8 +228,7 @@ export const DEV_PAGE_HTML = `<!doctype html>
 		}
 
 		if (state.renderVersion > 0 && state.renderVersion !== shownVersion) {
-			if (mode === 'preview') showPreview(state.renderVersion);
-			else newRenderBtn.hidden = false;
+			showPdf(state.renderVersion);
 		}
 	}
 
@@ -276,39 +246,13 @@ export const DEV_PAGE_HTML = `<!doctype html>
 	}
 
 	select.addEventListener('change', function () {
-		post('/api/select?template=' + encodeURIComponent(select.value)).then(function (s) {
-			mode = 'preview';
-			apply(s);
-		});
+		post('/api/select?template=' + encodeURIComponent(select.value)).then(apply);
 	});
 
 	pinBtn.addEventListener('click', function () {
 		var next = pinBtn.getAttribute('aria-pressed') !== 'true';
 		post('/api/pin?value=' + (next ? 'true' : 'false')).then(apply);
 	});
-
-	pdfBtn.addEventListener('click', function () {
-		pdfBtn.disabled = true;
-		var previous = pdfBtn.textContent;
-		pdfBtn.textContent = 'Rendering PDF…';
-		post('/api/pdf')
-			.then(function (result) {
-				if (result && result.url) {
-					mode = 'pdf';
-					frame.src = result.url;
-					liveBtn.hidden = false;
-					newRenderBtn.hidden = true;
-				}
-				return refresh();
-			})
-			.finally(function () {
-				pdfBtn.disabled = false;
-				pdfBtn.textContent = previous;
-			});
-	});
-
-	liveBtn.addEventListener('click', function () { showPreview(latestVersion); });
-	newRenderBtn.addEventListener('click', function () { showPreview(latestVersion); });
 
 	var source = new EventSource('/events');
 	source.addEventListener('state', function (event) { apply(JSON.parse(event.data)); });
@@ -328,7 +272,7 @@ export const DEV_PAGE_HTML = `<!doctype html>
 </html>
 `;
 
-/** Placeholder served on `/preview` before the first successful render. */
+/** Placeholder served on `/pdf` before the first successful render. */
 export const DEV_PLACEHOLDER_HTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8" /><title>poli dev</title>
 <style>

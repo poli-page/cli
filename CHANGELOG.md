@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`poli dev` renders the draft to PDF through `POST /v1/render/draft`, with your signed-in session.** The API removed `POST /v1/render/preview` and no longer accepts `version: 'draft'` on `POST /v1/render`, so `poli dev` could not render at all. Every render is now the real PDF of the draft: the page shows it in the browser's PDF viewer and reloads it after each successful sync or template switch. Draft renders are session-only, unwatermarked, never stored and never counted, so `poli dev` creates no document; `POLI_PAGE_API_KEY` plays no part, since an API key cannot render the draft. The **Render PDF** and **Live preview** buttons, the page-count badge, the `POST /api/pdf` and `GET /pdf/:id` routes and the `/preview` route are gone; the page loads the last good PDF from `GET /pdf`, and `DevState` no longer carries `pageCount`. The template switcher, pin, error overlay (the last good PDF stays behind it) and the stale-render guard are unchanged, and so is `poli watch`. A PDF render takes longer than the old HTML preview. `ApiClient.renderDraft()` is added and returns the PDF as a `Buffer`.
+
 ## [0.9.0] — 2026-10-18
 
 ### Added

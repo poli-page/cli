@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { readFile, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { ServerResponse } from 'node:http';
-import type { ApiClient, PreviewApiResult } from '../api-client.js';
+import type { ApiClient } from '../api-client.js';
 import { resolveCloudContext } from '../cloud-context.js';
 import { createFileWatcher, type FileWatcher, type FileWatcherOptions } from '../file-watcher.js';
 import { createProjectSyncer } from '../project-sync.js';
@@ -14,7 +14,6 @@ import {
 	type TemplateEntry,
 } from '../project-loader.js';
 import type { PoliPageManifest } from '../manifest.js';
-import { resolveAuth, type AuthContext } from '../auth.js';
 import { errorToExitCode } from '../exit-codes.js';
 import {
 	startDevServer,
@@ -25,10 +24,15 @@ import {
 import { DEV_PAGE_HTML, DEV_PLACEHOLDER_HTML } from '../dev-page.js';
 
 const DEFAULT_DEBOUNCE_MS = 300;
-const PDF_CACHE_LIMIT = 4;
 
 export type DevEventType =
-	'ready' | 'syncing' | 'synced' | 'rendering' | 'rendered' | 'pdf' | 'error' | 'stopped';
+	| 'ready'
+	| 'syncing'
+	| 'synced'
+	| 'rendering'
+	| 'rendered'
+	| 'error'
+	| 'stopped';
 
 export interface DevEvent {
 	type: DevEventType;
@@ -40,7 +44,7 @@ export type DevStatus = 'idle' | 'syncing' | 'rendering';
 
 export interface DevError {
 	/** Which step produced it — the overlay titles itself from this. */
-	stage: 'sync' | 'render' | 'pdf' | 'project';
+	stage: 'sync' | 'render' | 'project';
 	message: string;
 	file?: string;
 	line?: number;
@@ -55,7 +59,6 @@ export interface DevState {
 	status: DevStatus;
 	/** Bumped on every successful render — the browser's reload trigger. */
 	renderVersion: number;
-	pageCount: number;
 	error: DevError | null;
 	lastRenderedAt: string | null;
 }
@@ -76,8 +79,6 @@ export interface DevOptions {
 	onEvent?: (event: DevEvent) => void;
 	/** Injectable for tests — defaults to the `open` package. */
 	openFn?: (url: string) => Promise<unknown>;
-	/** Injectable for tests — defaults to fetching the presigned URL. */
-	fetchPdf?: (url: string) => Promise<Buffer>;
 }
 
 export interface DevSession {
@@ -183,8 +184,7 @@ function toDevError(stage: DevError['stage'], err: unknown): DevError {
 	return { stage, message, ...extractErrorPosition(message) };
 }
 
-interface PdfCacheEntry {
-	id: number;
+interface DraftPdf {
 	template: string;
 	buffer: Buffer;
 }
@@ -232,10 +232,9 @@ export async function startDevSession(
 		findTemplate(manifest, templateName);
 	}
 
-	const auth: AuthContext = await resolveAuth({
-		manifestOrgId: manifest.cloud?.orgId ?? ctx.orgId,
-		homeDir: options.homeDir,
-	});
+	// The draft renders through the signed-in session only: an API key
+	// gets `403 DRAFT_REQUIRES_SESSION`, so `POLI_PAGE_API_KEY` plays no part.
+	const draftAuthorization = `Bearer ${ctx.session}`;
 
 	const state: DevState = {
 		templates,
@@ -246,7 +245,6 @@ export async function startDevSession(
 		pinned: false,
 		status: 'idle',
 		renderVersion: 0,
-		pageCount: 0,
 		error: null,
 		lastRenderedAt: null,
 	};
@@ -258,10 +256,8 @@ export async function startDevSession(
 		};
 	}
 
-	let lastGoodHtml: string | null = null;
+	let lastGoodPdf: DraftPdf | null = null;
 	let renderSeq = 0;
-	let pdfSeq = 0;
-	const pdfCache: PdfCacheEntry[] = [];
 	let server: DevServer | null = null;
 	let stopped = false;
 	// The last sync failure, until a sync succeeds: a render of the (stale)
@@ -333,7 +329,7 @@ export async function startDevSession(
 		return { entry, data: unwrapped.data, locale: unwrapped.locale };
 	}
 
-	function previewPayload(
+	function draftPayload(
 		entry: TemplateEntry,
 		data: Record<string, unknown>,
 		locale: string | undefined
@@ -341,7 +337,6 @@ export async function startDevSession(
 		return {
 			project: manifest.cloud?.projectSlug,
 			template: entry.name,
-			version: 'draft',
 			data,
 			format: entry.format,
 			orientation: entry.orientation,
@@ -362,24 +357,19 @@ export async function startDevSession(
 
 		try {
 			const { entry, data, locale } = await resolveRenderInput(template);
-			const result: PreviewApiResult = await client.renderPreview(
-				auth.authorization,
-				auth.orgIdHeader,
-				previewPayload(entry, data, locale)
+			const buffer = await client.renderDraft(
+				draftAuthorization,
+				ctx.orgId,
+				draftPayload(entry, data, locale)
 			);
 			// A newer render was requested while this one was in flight —
 			// drop the stale result rather than flashing it on screen.
 			if (seq !== renderSeq) return;
-			lastGoodHtml = result.html;
-			state.pageCount = result.totalPages;
+			lastGoodPdf = { template, buffer };
 			state.renderVersion += 1;
 			state.lastRenderedAt = new Date().toISOString();
 			state.error = syncError;
-			emit({
-				type: 'rendered',
-				template,
-				message: `${result.totalPages} page${result.totalPages === 1 ? '' : 's'}`,
-			});
+			emit({ type: 'rendered', template });
 		} catch (err) {
 			if (seq !== renderSeq) return;
 			// The last good render stays on screen behind the overlay.
@@ -387,37 +377,6 @@ export async function startDevSession(
 			emit({ type: 'error', template, message: state.error.message });
 		} finally {
 			if (seq === renderSeq) setStatus('idle');
-		}
-	}
-
-	async function renderPdf(): Promise<{ url: string } | { error: string }> {
-		const template = state.activeTemplate;
-		if (!template) return { error: 'No template selected.' };
-
-		try {
-			const { entry, data, locale } = await resolveRenderInput(template);
-			const descriptor = await client.render(
-				auth.authorization,
-				auth.orgIdHeader,
-				previewPayload(entry, data, locale)
-			);
-			const buffer = options.fetchPdf
-				? await options.fetchPdf(descriptor.presignedPdfUrl)
-				: await defaultFetchPdf(descriptor.presignedPdfUrl);
-
-			const id = ++pdfSeq;
-			pdfCache.push({ id, template, buffer });
-			while (pdfCache.length > PDF_CACHE_LIMIT) pdfCache.shift();
-
-			state.error = syncError;
-			emit({ type: 'pdf', template, message: `${descriptor.pageCount} page(s)` });
-			broadcast();
-			return { url: `/pdf/${id}` };
-		} catch (err) {
-			state.error = toDevError('pdf', err);
-			emit({ type: 'error', template, message: state.error.message });
-			broadcast();
-			return { error: state.error.message };
 		}
 	}
 
@@ -462,8 +421,18 @@ export async function startDevSession(
 			return;
 		}
 
-		if (method === 'GET' && pathname === '/preview') {
-			sendHtml(res, lastGoodHtml ?? DEV_PLACEHOLDER_HTML);
+		if (method === 'GET' && pathname === '/pdf') {
+			if (!lastGoodPdf) {
+				sendHtml(res, DEV_PLACEHOLDER_HTML);
+				return;
+			}
+			res.writeHead(200, {
+				'Content-Type': 'application/pdf',
+				'Content-Length': String(lastGoodPdf.buffer.byteLength),
+				'Content-Disposition': `inline; filename="${encodeURIComponent(lastGoodPdf.template)}.pdf"`,
+				'Cache-Control': 'no-store',
+			});
+			res.end(lastGoodPdf.buffer);
 			return;
 		}
 
@@ -499,29 +468,6 @@ export async function startDevSession(
 			state.pinned = query.get('value') !== 'false';
 			sendJson(res, 200, state);
 			broadcast();
-			return;
-		}
-
-		if (method === 'POST' && pathname === '/api/pdf') {
-			const result = await renderPdf();
-			sendJson(res, 'error' in result ? 502 : 200, result);
-			return;
-		}
-
-		if (method === 'GET' && pathname.startsWith('/pdf/')) {
-			const id = Number.parseInt(pathname.slice('/pdf/'.length), 10);
-			const entry = pdfCache.find((candidate) => candidate.id === id);
-			if (!entry) {
-				sendJson(res, 404, { error: 'That PDF is no longer cached — render it again.' });
-				return;
-			}
-			res.writeHead(200, {
-				'Content-Type': 'application/pdf',
-				'Content-Length': String(entry.buffer.byteLength),
-				'Content-Disposition': `inline; filename="${encodeURIComponent(entry.template)}.pdf"`,
-				'Cache-Control': 'no-store',
-			});
-			res.end(entry.buffer);
 			return;
 		}
 
@@ -662,14 +608,6 @@ async function defaultOpen(url: string): Promise<unknown> {
 	return open.default(url);
 }
 
-async function defaultFetchPdf(url: string): Promise<Buffer> {
-	const response = await fetch(url);
-	if (!response.ok) {
-		throw new Error(`Failed to download PDF from presigned URL (HTTP ${response.status}).`);
-	}
-	return Buffer.from(await response.arrayBuffer());
-}
-
 export function parsePort(raw: string): number {
 	const port = Number.parseInt(raw, 10);
 	if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -686,7 +624,7 @@ export function registerDevCommand(program: Command): void {
 	program
 		.command('dev')
 		.description(
-			'Serve a live-reloading preview of a template: sync on save, re-render, push to the browser'
+			'Live PDF preview of the cloud draft: sync each save, render the draft through your session, reload the browser'
 		)
 		.argument('[template]', 'Template to show first (defaults to the first in the manifest)')
 		.option('-p, --port <n>', `Port to listen on (default: ${DEFAULT_DEV_PORT})`)
@@ -725,16 +663,7 @@ export function registerDevCommand(program: Command): void {
 								break;
 							case 'rendered':
 								console.log(
-									chalk.green(
-										`[${ts}] ✓ rendered ${event.template ?? ''}${event.message ? ` — ${event.message}` : ''}`
-									)
-								);
-								break;
-							case 'pdf':
-								console.log(
-									chalk.green(
-										`[${ts}] ✓ PDF ready for ${event.template ?? ''}${event.message ? ` — ${event.message}` : ''}`
-									)
+									chalk.green(`[${ts}] ✓ rendered ${event.template ?? ''}`)
 								);
 								break;
 							case 'error':

@@ -338,6 +338,16 @@ export interface ApiClient {
 		orgIdHeader: string | undefined,
 		payload: Record<string, unknown>
 	): Promise<PreviewApiResult>;
+	/**
+	 * `POST /v1/render/draft`: renders the project's draft and answers the
+	 * PDF bytes. Session only (an API key gets `403 DRAFT_REQUIRES_SESSION`);
+	 * nothing is stored or counted, and no page count comes back.
+	 */
+	renderDraft(
+		authorization: string,
+		orgIdHeader: string,
+		payload: Record<string, unknown>
+	): Promise<Buffer>;
 	getMe(authorization: string, orgIdHeader?: string): Promise<MeResponse>;
 	// `renderThumbnails` was retired with `/v1/render/thumbnails` (api-spec §11.4).
 	// Thumbnails now come from a stored document via `documentThumbnails`.
@@ -635,6 +645,19 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				body: JSON.stringify(payload),
 			});
 			return response.json() as Promise<PreviewApiResult>;
+		},
+
+		async renderDraft(authorization, orgIdHeader, payload) {
+			const response = await request('/v1/render/draft', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: authorization,
+					'X-Poli-Org-Id': orgIdHeader,
+				},
+				body: JSON.stringify(payload),
+			});
+			return Buffer.from(await response.arrayBuffer());
 		},
 
 		async updateProject(session, orgId, projectId, payload) {
