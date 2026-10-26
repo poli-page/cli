@@ -123,10 +123,10 @@ poli render invoice@live -o invoice.pdf
 poli publish --env live -m "Release from CI"   # service key only
 ```
 
-Every key is bound to one environment and carries its name (`pp_<environment>_…`). Standard keys and service keys share that format; the CLI asks `GET /v1/me` which one it holds:
+Standard keys and service keys share the `pp_<environment>_…` format; the CLI asks `GET /v1/me` which one it holds:
 
 - a **standard key** renders only. `poli publish` refuses it before any upload (exit `5`).
-- a **service key** (recommended for CI) also publishes, into its own environment only: `--env` is still required and must name the key's environment (exit `2` otherwise). Its role decides on a protected environment: an `admin` service key can publish to one, a `developer` one gets `ENVIRONMENT_PROTECTED` (exit `5`). Nothing prompts.
+- a **service key** (recommended for CI) also publishes, into its own environment only: `--env` is still required and must name the environment in the key (exit `2` otherwise). Its role decides on a protected environment: an `admin` service key can publish to one, a `developer` one gets `ENVIRONMENT_PROTECTED` (exit `5`). Nothing prompts.
 
 The other workspace commands (`link`, `watch`, `dev`) need `poli login`.
 
@@ -570,7 +570,7 @@ The `cloud:` block is written by `poli link`, removed by `poli unlink`. **No API
 
 | Variable             | Effect                                                                                                                                                                                                                                          |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POLI_PAGE_API_KEY`  | Single env var for any API key in CI/CD: `pp_<environment>_` followed by 32 lowercase hex characters, checked in full before any call. The key renders only its own environment. **Precedence**: when a credentials file is also present, the session wins. |
+| `POLI_PAGE_API_KEY`  | Single env var for any API key in CI/CD: `pp_<environment>_` followed by 32 lowercase hex characters, checked in full before any call. The key renders only its own environment; a service key also publishes to it. **Precedence**: when a credentials file is also present, the session wins. |
 | `POLI_API_URL`       | Override the API base URL (precedence: `--api-url` flag → `POLI_API_URL` → `poli-page.json` `cloud.apiUrl` → `~/.polipage/credentials.json` `apiUrl` → default `https://api.poli.page`).                                                          |
 | `POLI_PAGE_ENV`      | Default render env (`sandbox` or `live`) when commands accept an env hint.                                                                                                                                                                       |
 | `NO_COLOR`           | Disable ANSI colors (Unix standard).                                                                                                                                                                                                            |
@@ -671,7 +671,7 @@ jobs:
           path: ./artifacts/invoice.pdf
 ```
 
-The key decides the environment: a `pp_production_…` key renders `invoice@production` and nothing else. Recommended: use a **service account key** so rotating it does not log out any developer.
+The key decides the environment: a `pp_production_…` key renders `invoice@production` and nothing else. A standard key is enough to render; a service key also works, and rotating either one does not log out any developer.
 
 ### GitLab CI
 
@@ -696,7 +696,7 @@ npm install -g @poli-page/cli
 POLI_PAGE_API_KEY=pp_production_xxx poli render homepage-pdf@production -o ./public/welcome.pdf
 ```
 
-Service accounts have a **fixed role and environment** at creation. The CLI does not try to switch them — the API enforces the permissions.
+A service key has a **fixed role and environment** from its creation. The CLI does not try to switch them — the API enforces the permissions.
 
 ---
 

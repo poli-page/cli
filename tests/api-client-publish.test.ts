@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createApiClient } from '../src/api-client.js';
+import { testApiKey } from './helpers/api-key.js';
 
 function mockFetchOnce(status: number, body: unknown): ReturnType<typeof vi.fn> {
 	const fn = vi.fn().mockResolvedValue(
@@ -57,7 +58,7 @@ describe('api-client publish', () => {
 	it('sends no X-Poli-Org-Id without an organization: an API key carries its own', async () => {
 		const fetchMock = mockFetchOnce(200, {});
 		const client = createApiClient('https://api.test');
-		await client.publish('Bearer pp_staging_key', undefined, 'invoices', {
+		await client.publish(`Bearer ${testApiKey('staging')}`, undefined, 'invoices', {
 			environment: 'staging',
 			files: [],
 		});
@@ -65,7 +66,7 @@ describe('api-client publish', () => {
 			string,
 			string
 		>;
-		expect(headers.Authorization).toBe('Bearer pp_staging_key');
+		expect(headers.Authorization).toBe(`Bearer ${testApiKey('staging')}`);
 		expect('X-Poli-Org-Id' in headers).toBe(false);
 	});
 

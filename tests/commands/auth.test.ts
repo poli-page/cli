@@ -498,7 +498,7 @@ describe('auth commands', () => {
 		});
 
 		it("prints a service key's environment name and role", async () => {
-			vi.stubEnv('POLI_PAGE_API_KEY', 'pp_staging_0123456789abcdef0123456789abcdef');
+			vi.stubEnv('POLI_PAGE_API_KEY', testApiKey('staging'));
 			me = {
 				...apiKeyMe(),
 				auth: {
@@ -516,7 +516,7 @@ describe('auth commands', () => {
 		});
 
 		it('prints no role for a standard key, which has none', async () => {
-			vi.stubEnv('POLI_PAGE_API_KEY', 'pp_live_0123456789abcdef0123456789abcdef');
+			vi.stubEnv('POLI_PAGE_API_KEY', testApiKey('live'));
 			me = apiKeyMe();
 			await whoami();
 			expect(logs).toEqual(['pp_live_xxx…abcd @ acme (api-key, environment=live)']);

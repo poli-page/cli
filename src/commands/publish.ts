@@ -172,10 +172,10 @@ export async function executePublish(options: PublishOptions): Promise<PublishRe
 
 /**
  * Publishes with `POLI_PAGE_API_KEY`: only a service key may, into its own
- * environment. `GET /v1/me` tells a service key from a standard one, since
- * both share the `pp_{environment}_…` format. The key carries the
- * organization, so no org header and no environment list; nothing prompts,
- * and the API applies the protected-environment rule.
+ * environment, the one its `pp_{environment}_…` text names (K1). `GET /v1/me`
+ * tells a service key from a standard one, since both share that format. The
+ * key carries the organization, so no org header and no environment list;
+ * nothing prompts, and the API applies the protected-environment rule.
  */
 async function publishWithApiKey(
 	cwd: string,
@@ -183,8 +183,14 @@ async function publishWithApiKey(
 	options: PublishOptions,
 	client: ApiClient
 ): Promise<PublishResult> {
-	// No session here, so this is the key or "Not logged in".
-	const { authorization } = await resolveAuth({ homeDir: options.homeDir });
+	// No session here, so this is the key or "Not logged in". The mode check
+	// only narrows the type: without `manifestOrgId`, resolveAuth never
+	// returns a session.
+	const key = await resolveAuth({ homeDir: options.homeDir });
+	if (key.mode !== 'api-key') {
+		throw new Error('Not logged in. Run `poli login` or set POLI_PAGE_API_KEY.');
+	}
+	const { authorization } = key;
 
 	const manifest = await readProjectManifest(cwd);
 	const project = manifest.cloud?.projectSlug;
@@ -200,9 +206,9 @@ async function publishWithApiKey(
 			'Standard API keys can only render. Use a service key or `poli login`.'
 		);
 	}
-	if (auth.environment !== environment) {
+	if (key.environment !== environment) {
 		throw new PublishUsageError(
-			`This service key publishes to "${auth.environment}" only, not "${environment}". Run \`poli publish --env ${auth.environment}\`, or use a key for "${environment}".`
+			`This service key publishes to "${key.environment}" only, not "${environment}". Run \`poli publish --env ${key.environment}\`, or use a key for "${environment}".`
 		);
 	}
 

@@ -18,6 +18,7 @@ import {
 	type PublishResult,
 } from '../../src/api-client.js';
 import { ExitCode, errorToExitCode } from '../../src/exit-codes.js';
+import { testApiKey } from '../helpers/api-key.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
 
@@ -74,7 +75,7 @@ interface PublishCall {
 	body: PublishBody;
 }
 
-const SERVICE_KEY = 'pp_staging_0123456789abcdef0123456789abcdef';
+const SERVICE_KEY = testApiKey('staging');
 
 function keyMe(auth: Partial<MeResponse['auth']> = {}): MeResponse {
 	return {
@@ -372,6 +373,7 @@ describe('poli publish', () => {
 		it('--yes skips the confirmation', async () => {
 			const calls: PublishCall[] = [];
 			const confirmFn = vi.fn(async () => false);
+			vi.stubEnv('POLI_PAGE_API_KEY', testApiKey('live'));
 			await run({ env: 'live', yes: true, confirmFn }, makeClient(calls));
 			expect(confirmFn).not.toHaveBeenCalled();
 			expect(calls).toHaveLength(1);
@@ -387,6 +389,7 @@ describe('poli publish', () => {
 		it('an unprotected environment never asks', async () => {
 			const calls: PublishCall[] = [];
 			const confirmFn = vi.fn(async () => false);
+			vi.stubEnv('POLI_PAGE_API_KEY', testApiKey('live'));
 			await run({ env: 'sandbox', confirmFn }, makeClient(calls));
 			expect(confirmFn).not.toHaveBeenCalled();
 			expect(calls).toHaveLength(1);
@@ -464,6 +467,13 @@ describe('poli publish', () => {
 			expect(calls).toHaveLength(0);
 		});
 
+		it("compares --env with the environment the key carries (K1), not /v1/me's", async () => {
+			const calls: PublishCall[] = [];
+			await run({ env: 'staging' }, keyClient(calls, keyMe({ environment: 'live' })));
+			expect(calls).toHaveLength(1);
+			expect(calls[0].body.environment).toBe('staging');
+		});
+
 		it('still requires --env', async () => {
 			const err = await run({}, keyClient([], keyMe())).catch((e) => e);
 			expect(err.message).toMatch(/--env is required/);
@@ -485,6 +495,7 @@ describe('poli publish', () => {
 		it('never prompts: the API decides on a protected environment', async () => {
 			const calls: PublishCall[] = [];
 			const confirmFn = vi.fn(async () => false);
+			vi.stubEnv('POLI_PAGE_API_KEY', testApiKey('live'));
 			await run(
 				{ env: 'live', confirmFn },
 				keyClient(calls, keyMe({ environment: 'live', role: 'admin' }))
@@ -494,6 +505,7 @@ describe('poli publish', () => {
 		});
 
 		it('ENVIRONMENT_PROTECTED from the API exits 5 and says the key needs the admin role', async () => {
+			vi.stubEnv('POLI_PAGE_API_KEY', testApiKey('live'));
 			const client = keyClient([], keyMe({ environment: 'live' }), {
 				publish: async () => {
 					throw new EnvironmentProtectedError('403 ENVIRONMENT_PROTECTED');

@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createApiClient, MissingOrgContextError } from '../src/api-client.js';
+import { testApiKey } from './helpers/api-key.js';
 
 interface FetchCall {
 	url: string;
@@ -79,11 +80,11 @@ describe('api-client getMe', () => {
 			calls
 		);
 		const client = createApiClient('https://api.test');
-		const me = await client.getMe('Bearer pp_staging_abc');
+		const me = await client.getMe(`Bearer ${testApiKey('staging')}`);
 
 		expect(calls).toHaveLength(1);
 		const headers = calls[0].init.headers as Record<string, string>;
-		expect(headers.Authorization).toBe('Bearer pp_staging_abc');
+		expect(headers.Authorization).toBe(`Bearer ${testApiKey('staging')}`);
 		expect('X-Poli-Org-Id' in headers).toBe(false);
 
 		expect(me.auth.mode).toBe('api-key');
