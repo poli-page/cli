@@ -10,6 +10,7 @@ import type {
 } from '../api-client.js';
 import { errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
+import { confirmPrompt } from '../template-prompt.js';
 
 export interface VersionStateOptions {
 	cwd?: string;
@@ -118,11 +119,6 @@ export async function executeUndeprecate(
 	return client.undeprecateVersion(ctx.session, ctx.orgId, ctx.projectId, version);
 }
 
-async function defaultConfirm(message: string): Promise<boolean> {
-	const { confirm } = await import('@inquirer/prompts');
-	return confirm({ message, default: false });
-}
-
 export function registerVersionStateCommands(program: Command) {
 	program
 		.command('promote')
@@ -136,7 +132,7 @@ export function registerVersionStateCommands(program: Command) {
 				const result = await executePromote(version, {
 					yes: opts.yes,
 					confirmFn: async ({ action, version: v }) =>
-						defaultConfirm(`${action} ${v} to LIVE?`),
+						confirmPrompt({ message: `${action} ${v} to LIVE?` }),
 				});
 				if (shouldEmitJson(opts)) {
 					console.log(JSON.stringify(result, null, 2));
@@ -187,7 +183,7 @@ export function registerVersionStateCommands(program: Command) {
 								}
 								console.log(`  Live calls (24h):    ${p.recentLiveCalls}`);
 								console.log();
-								return defaultConfirm(`Unpromote ${v} from LIVE?`);
+								return confirmPrompt({ message: `Unpromote ${v} from LIVE?` });
 							},
 				});
 				if (emitJson) {
@@ -226,7 +222,7 @@ export function registerVersionStateSubcommands(versionsGroup: Command) {
 				const result = await executeDeprecate(version, {
 					yes: opts.yes,
 					confirmFn: async ({ version: v }) =>
-						defaultConfirm(`Deprecate ${v}?`),
+						confirmPrompt({ message: `Deprecate ${v}?` }),
 				});
 				if (shouldEmitJson(opts)) {
 					console.log(JSON.stringify(result, null, 2));
@@ -253,7 +249,7 @@ export function registerVersionStateSubcommands(versionsGroup: Command) {
 				const result = await executeUndeprecate(version, {
 					yes: opts.yes,
 					confirmFn: async ({ version: v }) =>
-						defaultConfirm(`Un-deprecate ${v}?`),
+						confirmPrompt({ message: `Un-deprecate ${v}?` }),
 				});
 				if (shouldEmitJson(opts)) {
 					console.log(JSON.stringify(result, null, 2));

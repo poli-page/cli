@@ -1,7 +1,6 @@
-import { readManifest } from './manifest.js';
+import { readProjectManifest } from './manifest.js';
 import { getSessionToken } from './credentials.js';
 import { createApiClient, type ApiClient } from './api-client.js';
-import { MANIFEST_FILENAME } from './constants.js';
 
 export interface CloudContext {
 	session: string;
@@ -38,17 +37,7 @@ export async function resolveCloudContext(options: {
 	const client = options.apiClient ?? createApiClient();
 	const session = await getSessionToken(options.homeDir);
 
-	let manifest;
-	try {
-		manifest = await readManifest(cwd);
-	} catch (err) {
-		if (err instanceof Error && /ENOENT/.test(err.message)) {
-			throw new Error(
-				`No ${MANIFEST_FILENAME} found in ${cwd}. Are you in a Poli Page project?`
-			);
-		}
-		throw err;
-	}
+	const manifest = await readProjectManifest(cwd);
 
 	if (!manifest.cloud) {
 		throw new Error('Project is not linked to any organization. Run "poli link" first.');

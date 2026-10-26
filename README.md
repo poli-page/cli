@@ -18,6 +18,7 @@ Command-line tool for [Poli Page](https://poli.page) — scaffold projects, mana
   - [Authentication commands](#authentication-commands)
   - [Cloud sync](#cloud-sync)
   - [Live development](#live-development)
+  - [Environments](#environments)
   - [Versioning](#versioning)
   - [Render](#render)
   - [Documents](#documents)
@@ -240,7 +241,7 @@ Removes the `cloud:` section from `poli-page.json`. Local files are preserved.
 
 #### `poli watch`
 
-Auto-syncs the local project to the cloud draft on every save. Debounce 2s. Each batch sends only the SHA-256 delta via `PATCH /api/organizations/:orgId/projects/:projectId/files`.
+Auto-syncs the local project to the cloud draft on every save. Debounce 2s. Each batch sends only the SHA-256 delta via `PATCH /api/organizations/:orgId/projects/:projectId/files`. It syncs the same file set as [`poli publish`](#poli-publish), each file with its encoding (`base64` for assets, `utf8` otherwise); other files are not tracked.
 
 ```bash
 poli watch
@@ -320,6 +321,32 @@ Notes:
   page serving.
 - `Ctrl-C` (or `SIGTERM`) closes the watcher, every SSE connection, and the
   port.
+
+### Environments
+
+#### `poli publish`
+
+Publishes the local project, the files on disk, to an environment of your organization: `POST /v1/projects/<projectSlug>/publish`, with your `poli login` session and the manifest's `cloud.orgId`. The environment's copy of the project is replaced in place. There is no rollback: to go back, check out the earlier state from your own version control and publish again.
+
+```bash
+poli publish --env sandbox
+poli publish --env live -m "Invoice footer fix"
+poli publish --env live --yes      # protected environment, no prompt (scripts)
+```
+
+| Flag                   | Meaning                                                                                   |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| `--env <name>`         | Required. The target environment; there is no default, and `draft` is not an environment. |
+| `-m, --message <text>` | Kept in the publish log with the date, author and bundle hash. 500 characters at most.     |
+| `-y, --yes`            | Publish to a protected environment without the confirmation prompt.                       |
+| `--json`               | Print the API response as JSON (also the default when stdout is not a TTY).                |
+
+- **Environment names** are 1-20 characters: lowercase letters, digits and single inner hyphens, starting with a letter. A name that breaks this rule is refused before any call (exit `2`). An environment that does not exist in the organization is refused with the list of the ones that do (exit `2`).
+- **The bundle** is the project file set: `poli-page.json`, `tailwind.css`, the `.html`, `.json` and `.css` files under `templates/<slug>/`, the `.html` files under `partials/`, everything under `assets/images/` and `assets/icons/`, and the `.woff2`, `.woff`, `.ttf` and `.otf` files under `assets/fonts/`. Anything else (`.gitignore`, `README.md`, `output/`, `node_modules/`) is left out. Assets are sent base64-encoded, every other file as UTF-8. A bundle over 5 MiB, or a message over 500 characters, is refused before any call (exit `2`).
+- **Protected environments** (`live` by default) accept a publish from an owner or an admin only. In a terminal, `poli publish` asks for confirmation first; without a TTY it needs `--yes`, and `CI=true` counts as `--yes`. Without the role, the API refuses with `ENVIRONMENT_PROTECTED` (exit `5`).
+- **One publish at a time** per project and environment: while one runs, a second gets `PUBLISH_IN_PROGRESS` (exit `3`). It is not retried; run it again once the first one is done.
+
+On success it prints the environment, the project, the short bundle hash, the file count and the publish log id.
 
 ### Versioning
 
@@ -541,7 +568,7 @@ Every command that returns a payload (renders, descriptors, lists, version mutat
 
 Either the summary **or** the JSON — never both at once. Errors always go to stderr with a clear message.
 
-Commands that take this contract: `render`, `documents get`, `documents preview`, `documents thumbnails`, `whoami`, `versions list`, `push`, `promote`, `unpromote`, `versions deprecate`, `versions un-deprecate`, `init --starter`.
+Commands that take this contract: `render`, `documents get`, `documents preview`, `documents thumbnails`, `whoami`, `versions list`, `publish`, `push`, `promote`, `unpromote`, `versions deprecate`, `versions un-deprecate`, `init --starter`.
 
 Imperative commands (`init` without `--starter`, `new`, `link`, `unlink`, `logout`, `documents delete`, `watch`, `login`) don't have a JSON payload to forward — they just acknowledge with a `✓` line on success.
 
@@ -556,7 +583,7 @@ Imperative commands (`init` without `--starter`, `new`, `link`, `unlink`, `logou
 | `2`  | Invalid usage (bad args, template not found, version not found, non-TTY context where TTY is required) |
 | `3`  | Network / API error (timeout, 5xx, unspecified 4xx)                                                    |
 | `4`  | Not authenticated — run `poli login` or set `POLI_PAGE_API_KEY`                                        |
-| `5`  | Not authorized (insufficient role, `THUMBNAILS_NOT_AVAILABLE`, system project locked)                  |
+| `5`  | Not authorized (insufficient role, protected environment, `THUMBNAILS_NOT_AVAILABLE`, system project locked) |
 | `6`  | Invalid local state (no project, project not linked, empty folder where required)                      |
 
 These map to the centralised `ExitCode` constants in `src/exit-codes.ts`. Every handler routes errors through `errorToExitCode(err)`.

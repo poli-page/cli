@@ -20,6 +20,9 @@ import {
 	SystemProjectImmutableError,
 	InvalidTrackFormatError,
 	VersionConflictError,
+	EnvironmentProtectedError,
+	EnvironmentNotFoundError,
+	UnsupportedFileTypeError,
 } from '../src/api-client.js';
 import { ExitCode, errorToExitCode } from '../src/exit-codes.js';
 import realResponses from './fixtures/api-error-responses.json';
@@ -98,6 +101,9 @@ describe('api-client error mapping', () => {
 			['SYSTEM_PROJECT_IMMUTABLE', 403, SystemProjectImmutableError],
 			['INVALID_TRACK_FORMAT', 400, InvalidTrackFormatError],
 			['VERSION_CONFLICT', 409, VersionConflictError],
+			['ENVIRONMENT_PROTECTED', 403, EnvironmentProtectedError],
+			['ENVIRONMENT_NOT_FOUND', 404, EnvironmentNotFoundError],
+			['UNSUPPORTED_FILE_TYPE', 400, UnsupportedFileTypeError],
 		];
 
 		it.each(typedCases)(
@@ -129,6 +135,19 @@ describe('api-client error mapping', () => {
 			expect(err.code).toBe('PAYMENT_REQUIRED');
 			expect(err.httpStatus).toBe(402);
 		});
+
+		// The API answers PUBLISH_IN_PROGRESS with 409 on a publish and 503 on a
+		// render, so one class with a fixed status would misreport one of them.
+		it.each([409, 503])(
+			'keeps PUBLISH_IN_PROGRESS (%i) a generic ApiError with the status the API sent',
+			async (status) => {
+				mockFetchOnce(status, envelope('PUBLISH_IN_PROGRESS'));
+				const err = await callAnyEndpoint().catch((e) => e);
+				expect(err.constructor).toBe(ApiError);
+				expect(err.code).toBe('PUBLISH_IN_PROGRESS');
+				expect(err.httpStatus).toBe(status);
+			}
+		);
 
 		it('a typed error built from the real envelope reaches its documented exit code', async () => {
 			mockFetchOnce(403, envelope('NOT_A_MEMBER'));

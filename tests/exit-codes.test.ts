@@ -10,6 +10,9 @@ import {
 	InvalidVersionFormatError,
 	DocumentNotFoundError,
 	ApiError,
+	EnvironmentProtectedError,
+	EnvironmentNotFoundError,
+	UnsupportedFileTypeError,
 } from '../src/api-client.js';
 
 describe('ExitCode constants (cli-spec §1.2)', () => {
@@ -94,6 +97,21 @@ describe('errorToExitCode', () => {
 		expect(
 			errorToExitCode(new Error('Not logged in. Run `poli login` or set POLI_PAGE_API_KEY.'))
 		).toBe(ExitCode.NOT_AUTHENTICATED);
+	});
+
+	it('returns NOT_AUTHORIZED (5) for EnvironmentProtectedError', () => {
+		expect(errorToExitCode(new EnvironmentProtectedError('protected'))).toBe(
+			ExitCode.NOT_AUTHORIZED
+		);
+	});
+
+	it('returns INVALID_USAGE (2) for EnvironmentNotFoundError and UnsupportedFileTypeError', () => {
+		expect(errorToExitCode(new EnvironmentNotFoundError('no such environment'))).toBe(
+			ExitCode.INVALID_USAGE
+		);
+		expect(errorToExitCode(new UnsupportedFileTypeError('unsupported'))).toBe(
+			ExitCode.INVALID_USAGE
+		);
 	});
 
 	it('returns NETWORK_OR_API_ERROR (3) for generic ApiError', () => {
