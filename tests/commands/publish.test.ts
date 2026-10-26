@@ -333,6 +333,17 @@ describe('poli publish', () => {
 			const err = await run({ env: 'sandbox' }, noCall()).catch((e) => e);
 			expect(errorToExitCode(err)).toBe(ExitCode.NOT_AUTHENTICATED);
 		});
+
+		it('checks the link before auth: unlinked, logged out and no key exits 6', async () => {
+			await rm(fakeHome, { recursive: true, force: true });
+			await writeFile(
+				join(projectDir, MANIFEST_FILENAME),
+				JSON.stringify({ ...MANIFEST, cloud: undefined })
+			);
+			const err = await run({ env: 'sandbox' }, noCall()).catch((e) => e);
+			expect(err.message).toMatch(/poli link/);
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_LOCAL_STATE);
+		});
 	});
 
 	describe('unknown environment', () => {
