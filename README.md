@@ -224,7 +224,7 @@ Displays the active identity and organization. Calls `GET /v1/me` over hybrid au
 ```bash
 # Inside a linked project (session)
 $ poli whoami
-xavier@example.com @ acme (session)
+xavier@example.com @ acme (session, role=owner)
 
 # Anywhere — fallback when no project is linked, lists the orgs the session can see
 $ poli whoami

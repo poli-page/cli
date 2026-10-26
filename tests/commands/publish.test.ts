@@ -144,12 +144,19 @@ describe('poli publish', () => {
 	describe('success', () => {
 		it('publishes the bundle to the project slug with the session and the manifest org id', async () => {
 			const calls: PublishCall[] = [];
+			const listed: string[][] = [];
 			const result = await run(
 				{ env: 'sandbox', message: 'First release' },
-				makeClient(calls)
+				makeClient(calls, {
+					listEnvironments: async (authorization, orgId) => {
+						listed.push([authorization, orgId]);
+						return ENVIRONMENTS;
+					},
+				})
 			);
 
 			expect(result).toEqual(publishResult());
+			expect(listed).toEqual([['Bearer session-token', 'org_1']]);
 			expect(calls).toHaveLength(1);
 			expect(calls[0].authorization).toBe('Bearer session-token');
 			expect(calls[0].orgId).toBe('org_1');
@@ -294,6 +301,17 @@ describe('poli publish', () => {
 
 		it('refuses a linked manifest without cloud.projectSlug (exit 6)', async () => {
 			const { projectSlug: _omitted, ...cloud } = MANIFEST.cloud;
+			await writeFile(
+				join(projectDir, MANIFEST_FILENAME),
+				JSON.stringify({ ...MANIFEST, cloud })
+			);
+			const err = await run({ env: 'sandbox' }, noCall()).catch((e) => e);
+			expect(err.message).toMatch(/poli link/);
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_LOCAL_STATE);
+		});
+
+		it('refuses a linked manifest without cloud.orgId when logged in (exit 6)', async () => {
+			const { orgId: _omitted, ...cloud } = MANIFEST.cloud;
 			await writeFile(
 				join(projectDir, MANIFEST_FILENAME),
 				JSON.stringify({ ...MANIFEST, cloud })

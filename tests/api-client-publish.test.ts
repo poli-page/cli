@@ -86,7 +86,7 @@ describe('api-client listEnvironments', () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("GETs the organization's environments with the session", async () => {
+	it("GETs the organization's environments with the session's Authorization value", async () => {
 		const environments = [
 			{
 				name: 'sandbox',
@@ -108,7 +108,7 @@ describe('api-client listEnvironments', () => {
 		const fetchMock = mockFetchOnce(200, environments);
 
 		const client = createApiClient('https://api.test');
-		const result = await client.listEnvironments('sess-tok', 'org_1');
+		const result = await client.listEnvironments('Bearer sess-tok', 'org_1');
 
 		expect(result).toEqual(environments);
 		const [url, init] = fetchMock.mock.calls[0];

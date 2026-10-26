@@ -382,7 +382,7 @@ export interface ApiClient {
 		projectId: string,
 		body: PatchFilesBody
 	): Promise<PatchFilesResult>;
-	listEnvironments(session: string, orgId: string): Promise<EnvironmentInfo[]>;
+	listEnvironments(authorization: string, orgId: string): Promise<EnvironmentInfo[]>;
 	/** `orgIdHeader` is the session's organization; an API key carries its own. */
 	publish(
 		authorization: string,
@@ -736,7 +736,7 @@ export function createApiClient(baseUrl?: string): ApiClient {
 			return response.json() as Promise<PatchFilesResult>;
 		},
 
-		async listEnvironments(session, orgId) {
+		async listEnvironments(authorization, orgId) {
 			// encodeURIComponent leaves the dot segments as they are, and the URL
 			// parser would resolve them against the path.
 			if (orgId === '.' || orgId === '..') {
@@ -747,7 +747,7 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				{
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: `Bearer ${session}`,
+						Authorization: authorization,
 					},
 				}
 			);

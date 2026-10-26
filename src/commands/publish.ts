@@ -1,7 +1,6 @@
 import { Command } from 'commander';
 import { readProjectManifest } from '../manifest.js';
-import { readCredentials } from '../credentials.js';
-import { resolveAuth } from '../auth.js';
+import { resolveAuth, type AuthContext } from '../auth.js';
 import {
 	ApiError,
 	createApiClient,
@@ -140,23 +139,24 @@ export async function executePublish(options: PublishOptions): Promise<PublishRe
 		);
 	}
 
-	const client = options.apiClient ?? createApiClient();
-	// A session wins over POLI_PAGE_API_KEY, as in resolveAuth.
-	const session = (await readCredentials(options.homeDir))?.session;
-	if (!session) {
-		return publishWithApiKey(cwd, environment, options, client);
+	const manifest = await readProjectManifest(cwd);
+	const project = manifest.cloud?.projectSlug;
+	if (!project) {
+		throw new Error('Project is not linked. Run `poli link` first.');
 	}
 
-	const manifest = await readProjectManifest(cwd);
-	const orgId = manifest.cloud?.orgId;
-	const project = manifest.cloud?.projectSlug;
-	if (!orgId || !project) {
-		throw new Error('Project is not linked. Run `poli link` first.');
+	const auth = await resolveAuth({
+		manifestOrgId: manifest.cloud?.orgId,
+		homeDir: options.homeDir,
+	});
+	const client = options.apiClient ?? createApiClient();
+	if (auth.mode === 'api-key') {
+		return publishWithApiKey(cwd, environment, options, client, auth, project);
 	}
 
 	const body = await buildPublishBody(cwd, environment, options.message);
 
-	const environments = await client.listEnvironments(session, orgId);
+	const environments = await client.listEnvironments(auth.authorization, auth.orgIdHeader);
 	const target = environments.find((e) => e.name === environment);
 	if (!target) {
 		throw environmentNotFound(environment, environments);
@@ -164,7 +164,7 @@ export async function executePublish(options: PublishOptions): Promise<PublishRe
 	await confirmProtected(target, options);
 
 	try {
-		return await client.publish(`Bearer ${session}`, orgId, project, body);
+		return await client.publish(auth.authorization, auth.orgIdHeader, project, body);
 	} catch (err) {
 		throw explainPublishError(err, project, environment, environments);
 	}
@@ -181,22 +181,11 @@ async function publishWithApiKey(
 	cwd: string,
 	environment: string,
 	options: PublishOptions,
-	client: ApiClient
+	client: ApiClient,
+	key: Extract<AuthContext, { mode: 'api-key' }>,
+	project: string
 ): Promise<PublishResult> {
-	// No session here, so this is the key or "Not logged in". The mode check
-	// only narrows the type: without `manifestOrgId`, resolveAuth never
-	// returns a session.
-	const key = await resolveAuth({ homeDir: options.homeDir });
-	if (key.mode !== 'api-key') {
-		throw new Error('Not logged in. Run `poli login` or set POLI_PAGE_API_KEY.');
-	}
 	const { authorization } = key;
-
-	const manifest = await readProjectManifest(cwd);
-	const project = manifest.cloud?.projectSlug;
-	if (!project) {
-		throw new Error('Project is not linked. Run `poli link` first.');
-	}
 
 	const body = await buildPublishBody(cwd, environment, options.message);
 
