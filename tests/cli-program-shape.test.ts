@@ -2,11 +2,10 @@
  * Structural regression tests for the Commander program.
  *
  * Background: the global `--version` flag (set via `program.version()`)
- * shadowed the per-subcommand `--version` flag on `push` and `render`,
- * causing `poli push --version 1.2.3` to print the CLI version instead
- * of pushing. Fix: drop `--version` from both subcommands and switch to
- *   - `poli push <version>` (positional)
- *   - `poli render <name>@<version>` (npm-style spec)
+ * shadowed a per-subcommand `--version` flag on `render`, causing
+ * `poli render --version 1.2.3` to print the CLI version instead of
+ * rendering. Fix: drop `--version` from the subcommand and switch to
+ * `poli render <name>@<version>` (npm-style spec).
  *
  * These tests pin the new shape so the bug cannot silently come back.
  */
@@ -21,38 +20,6 @@ function findCommand(name: string) {
 	if (!cmd) throw new Error(`Command "${name}" not found`);
 	return cmd;
 }
-
-describe('cli program shape — push', () => {
-	const cmd = findCommand('push');
-
-	it('exposes a single optional positional argument named "version"', () => {
-		const args = (
-			cmd as unknown as { registeredArguments: { name(): string; required: boolean }[] }
-		).registeredArguments;
-		expect(args).toHaveLength(1);
-		expect(args[0].name()).toBe('version');
-		expect(args[0].required).toBe(false);
-	});
-
-	it('does not expose a --version option (would clash with the global one)', () => {
-		const versionOpt = cmd.options.find((o) => o.long === '--version');
-		expect(versionOpt).toBeUndefined();
-	});
-
-	it('still exposes --patch / --minor / --major / --track / -m / --json', () => {
-		const longs = cmd.options.map((o) => o.long);
-		expect(longs).toEqual(
-			expect.arrayContaining([
-				'--patch',
-				'--minor',
-				'--major',
-				'--track',
-				'--message',
-				'--json',
-			])
-		);
-	});
-});
 
 describe('cli program shape — publish', () => {
 	const cmd = findCommand('publish');
@@ -94,23 +61,42 @@ describe('cli program shape — render', () => {
 	});
 });
 
-// The API no longer serves project or version bundles (no pull, no
-// checkout: the local project is the source of truth). The commands that
-// downloaded them are gone, and so is the client call they used.
-describe('cli program shape — no bundle download (pull / checkout)', () => {
-	it('has no `checkout` command', () => {
+// Publishing to an environment replaced the version workflow, and the
+// authenticated HTML preview is gone from the API: none of these commands
+// exist, and neither do the client calls they used.
+describe('cli program shape — no versions, push or preview', () => {
+	const removed = ['push', 'promote', 'unpromote', 'versions', 'preview', 'checkout'];
+
+	it.each(removed)('has no `%s` command', (name) => {
 		const names = createProgram().commands.map((c) => c.name());
-		expect(names).not.toContain('checkout');
+		expect(names).not.toContain(name);
 	});
 
-	it('has no `versions download` subcommand', () => {
-		const versions = findCommand('versions');
-		const names = versions.commands.map((c) => c.name());
-		expect(names).not.toContain('download');
+	it('`poli --help` lists none of them', () => {
+		const help = createProgram().helpInformation();
+		for (const name of removed) {
+			expect(help).not.toMatch(new RegExp(`^ {2}${name}\\b`, 'm'));
+		}
 	});
 
-	it('the API client has no bundle download call', () => {
-		expect(createApiClient()).not.toHaveProperty('downloadVersion');
+	it('keeps `poli documents preview`', () => {
+		const names = findCommand('documents').commands.map((c) => c.name());
+		expect(names).toContain('preview');
+	});
+
+	it.each([
+		'downloadVersion',
+		'pushVersion',
+		'listVersions',
+		'promoteVersion',
+		'unpromoteVersion',
+		'unpromotePreview',
+		'deprecateVersion',
+		'undeprecateVersion',
+		'updateProject',
+		'renderPreview',
+	])('the API client has no `%s` call', (method) => {
+		expect(createApiClient()).not.toHaveProperty(method);
 	});
 });
 

@@ -76,7 +76,7 @@ describe('CI integration with POLI_PAGE_API_KEY', () => {
 		vi.unstubAllGlobals();
 	});
 
-	it('end-to-end: poli versions list works in CI with pp_sa_live_* (no login)', async () => {
+	it('end-to-end: resolveAuth works in CI with pp_sa_live_* in a linked project (no login)', async () => {
 		process.env.POLI_PAGE_API_KEY = 'pp_sa_live_abc';
 		await writeManifest(tempDir, {
 			project: { name: 'demo', version: '0.1.0' },
@@ -89,10 +89,9 @@ describe('CI integration with POLI_PAGE_API_KEY', () => {
 			templates: [],
 		} as PoliPageManifest);
 
-		// resolveCloudContext (used by executeVersionsList) currently uses the
-		// session path: it requires credentials and session tokens. The pp_sa_*
-		// CI path applies only to commands that go through resolveAuth (render,
-		// documents, push). versions list is intentionally session-only.
+		// resolveCloudContext (used by watch and dev) uses the session path: it
+		// requires credentials and session tokens. The pp_sa_* CI path applies
+		// only to commands that go through resolveAuth (render, documents).
 		// We verify here that resolveAuth itself works with pp_sa_* end-to-end
 		// for an api-client method.
 		const ctx = await resolveAuth({

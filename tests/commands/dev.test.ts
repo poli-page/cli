@@ -21,7 +21,7 @@ import { createFakeApiClient } from '../helpers/fake-api-client.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import {
 	ApiError,
-	SystemProjectLockedError,
+	UnsupportedFileTypeError,
 	type ApiClient,
 	type PatchFilesBody,
 } from '../../src/api-client.js';
@@ -45,8 +45,8 @@ function fakePdf(label: string): Buffer {
 }
 
 /**
- * Stubs only the sync and the draft render: any call to `render` or
- * `renderPreview` rejects through the shared fake.
+ * Stubs only the sync and the draft render: any call to `render` rejects
+ * through the shared fake.
  */
 function makeStubClient(options: StubOptions = {}): ApiClient {
 	return createFakeApiClient({
@@ -419,7 +419,7 @@ describe('poli dev', () => {
 			await writeManifest(projectDir, manifest);
 
 			// Fail fast, before the server binds — same message as
-			// `poli preview` — instead of booting a server whose every
+			// `poli render` — instead of booting a server whose every
 			// render fails into the overlay.
 			await expect(
 				startDevSession(undefined, {
@@ -747,9 +747,7 @@ describe('poli dev', () => {
 			expect((await fetch(session.url)).status).toBe(200);
 		});
 
-		it('reports SYSTEM_PROJECT_LOCKED like any other sync error and still renders', async () => {
-			// `getting-started` is a normal project now: no read-only guard,
-			// no "run poli init" message, no stopped loop.
+		it('reports a typed API error from the sync and still renders', async () => {
 			await setupTemplate(projectDir, 'invoice');
 			const events: DevEvent[] = [];
 			const draftCalls: RenderCall[] = [];
@@ -758,14 +756,14 @@ describe('poli dev', () => {
 				apiClient: makeStubClient({
 					draftCalls,
 					patchImpl: async () => {
-						throw new SystemProjectLockedError('system project');
+						throw new UnsupportedFileTypeError('unsupported file type');
 					},
 				}),
 				onEvent: (e) => events.push(e),
 			});
 
 			expect(events.find((e) => e.type === 'error')).toMatchObject({
-				message: 'system project',
+				message: 'unsupported file type',
 			});
 			expect(draftCalls).toHaveLength(1);
 		});

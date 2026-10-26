@@ -4,7 +4,7 @@ import { readManifest, writeManifest } from '../../src/manifest.js';
 
 /**
  * Adds a minimal template entry to a project for use in tests of commands
- * that don't care about the import flow itself (render, link, push, etc.).
+ * that don't care about the import flow itself (render, link, dev, etc.).
  *
  * Replaces the previous pattern of calling `executeNew('invoice', { cwd })`
  * which now requires --from-template and a fetcher.
