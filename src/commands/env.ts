@@ -85,6 +85,11 @@ function formatTimestamp(iso: string): string {
 	return `${new Date(iso).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
 }
 
+/** Server text on one table line: a newline or escape sequence would forge rows. */
+function oneLine(text: string): string {
+	return text.replace(/\p{Cc}+/gu, ' ');
+}
+
 function formatLastPublish(entry: PublishLogEntry | null, chalk: ChalkLike): string {
 	if (!entry) return chalk.dim('not published');
 	const status =
@@ -96,9 +101,9 @@ function formatLastPublish(entry: PublishLogEntry | null, chalk: ChalkLike): str
 	return [
 		status,
 		formatTimestamp(entry.publishedAt ?? entry.startedAt),
-		entry.author.displayName,
+		oneLine(entry.author.displayName),
 		shortBundleHash(entry.bundleHash),
-		...(entry.message ? [entry.message] : []),
+		...(entry.message ? [oneLine(entry.message)] : []),
 	].join('  ');
 }
 

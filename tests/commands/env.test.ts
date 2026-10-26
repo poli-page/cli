@@ -226,6 +226,27 @@ describe('poli env list', () => {
 			);
 		});
 
+		it('control characters in the author and message cannot break the table', async () => {
+			const entry = logEntry({
+				author: { type: 'user', id: 'u1', displayName: 'Ada\r\nLovelace' },
+				message: 'fix\n  live   yes\u001b[2J\u0007',
+			});
+			const states = [{ ...PROJECT_ENVIRONMENTS[0], lastPublish: entry }];
+			fetchMock.mockImplementation(async (url: string) =>
+				url.endsWith('/projects/proj_1/environments')
+					? jsonResponse(200, states)
+					: jsonResponse(200, orgs)
+			);
+			await poli();
+			expect(logs[3]).toBe(
+				'  sandbox      no         no         yes        succeeded  2026-10-26 10:00 UTC  Ada Lovelace  0123456789ab  fix   live   yes [2J '
+			);
+
+			logs = [];
+			await poli('--json');
+			expect(JSON.parse(logs.join('\n'))).toEqual(states);
+		});
+
 		it('prints the API answer as JSON with --json', async () => {
 			await poli('--json');
 			expect(JSON.parse(logs.join('\n'))).toEqual(PROJECT_ENVIRONMENTS);
@@ -339,6 +360,50 @@ describe('poli env list', () => {
 			);
 			expect(logs).toEqual([]);
 		});
+	});
+
+	describe('an API failure', () => {
+		const requests = [
+			{ linked: false, failing: '/api/organizations' },
+			{ linked: false, failing: '/api/organizations/org_1/environments' },
+			{ linked: true, failing: '/api/organizations' },
+			{ linked: true, failing: '/api/organizations/org_1/projects/proj_1/environments' },
+		];
+		const failures = [
+			{
+				status: 403,
+				body: { error: 'NOT_A_MEMBER', requestId: 'req_1' },
+				stderr: '403 NOT_A_MEMBER',
+				exitCode: ExitCode.NOT_AUTHORIZED,
+			},
+			{
+				status: 500,
+				body: {
+					error: 'INTERNAL_ERROR',
+					detail: 'Database unavailable',
+					requestId: 'req_1',
+				},
+				stderr: 'Database unavailable',
+				exitCode: ExitCode.NETWORK_OR_API_ERROR,
+			},
+		];
+
+		for (const { linked, failing } of requests) {
+			for (const { status, body, stderr, exitCode } of failures) {
+				it(`${status} on ${failing} (${linked ? 'linked' : 'unlinked'}): exit ${exitCode}, nothing on stdout`, async () => {
+					if (linked) await linkProject();
+					const answer = fetchMock.getMockImplementation()!;
+					fetchMock.mockImplementation(async (url: string) =>
+						url === `${API_URL}${failing}` ? jsonResponse(status, body) : answer(url)
+					);
+					await poli();
+					expect(requestedUrls()).toContain(`${API_URL}${failing}`);
+					expect(process.exitCode).toBe(exitCode);
+					expect(errors).toEqual([stderr]);
+					expect(logs).toEqual([]);
+				});
+			}
+		}
 	});
 
 	it('a poli-page.json that is not valid JSON is reported, not read as unlinked', async () => {
