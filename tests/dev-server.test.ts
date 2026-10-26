@@ -97,19 +97,20 @@ describe('Host validation', () => {
 
 	it('rejects a state-changing POST carrying a foreign Host (CSRF / rebinding)', async () => {
 		const { server, handled } = await boot();
-		const response = await requestWithHost(server.port, 'evil.example', '/api/pdf', 'POST');
+		const response = await requestWithHost(
+			server.port,
+			'evil.example',
+			'/api/select?template=invoice',
+			'POST'
+		);
 		expect(response.status).toBe(403);
-		// The handler never ran — no PDF render was triggered.
+		// The handler never ran — no render was triggered.
 		expect(handled).toEqual([]);
 	});
 
 	it('rejects a foreign Host even when it names the right port', async () => {
 		const { server, handled } = await boot();
-		const response = await requestWithHost(
-			server.port,
-			`evil.example:${server.port}`,
-			'/preview'
-		);
+		const response = await requestWithHost(server.port, `evil.example:${server.port}`, '/pdf');
 		expect(response.status).toBe(403);
 		expect(handled).toEqual([]);
 	});
