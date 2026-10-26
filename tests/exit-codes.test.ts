@@ -5,9 +5,7 @@ import {
 	OrgCancelledError,
 	OrgPaymentGraceError,
 	OrgMigratingError,
-	SystemProjectLockedError,
 	ThumbnailsNotAvailableError,
-	InvalidVersionFormatError,
 	DocumentNotFoundError,
 	ApiError,
 	EnvironmentProtectedError,
@@ -40,25 +38,15 @@ describe('errorToExitCode', () => {
 	});
 
 	it('returns NOT_AUTHORIZED (5) for NotAMemberError', () => {
-		expect(errorToExitCode(new NotAMemberError('not member'))).toBe(
-			ExitCode.NOT_AUTHORIZED
-		);
+		expect(errorToExitCode(new NotAMemberError('not member'))).toBe(ExitCode.NOT_AUTHORIZED);
 	});
 
 	it('returns NOT_AUTHORIZED (5) for OrgCancelledError', () => {
-		expect(errorToExitCode(new OrgCancelledError('cancelled'))).toBe(
-			ExitCode.NOT_AUTHORIZED
-		);
+		expect(errorToExitCode(new OrgCancelledError('cancelled'))).toBe(ExitCode.NOT_AUTHORIZED);
 	});
 
 	it('returns NOT_AUTHORIZED (5) for OrgPaymentGraceError (same shape as cancelled)', () => {
 		expect(errorToExitCode(new OrgPaymentGraceError('payment grace'))).toBe(
-			ExitCode.NOT_AUTHORIZED
-		);
-	});
-
-	it('returns NOT_AUTHORIZED (5) for SystemProjectLockedError', () => {
-		expect(errorToExitCode(new SystemProjectLockedError('system'))).toBe(
 			ExitCode.NOT_AUTHORIZED
 		);
 	});
@@ -75,12 +63,6 @@ describe('errorToExitCode', () => {
 		);
 	});
 
-	it('returns INVALID_USAGE (2) for InvalidVersionFormatError', () => {
-		expect(
-			errorToExitCode(new InvalidVersionFormatError('bad format'))
-		).toBe(ExitCode.INVALID_USAGE);
-	});
-
 	it('returns INVALID_USAGE (2) for DocumentNotFoundError', () => {
 		expect(errorToExitCode(new DocumentNotFoundError('not found'))).toBe(
 			ExitCode.INVALID_USAGE
@@ -88,9 +70,9 @@ describe('errorToExitCode', () => {
 	});
 
 	it('returns INVALID_LOCAL_STATE (6) for "not linked" message', () => {
-		expect(
-			errorToExitCode(new Error("This folder isn't linked to a cloud project."))
-		).toBe(ExitCode.INVALID_LOCAL_STATE);
+		expect(errorToExitCode(new Error("This folder isn't linked to a cloud project."))).toBe(
+			ExitCode.INVALID_LOCAL_STATE
+		);
 	});
 
 	it('returns NOT_AUTHENTICATED (4) for "Not logged in" message', () => {
@@ -115,15 +97,13 @@ describe('errorToExitCode', () => {
 	});
 
 	it('returns NETWORK_OR_API_ERROR (3) for generic ApiError', () => {
-		expect(
-			errorToExitCode(new ApiError('UNKNOWN', 500, 'oops'))
-		).toBe(ExitCode.NETWORK_OR_API_ERROR);
+		expect(errorToExitCode(new ApiError('UNKNOWN', 500, 'oops'))).toBe(
+			ExitCode.NETWORK_OR_API_ERROR
+		);
 	});
 
 	it('returns INCONSISTENT (1) for unrecognised plain Error', () => {
-		expect(errorToExitCode(new Error('something weird'))).toBe(
-			ExitCode.INCONSISTENT
-		);
+		expect(errorToExitCode(new Error('something weird'))).toBe(ExitCode.INCONSISTENT);
 	});
 
 	it('returns INCONSISTENT (1) for non-Error throws', () => {

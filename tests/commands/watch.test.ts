@@ -7,7 +7,7 @@ import { writeCredentials } from '../../src/credentials.js';
 import {
 	type ApiClient,
 	type PatchFilesBody,
-	SystemProjectLockedError,
+	UnsupportedFileTypeError,
 } from '../../src/api-client.js';
 import type { FileWatcher, FileWatcherOptions } from '../../src/file-watcher.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
@@ -183,9 +183,7 @@ describe('executeWatch', () => {
 		expect(getController().closed).toBe(true);
 	});
 
-	it('reports SYSTEM_PROJECT_LOCKED like any other API error and keeps watching', async () => {
-		// `getting-started` is a normal project now: no read-only guard,
-		// no "run poli init" message.
+	it('reports a typed API error and keeps watching', async () => {
 		await setupLinkedProject(tempDir, fakeHome);
 		await mkdir(join(tempDir, 'partials'), { recursive: true });
 		await writeFile(join(tempDir, 'partials', 'a.html'), 'init');
@@ -198,7 +196,7 @@ describe('executeWatch', () => {
 		const client = makeStubClient({
 			patchFiles: async () => {
 				calls += 1;
-				if (calls === 1) throw new SystemProjectLockedError('system project');
+				if (calls === 1) throw new UnsupportedFileTypeError('unsupported file type');
 				return { syncedAt: '2026-05-06T10:00:00.000Z' };
 			},
 		});
@@ -218,7 +216,7 @@ describe('executeWatch', () => {
 		await getController().emit(['partials/a.html']);
 
 		await vi.waitFor(() =>
-			expect(events.find((e) => e.type === 'error')?.message).toBe('system project')
+			expect(events.find((e) => e.type === 'error')?.message).toBe('unsupported file type')
 		);
 
 		await writeFile(join(tempDir, 'partials', 'a.html'), 'change again');

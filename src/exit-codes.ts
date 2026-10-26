@@ -30,14 +30,9 @@ import {
 	OrgPaymentGraceError,
 	OrgPurgedError,
 	OrgMigratingError,
-	SystemProjectLockedError,
-	SystemProjectImmutableError,
 	ThumbnailsNotAvailableError,
 	DocumentNotFoundError,
 	DocumentGoneError,
-	InvalidVersionFormatError,
-	InvalidVersionForKeyEnvError,
-	VersionRequiredError,
 	MissingOrgContextError,
 	EnvironmentProtectedError,
 	EnvironmentNotFoundError,
@@ -59,16 +54,13 @@ export function errorToExitCode(err: unknown): ExitCodeValue {
 
 	if (err instanceof Error) {
 		// Auth-domain typed errors map to "not authorised" (insufficient role,
-		// org in payment grace/cancelled/purged, system project locked,
-		// protected environment).
+		// org in payment grace/cancelled/purged, protected environment).
 		if (
 			err instanceof EnvironmentProtectedError ||
 			err instanceof NotAMemberError ||
 			err instanceof OrgPaymentGraceError ||
 			err instanceof OrgCancelledError ||
 			err instanceof OrgPurgedError ||
-			err instanceof SystemProjectLockedError ||
-			err instanceof SystemProjectImmutableError ||
 			err instanceof ThumbnailsNotAvailableError
 		) {
 			return ExitCode.NOT_AUTHORIZED;
@@ -90,16 +82,11 @@ export function errorToExitCode(err: unknown): ExitCodeValue {
 
 		// Invalid usage — bad args, format errors, validation failures.
 		if (
-			err instanceof InvalidVersionFormatError ||
-			err instanceof InvalidVersionForKeyEnvError ||
-			err instanceof VersionRequiredError ||
 			err instanceof MissingOrgContextError ||
 			err instanceof DocumentNotFoundError ||
 			err instanceof EnvironmentNotFoundError ||
 			err instanceof UnsupportedFileTypeError ||
-			/Invalid version|exact semver|Template .+ not found|template not found|Missing <documentId>/i.test(
-				err.message
-			)
+			/Template .+ not found|template not found|Missing <documentId>/i.test(err.message)
 		) {
 			return ExitCode.INVALID_USAGE;
 		}
