@@ -424,7 +424,7 @@ Errors:
 [Output rules](#output-conventions) apply: in a TTY you see only the `✓` line, in a pipe you see only the JSON descriptor, with `--json` you always see the JSON. Pipelines stay clean:
 
 ```bash
-$ DOC_ID=$(poli render invoice | jq -r '.documentId')
+$ DOC_ID=$(poli render invoice@sandbox | jq -r '.documentId')
 $ poli documents thumbnails "$DOC_ID" --width 400
 ```
 
@@ -443,7 +443,7 @@ Counter:
 
 ### Documents
 
-Documents are the cloud-stored output of every `poli render` invocation (or the same render endpoints called via the SDK or REST API). The CLI lets you inspect, delete, and re-derive thumbnails or preview HTML from them.
+Documents are the cloud-stored output of every `poli render name@<environment>` invocation (or the same render endpoints called via the SDK or REST API); a draft render (`poli render name`) is never stored. The CLI lets you inspect, delete, and re-derive thumbnails or preview HTML from them.
 
 There is intentionally **no `poli documents list`** — your application is responsible for tracking the `documentId` values it cares about.
 

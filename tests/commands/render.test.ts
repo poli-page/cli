@@ -91,6 +91,17 @@ async function expectUsageError(promise: Promise<unknown>, message: RegExp): Pro
 	expect(errorToExitCode(error)).toBe(2);
 }
 
+function expectSpecUsageError(spec: string, message: RegExp): void {
+	let error: unknown;
+	try {
+		parseTemplateSpec(spec);
+	} catch (err) {
+		error = err;
+	}
+	expect((error as Error).message).toMatch(message);
+	expect(errorToExitCode(error)).toBe(2);
+}
+
 describe('formatRenderJson', () => {
 	it('includes outputPath when a file was written', () => {
 		const descriptor = makeFakeDescriptor();
@@ -823,27 +834,20 @@ describe('parseTemplateSpec', () => {
 		});
 	});
 
-	it('rejects an empty spec', () => {
-		expect(() => parseTemplateSpec('')).toThrow(/template name is required/i);
+	it('rejects an empty spec, as invalid usage', () => {
+		expectSpecUsageError('', /template name is required/i);
 	});
 
-	it('rejects a leading @ (empty name)', () => {
-		expect(() => parseTemplateSpec('@staging')).toThrow(/template name is required/i);
+	it('rejects a leading @ (empty name), as invalid usage', () => {
+		expectSpecUsageError('@staging', /template name is required/i);
 	});
 
 	it('rejects a trailing @ (empty environment), as invalid usage', () => {
-		let error: unknown;
-		try {
-			parseTemplateSpec('invoice@');
-		} catch (err) {
-			error = err;
-		}
-		expect((error as Error).message).toMatch(/environment is required after `@`/i);
-		expect(errorToExitCode(error)).toBe(2);
+		expectSpecUsageError('invoice@', /environment is required after `@`/i);
 	});
 
-	it('rejects multiple @ separators', () => {
-		expect(() => parseTemplateSpec('invoice@live@staging')).toThrow(/only one `@`/i);
+	it('rejects multiple @ separators, as invalid usage', () => {
+		expectSpecUsageError('invoice@live@staging', /only one `@`/i);
 	});
 
 	it('does not validate the target itself (defers to executeRender)', () => {
