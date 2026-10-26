@@ -7,10 +7,10 @@ import { writeCredentials } from '../../../src/credentials.js';
 import {
 	DocumentNotFoundError,
 	DocumentGoneError,
-	type ApiClient,
 	type DocumentDescriptor,
 } from '../../../src/api-client.js';
 import { MANIFEST_FILENAME } from '../../../src/constants.js';
+import { createFakeApiClient } from '../../helpers/fake-api-client.js';
 
 const fakeDoc: DocumentDescriptor = {
 	documentId: 'doc_abc',
@@ -32,96 +32,6 @@ const fakeDoc: DocumentDescriptor = {
 	presignedPdfUrl: 'https://s3.example/doc_abc.pdf?sig=abc',
 	expiresAt: '2026-04-15T14:47:18.000Z',
 };
-
-function makeStubClient(overrides: Partial<ApiClient> = {}): ApiClient {
-	return {
-		signIn: async () => ({
-			user: { id: 'u', name: 'n', email: 'e' },
-			session: 's',
-		}),
-		signUp: async () => ({
-			user: { id: 'u', name: 'n', email: 'e' },
-			session: 's',
-		}),
-		deviceRequest: async () => ({
-			deviceCode: 'd',
-			userCode: 'u',
-			verificationUrl: 'http://x',
-			expiresIn: 1,
-			interval: 1,
-		}),
-		devicePoll: async () => ({ status: 'authorization_pending' as const }),
-		getOrganizations: async () => [],
-		listProjects: async () => [],
-		createProject: async () => ({ id: 'p' }),
-		updateProject: async () => {},
-		createApiKey: async () => ({
-			key: 'pp_test_x',
-			info: { id: 'k', name: 'n', environment: 'test' },
-		}),
-		render: async () => { throw new Error('not implemented in stub'); },
-		getMe: async () => {
-			throw new Error('not implemented in stub');
-		},
-		pushVersion: async () => ({
-			id: 'v',
-			version: '1.0.0',
-			major: 1,
-			minor: 0,
-			patch: 0,
-			state: 'SANDBOX' as const,
-			createdAt: '',
-		}),
-		listVersions: async () => [],
-		promoteVersion: async () => ({
-			id: 'v',
-			version: '1.0.0',
-			major: 1,
-			minor: 0,
-			patch: 0,
-			state: 'LIVE' as const,
-			createdAt: '',
-		}),
-		unpromoteVersion: async () => ({
-			id: 'v',
-			version: '1.0.0',
-			major: 1,
-			minor: 0,
-			patch: 0,
-			state: 'SANDBOX' as const,
-			createdAt: '',
-		}),
-		unpromotePreview: async () => ({
-			currentLatestLive: null,
-			newLatestLiveAfterUnpromote: null,
-			willHaveNoLive: true,
-			recentLiveCalls: 0,
-		}),
-		deprecateVersion: async () => ({
-			id: 'v',
-			version: '1.0.0',
-			major: 1,
-			minor: 0,
-			patch: 0,
-			state: 'DEPRECATED' as const,
-			createdAt: '',
-		}),
-		undeprecateVersion: async () => ({
-			id: 'v',
-			version: '1.0.0',
-			major: 1,
-			minor: 0,
-			patch: 0,
-			state: 'SANDBOX' as const,
-			createdAt: '',
-		}),
-		getDocument: async () => fakeDoc,
-		deleteDocument: async () => {},
-		documentThumbnails: async () => [],
-		documentPreview: async () => ({ html: '', pageCount: 0 }),
-		...overrides,
-	};
-}
 
 describe('executeDocumentsGet', () => {
 	let tempDir: string;
@@ -149,7 +59,7 @@ describe('executeDocumentsGet', () => {
 		process.env.POLI_PAGE_API_KEY = 'pp_live_abc';
 
 		let captured: { authorization?: string; orgIdHeader?: string; id?: string } = {};
-		const client = makeStubClient({
+		const client = createFakeApiClient({
 			getDocument: async (authorization, orgIdHeader, id) => {
 				captured = { authorization, orgIdHeader, id };
 				return fakeDoc;
@@ -194,7 +104,7 @@ describe('executeDocumentsGet', () => {
 		);
 
 		let captured: { authorization?: string; orgIdHeader?: string } = {};
-		const client = makeStubClient({
+		const client = createFakeApiClient({
 			getDocument: async (authorization, orgIdHeader) => {
 				captured = { authorization, orgIdHeader };
 				return fakeDoc;
@@ -227,14 +137,14 @@ describe('executeDocumentsGet', () => {
 			executeDocumentsGet('doc_abc', {
 				cwd: tempDir,
 				homeDir: fakeHome,
-				apiClient: makeStubClient(),
+				apiClient: createFakeApiClient({}),
 			})
 		).rejects.toThrow(/linked project|POLI_PAGE_API_KEY/i);
 	});
 
 	it('propagates DocumentNotFoundError', async () => {
 		process.env.POLI_PAGE_API_KEY = 'pp_test_x';
-		const client = makeStubClient({
+		const client = createFakeApiClient({
 			getDocument: async () => {
 				throw new DocumentNotFoundError('Document not found');
 			},
@@ -251,7 +161,7 @@ describe('executeDocumentsGet', () => {
 
 	it('propagates DocumentGoneError', async () => {
 		process.env.POLI_PAGE_API_KEY = 'pp_test_x';
-		const client = makeStubClient({
+		const client = createFakeApiClient({
 			getDocument: async () => {
 				throw new DocumentGoneError('Document soft-deleted');
 			},

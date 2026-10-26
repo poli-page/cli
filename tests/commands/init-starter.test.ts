@@ -8,6 +8,7 @@ import { writeCredentials } from '../../src/credentials.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import type { ApiClient } from '../../src/api-client.js';
 import type { Fetcher } from '../../src/template-importer.js';
+import { createFakeApiClient } from '../helpers/fake-api-client.js';
 
 const STARTER_MANIFEST = {
 	project: { name: 'getting-started', version: '1.0.0', description: 'The starter' },
@@ -60,18 +61,16 @@ function makeClient(
 	orgs = [{ id: 'org_1', name: 'Acme', slug: 'acme' }],
 	calls: string[] = []
 ): ApiClient {
-	const allowed: Partial<ApiClient> = {
-		getOrganizations: async () => orgs,
-		listProjects: async () => projects,
-	};
-	return new Proxy(allowed, {
-		get(target, prop: string) {
-			calls.push(prop);
-			const value = target[prop as keyof ApiClient];
-			if (!value) throw new Error(`unexpected API call: ${prop}`);
-			return value;
+	return createFakeApiClient({
+		getOrganizations: async () => {
+			calls.push('getOrganizations');
+			return orgs;
 		},
-	}) as ApiClient;
+		listProjects: async () => {
+			calls.push('listProjects');
+			return projects;
+		},
+	});
 }
 
 describe('poli init --starter', () => {

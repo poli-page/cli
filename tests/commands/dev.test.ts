@@ -17,6 +17,7 @@ import { createProgram } from '../../src/program.js';
 import { writeCredentials } from '../../src/credentials.js';
 import { readManifest, writeManifest } from '../../src/manifest.js';
 import { setupTemplate } from '../helpers/setup-template.js';
+import { createFakeApiClient } from '../helpers/fake-api-client.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import {
 	ApiError,
@@ -43,7 +44,7 @@ interface StubOptions {
 }
 
 function makeStubClient(options: StubOptions = {}): ApiClient {
-	return {
+	return createFakeApiClient({
 		getOrganizations: async () => [{ id: 'org_1', name: 'Acme', slug: 'acme' }],
 		patchFiles: async (_session, _orgId, _projectId, body) => {
 			options.patchBodies?.push(body);
@@ -82,7 +83,7 @@ function makeStubClient(options: StubOptions = {}): ApiClient {
 				expiresAt: '2026-09-01T11:00:00.000Z',
 			};
 		},
-	} as unknown as ApiClient;
+	});
 }
 
 interface ManualWatcher {
