@@ -9,6 +9,7 @@ import {
 	type ThumbnailResult as ApiThumbnailResult,
 } from '../../../src/api-client.js';
 import { createFakeApiClient } from '../../helpers/fake-api-client.js';
+import { testApiKey } from '../../helpers/api-key.js';
 
 const TINY_PNG_BASE64 =
 	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAB' +
@@ -33,7 +34,7 @@ describe('executeDocumentsThumbnails', () => {
 		tempDir = await mkdtemp(join(tmpdir(), 'poli-docs-thumb-'));
 		fakeHome = await mkdtemp(join(tmpdir(), 'poli-docs-thumb-home-'));
 		savedEnv = process.env.POLI_PAGE_API_KEY;
-		process.env.POLI_PAGE_API_KEY = 'pp_live_x';
+		process.env.POLI_PAGE_API_KEY = testApiKey('live');
 	});
 
 	afterEach(async () => {

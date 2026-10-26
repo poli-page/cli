@@ -11,6 +11,7 @@ import {
 	type PublishBody,
 	type PublishResult,
 } from '../api-client.js';
+import { isValidEnvironmentName } from '../environment-name.js';
 import { UsageError, errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 import { toProjectFileEntries } from '../project-files.js';
@@ -30,8 +31,6 @@ export interface PublishOptions {
 
 const MESSAGE_MAX_LENGTH = 500;
 const BUNDLE_MAX_BYTES = 5 * 1024 * 1024;
-const ENVIRONMENT_NAME_RE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
-const ENVIRONMENT_NAME_MAX_LENGTH = 20;
 
 function validateEnvironmentName(name: string | undefined): string {
 	if (name === undefined) {
@@ -44,7 +43,7 @@ function validateEnvironmentName(name: string | undefined): string {
 			'`draft` is not an environment: `poli watch` and `poli dev` sync the draft. Publish to an environment such as `sandbox` or `live`.'
 		);
 	}
-	if (name.length > ENVIRONMENT_NAME_MAX_LENGTH || !ENVIRONMENT_NAME_RE.test(name)) {
+	if (!isValidEnvironmentName(name)) {
 		throw new UsageError(
 			`Invalid environment name "${name}": use 1-20 characters, lowercase letters, digits and single inner hyphens, starting with a letter.`
 		);

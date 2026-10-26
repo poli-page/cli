@@ -7,6 +7,7 @@ import { writeCredentials } from '../../../src/credentials.js';
 import { DocumentNotFoundError } from '../../../src/api-client.js';
 import { MANIFEST_FILENAME } from '../../../src/constants.js';
 import { createFakeApiClient } from '../../helpers/fake-api-client.js';
+import { testApiKey } from '../../helpers/api-key.js';
 
 describe('executeDocumentsDelete', () => {
 	let tempDir: string;
@@ -31,7 +32,7 @@ describe('executeDocumentsDelete', () => {
 	});
 
 	it('calls deleteDocument when --yes is set (skip prompt)', async () => {
-		process.env.POLI_PAGE_API_KEY = 'pp_live_x';
+		process.env.POLI_PAGE_API_KEY = testApiKey('live');
 		const deleteSpy = vi.fn().mockResolvedValue(undefined);
 		const client = createFakeApiClient({ deleteDocument: deleteSpy });
 
@@ -42,11 +43,15 @@ describe('executeDocumentsDelete', () => {
 			yes: true,
 		});
 
-		expect(deleteSpy).toHaveBeenCalledWith('Bearer pp_live_x', undefined, 'doc_abc');
+		expect(deleteSpy).toHaveBeenCalledWith(
+			`Bearer ${testApiKey('live')}`,
+			undefined,
+			'doc_abc'
+		);
 	});
 
 	it('asks confirmFn when --yes is not set, and aborts if rejected', async () => {
-		process.env.POLI_PAGE_API_KEY = 'pp_live_x';
+		process.env.POLI_PAGE_API_KEY = testApiKey('live');
 		const deleteSpy = vi.fn().mockResolvedValue(undefined);
 		const client = createFakeApiClient({ deleteDocument: deleteSpy });
 		const confirmFn = vi.fn().mockResolvedValue(false);
@@ -65,7 +70,7 @@ describe('executeDocumentsDelete', () => {
 	});
 
 	it('proceeds when confirmFn approves', async () => {
-		process.env.POLI_PAGE_API_KEY = 'pp_live_x';
+		process.env.POLI_PAGE_API_KEY = testApiKey('live');
 		const deleteSpy = vi.fn().mockResolvedValue(undefined);
 		const client = createFakeApiClient({ deleteDocument: deleteSpy });
 
@@ -123,7 +128,7 @@ describe('executeDocumentsDelete', () => {
 	});
 
 	it('propagates DocumentNotFoundError', async () => {
-		process.env.POLI_PAGE_API_KEY = 'pp_live_x';
+		process.env.POLI_PAGE_API_KEY = testApiKey('live');
 		const client = createFakeApiClient({
 			deleteDocument: async () => {
 				throw new DocumentNotFoundError('not found');

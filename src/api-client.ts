@@ -309,8 +309,8 @@ export interface DocumentDescriptor {
 	projectSlug: string | null;
 	templateId: string | null;
 	templateSlug: string | null;
-	version: string | null;
-	environment: 'sandbox' | 'live';
+	/** The name of the environment the document was rendered in. */
+	environment: string;
 	apiKeyId: string | null;
 	createdAt: string;
 	pageCount: number;
@@ -323,11 +323,20 @@ export interface DocumentDescriptor {
 	expiresAt: string;
 }
 
+/** Something a render did that its PDF alone does not show (api-spec §11.3). */
+export interface RenderDiagnostic {
+	kind: 'clipped' | 'missing-asset' | 'dropped-font';
+	message: string;
+	elementId?: string;
+	path?: string;
+}
+
 /**
- * Result of `POST /v1/render`. Same shape as `DocumentDescriptor` since
- * every render now produces a stored document (api-spec §11.3).
+ * Result of `POST /v1/render`: the stored document's descriptor plus the
+ * render's diagnostics, which are not stored with the document, so
+ * `GET /v1/documents/:id` does not return them (api-spec §11.3).
  */
-export type RenderResult = DocumentDescriptor;
+export type RenderResult = DocumentDescriptor & { diagnostics: RenderDiagnostic[] };
 
 /**
  * Result of `POST /v1/render/preview`. No document is persisted, so the

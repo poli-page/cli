@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { executeDocumentsPreview } from '../../../src/commands/documents/preview.js';
 import { DocumentNotFoundError, type ApiClient } from '../../../src/api-client.js';
 import { createFakeApiClient } from '../../helpers/fake-api-client.js';
+import { testApiKey } from '../../helpers/api-key.js';
 
 function makeStubClient(overrides: Partial<ApiClient> = {}): ApiClient {
 	return createFakeApiClient({
@@ -25,7 +26,7 @@ describe('executeDocumentsPreview', () => {
 		tempDir = await mkdtemp(join(tmpdir(), 'poli-docs-prev-'));
 		fakeHome = await mkdtemp(join(tmpdir(), 'poli-docs-prev-home-'));
 		savedEnv = process.env.POLI_PAGE_API_KEY;
-		process.env.POLI_PAGE_API_KEY = 'pp_live_x';
+		process.env.POLI_PAGE_API_KEY = testApiKey('live');
 	});
 
 	afterEach(async () => {

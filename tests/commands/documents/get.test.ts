@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { executeDocumentsGet } from '../../../src/commands/documents/get.js';
+import { executeDocumentsGet, printDescriptor } from '../../../src/commands/documents/get.js';
 import { writeCredentials } from '../../../src/credentials.js';
 import {
 	DocumentNotFoundError,
@@ -11,6 +11,7 @@ import {
 } from '../../../src/api-client.js';
 import { MANIFEST_FILENAME } from '../../../src/constants.js';
 import { createFakeApiClient } from '../../helpers/fake-api-client.js';
+import { testApiKey } from '../../helpers/api-key.js';
 
 const fakeDoc: DocumentDescriptor = {
 	documentId: 'doc_abc',
@@ -19,8 +20,7 @@ const fakeDoc: DocumentDescriptor = {
 	projectSlug: 'invoices',
 	templateId: 'tpl_1',
 	templateSlug: 'invoice',
-	version: '1.0.5',
-	environment: 'live',
+	environment: 'production',
 	apiKeyId: 'key_1',
 	createdAt: '2026-04-15T14:32:18.000Z',
 	pageCount: 2,
@@ -56,7 +56,7 @@ describe('executeDocumentsGet', () => {
 	});
 
 	it('returns the descriptor when authenticated via api-key (no manifest)', async () => {
-		process.env.POLI_PAGE_API_KEY = 'pp_live_abc';
+		process.env.POLI_PAGE_API_KEY = testApiKey('live');
 
 		let captured: { authorization?: string; orgIdHeader?: string; id?: string } = {};
 		const client = createFakeApiClient({
@@ -74,7 +74,7 @@ describe('executeDocumentsGet', () => {
 
 		expect(result).toEqual(fakeDoc);
 		expect(captured).toEqual({
-			authorization: 'Bearer pp_live_abc',
+			authorization: `Bearer ${testApiKey('live')}`,
 			orgIdHeader: undefined,
 			id: 'doc_abc',
 		});
@@ -143,7 +143,7 @@ describe('executeDocumentsGet', () => {
 	});
 
 	it('propagates DocumentNotFoundError', async () => {
-		process.env.POLI_PAGE_API_KEY = 'pp_test_x';
+		process.env.POLI_PAGE_API_KEY = testApiKey('test');
 		const client = createFakeApiClient({
 			getDocument: async () => {
 				throw new DocumentNotFoundError('Document not found');
@@ -160,7 +160,7 @@ describe('executeDocumentsGet', () => {
 	});
 
 	it('propagates DocumentGoneError', async () => {
-		process.env.POLI_PAGE_API_KEY = 'pp_test_x';
+		process.env.POLI_PAGE_API_KEY = testApiKey('test');
 		const client = createFakeApiClient({
 			getDocument: async () => {
 				throw new DocumentGoneError('Document soft-deleted');
@@ -174,5 +174,34 @@ describe('executeDocumentsGet', () => {
 				apiClient: client,
 			})
 		).rejects.toBeInstanceOf(DocumentGoneError);
+	});
+});
+
+describe('printDescriptor', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('prints the environment and no version', () => {
+		const lines: string[] = [];
+		vi.spyOn(console, 'log').mockImplementation((line?: unknown) => {
+			lines.push(String(line ?? ''));
+		});
+		const plain = (s: string): string => s;
+		const chalk = {
+			green: plain,
+			cyan: plain,
+			yellow: plain,
+			red: plain,
+			gray: plain,
+			bold: plain,
+			dim: plain,
+		};
+
+		printDescriptor(fakeDoc, chalk);
+
+		expect(lines).toContain('  Template:    invoice');
+		expect(lines).toContain('  Environment: production');
+		expect(lines.join('\n')).not.toMatch(/version|draft|\bv\d/i);
 	});
 });
