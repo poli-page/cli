@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
 	createProjectSyncer,
-	isBinaryAsset,
 	readAllProjectFiles,
 	shouldIgnoreProjectPath,
 } from '../src/project-sync.js';
@@ -61,20 +60,6 @@ describe('shouldIgnoreProjectPath', () => {
 	});
 });
 
-describe('isBinaryAsset', () => {
-	it('flags images and fonts', () => {
-		for (const path of ['a.png', 'a.svg', 'a.woff2', 'a.OTF']) {
-			expect(isBinaryAsset(path)).toBe(true);
-		}
-	});
-
-	it('leaves text sources alone', () => {
-		for (const path of ['a.html', 'a.json', 'a.css', 'noextension']) {
-			expect(isBinaryAsset(path)).toBe(false);
-		}
-	});
-});
-
 describe('createProjectSyncer', () => {
 	let dir: string;
 
@@ -116,15 +101,53 @@ describe('createProjectSyncer', () => {
 		expect(bodies).toHaveLength(0);
 
 		await writeFile(join(dir, 'templates', 'invoice', 'invoice.html'), '<h1>v2</h1>');
-		await writeFile(join(dir, 'new.json'), '{}');
+		await writeFile(join(dir, 'templates', 'invoice', 'notes.json'), '{}');
 		const changed = await syncer.sync();
 
 		expect(changed.changed).toBe(true);
 		expect(changed.syncedAt).toBe('2026-09-01T10:00:00.000Z');
-		expect(changed.changedPaths.sort()).toEqual(['new.json', 'templates/invoice/invoice.html']);
+		expect(changed.changedPaths.sort()).toEqual([
+			'templates/invoice/invoice.html',
+			'templates/invoice/notes.json',
+		]);
 		expect(bodies).toHaveLength(1);
-		expect(bodies[0].added.map((e) => e.path)).toEqual(['new.json']);
-		expect(bodies[0].modified.map((e) => e.path)).toEqual(['templates/invoice/invoice.html']);
+		expect(bodies[0].added).toEqual([
+			{ path: 'templates/invoice/notes.json', encoding: 'utf8', content: '{}' },
+		]);
+		expect(bodies[0].modified).toEqual([
+			{ path: 'templates/invoice/invoice.html', encoding: 'utf8', content: '<h1>v2</h1>' },
+		]);
+	});
+
+	it('sync() sends an added binary asset as base64 with its encoding', async () => {
+		const bodies: PatchFilesBody[] = [];
+		const syncer = createProjectSyncer({ cwd: dir, client: makeClient(bodies), ctx });
+		await syncer.prime();
+
+		const bytes = Buffer.from([0x00, 0x01, 0x00, 0x00, 0xff]);
+		await mkdir(join(dir, 'assets', 'fonts'), { recursive: true });
+		await writeFile(join(dir, 'assets', 'fonts', 'inter.ttf'), bytes);
+		await syncer.sync();
+
+		expect(bodies[0].added).toEqual([
+			{
+				path: 'assets/fonts/inter.ttf',
+				encoding: 'base64',
+				content: bytes.toString('base64'),
+			},
+		]);
+	});
+
+	it('skips files outside the accepted file set', async () => {
+		await writeFile(join(dir, 'new.json'), '{}');
+		await writeFile(join(dir, 'README.md'), '# notes');
+		await writeFile(join(dir, 'templates', 'invoice', 'notes.md'), '# notes');
+
+		const files = await readAllProjectFiles(dir);
+		expect([...files.keys()].sort()).toEqual([
+			'tailwind.css',
+			'templates/invoice/invoice.html',
+		]);
 	});
 
 	it('syncAll() pushes the whole tree as modified and reseeds the snapshot', async () => {
@@ -136,9 +159,9 @@ describe('createProjectSyncer', () => {
 		expect(bodies).toHaveLength(1);
 		expect(bodies[0].added).toEqual([]);
 		expect(bodies[0].deleted).toEqual([]);
-		expect(bodies[0].modified.map((e) => e.path).sort()).toEqual([
-			'tailwind.css',
-			'templates/invoice/invoice.html',
+		expect(bodies[0].modified).toEqual([
+			{ path: 'tailwind.css', encoding: 'utf8', content: 'body{}' },
+			{ path: 'templates/invoice/invoice.html', encoding: 'utf8', content: '<h1>v1</h1>' },
 		]);
 
 		// The snapshot is now current: an immediate delta sync is a no-op.
@@ -158,6 +181,7 @@ describe('createProjectSyncer', () => {
 
 		const entry = bodies[0].modified.find((e) => e.path === 'assets/images/logo.png');
 		expect(entry).toBeDefined();
+		expect(entry!.encoding).toBe('base64');
 		expect(Buffer.from(entry!.content, 'base64').equals(bytes)).toBe(true);
 	});
 
@@ -180,6 +204,7 @@ describe('shouldIgnoreProjectPath — API allowlist', () => {
 		'tailwind.css',
 		'templates/invoice/invoice.html',
 		'templates/invoice/invoice.json',
+		'templates/invoice/tailwind-additions.css',
 		'partials/header.html',
 		'assets/fonts/dm-sans.woff2',
 		'assets/images/logo.svg',
@@ -198,6 +223,9 @@ describe('shouldIgnoreProjectPath — API allowlist', () => {
 		'templates/invoice/invoice.json.scaffold.bak',
 		'styles.css',
 		'notes.txt',
+		'new.json',
+		'templates/invoice/notes.md',
+		'assets/fonts/readme.txt',
 	])('skips %s', (path) => {
 		expect(shouldIgnoreProjectPath(path)).toBe(true);
 	});

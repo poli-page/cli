@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **New command `poli publish --env <name> [-m, --message <text>] [-y, --yes] [--json]`** publishes the local project (the files on disk, not the cloud draft) to an environment of your organization through `POST /v1/projects/<projectSlug>/publish`, with your `poli login` session and the manifest's `cloud.orgId`. The environment's copy is replaced in place; there is no rollback. `--env` is required, has no default, and is checked before any call: 1-20 characters, lowercase letters, digits and single inner hyphens, starting with a letter; `draft` is refused. An environment the organization does not have is refused with the list of the ones it has. A message over 500 characters or a bundle over 5 MiB is refused locally (exit `2`). Publishing to a protected environment (`live` by default) asks for confirmation in a terminal; without a TTY it needs `--yes`, and `CI=true` counts as `--yes`. Errors: `ENVIRONMENT_PROTECTED` exits `5` (an owner or admin is required), `ENVIRONMENT_NOT_FOUND` and `UNSUPPORTED_FILE_TYPE` exit `2`, `PUBLISH_IN_PROGRESS` exits `3` and is not retried. On success it prints the environment, project, short bundle hash, file count and publish log id (`--json`, or a pipe, prints the API response). `ApiClient` gains `publish()` and `listEnvironments()`, and the typed errors `EnvironmentProtectedError`, `EnvironmentNotFoundError` and `UnsupportedFileTypeError`.
+
+### Fixed
+- **The draft sync of `poli watch` and `poli dev` failed on every save with `400 VALIDATION_ERROR`.** The API now requires an `encoding` on every added and modified file of `PATCH …/projects/:projectId/files`, and the CLI sent `{ path, content }` only. Each entry is now `{ path, encoding, content }`: `base64` for the files under `assets/`, `utf8` for the rest. The wire type `PatchFilesEntry` is renamed `ProjectFileEntry`, and `isBinaryAsset` is replaced by `projectFileEncoding` (`src/project-files.ts`).
+- **The draft sync now uses the API's file set, shared with `poli publish`:** `poli-page.json`, `tailwind.css`, `.html`/`.json`/`.css` files under `templates/<slug>/`, `.html` files under `partials/`, any file under `assets/images/` and `assets/icons/`, and font files under `assets/fonts/`. A `.css` file under `templates/<slug>/` (such as `tailwind-additions.css`) is now synced; an `.html` or `.json` file outside those folders, or an image outside `assets/`, is no longer tracked, since the API refuses it with `400 UNSUPPORTED_FILE_TYPE` and fails the whole batch.
+
 ## [0.9.0] — 2026-10-18
 
 ### Added

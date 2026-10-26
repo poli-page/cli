@@ -25,9 +25,9 @@ describe('api-client patchFiles', () => {
 
 		const client = createApiClient('https://api.test');
 		const result = await client.patchFiles('sess-tok', 'org_1', 'proj_1', {
-			added: [{ path: 'templates/new.html', content: '<h1>new</h1>' }],
-			modified: [{ path: 'templates/inv.html', content: '<h1>updated</h1>' }],
-			deleted: ['templates/old.html'],
+			added: [{ path: 'templates/new/new.html', encoding: 'utf8', content: '<h1>new</h1>' }],
+			modified: [{ path: 'assets/images/logo.png', encoding: 'base64', content: 'iVBORw==' }],
+			deleted: ['templates/old/old.html'],
 		});
 
 		expect(result).toEqual({ syncedAt: '2026-05-06T10:00:00.000Z' });
@@ -41,9 +41,9 @@ describe('api-client patchFiles', () => {
 
 		const body = JSON.parse((init as RequestInit).body as string);
 		expect(body).toEqual({
-			added: [{ path: 'templates/new.html', content: '<h1>new</h1>' }],
-			modified: [{ path: 'templates/inv.html', content: '<h1>updated</h1>' }],
-			deleted: ['templates/old.html'],
+			added: [{ path: 'templates/new/new.html', encoding: 'utf8', content: '<h1>new</h1>' }],
+			modified: [{ path: 'assets/images/logo.png', encoding: 'base64', content: 'iVBORw==' }],
+			deleted: ['templates/old/old.html'],
 		});
 	});
 
@@ -53,7 +53,7 @@ describe('api-client patchFiles', () => {
 		const client = createApiClient('https://api.test');
 		await client.patchFiles('sess-tok', 'org_1', 'proj_1', {
 			added: [],
-			modified: [{ path: 'templates/inv.html', content: 'x' }],
+			modified: [{ path: 'templates/inv/inv.html', encoding: 'utf8', content: 'x' }],
 			deleted: [],
 		});
 
