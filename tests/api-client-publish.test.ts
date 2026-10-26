@@ -17,7 +17,7 @@ describe('api-client publish', () => {
 		vi.unstubAllGlobals();
 	});
 
-	it('POSTs the bundle to /v1/projects/:project/publish with the session and X-Poli-Org-Id', async () => {
+	it('POSTs the bundle to /v1/projects/:project/publish with the authorization and X-Poli-Org-Id', async () => {
 		const response = {
 			environment: 'live',
 			project: 'invoices',
@@ -42,7 +42,7 @@ describe('api-client publish', () => {
 				},
 			],
 		};
-		const result = await client.publish('sess-tok', 'org_1', 'invoices', body);
+		const result = await client.publish('Bearer sess-tok', 'org_1', 'invoices', body);
 
 		expect(result).toEqual(response);
 		const [url, init] = fetchMock.mock.calls[0];
@@ -54,10 +54,28 @@ describe('api-client publish', () => {
 		expect(JSON.parse((init as RequestInit).body as string)).toEqual(body);
 	});
 
+	it('sends no X-Poli-Org-Id without an organization: an API key carries its own', async () => {
+		const fetchMock = mockFetchOnce(200, {});
+		const client = createApiClient('https://api.test');
+		await client.publish('Bearer pp_staging_key', undefined, 'invoices', {
+			environment: 'staging',
+			files: [],
+		});
+		const headers = (fetchMock.mock.calls[0][1] as RequestInit).headers as Record<
+			string,
+			string
+		>;
+		expect(headers.Authorization).toBe('Bearer pp_staging_key');
+		expect('X-Poli-Org-Id' in headers).toBe(false);
+	});
+
 	it('encodes the project slug in the path', async () => {
 		const fetchMock = mockFetchOnce(200, {});
 		const client = createApiClient('https://api.test');
-		await client.publish('sess-tok', 'org_1', '../admin', { environment: 'live', files: [] });
+		await client.publish('Bearer sess-tok', 'org_1', '../admin', {
+			environment: 'live',
+			files: [],
+		});
 		expect(fetchMock.mock.calls[0][0]).toBe('https://api.test/v1/projects/..%2Fadmin/publish');
 	});
 });

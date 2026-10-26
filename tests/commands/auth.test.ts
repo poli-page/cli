@@ -1,16 +1,18 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import { executeLogout, executeWhoami, executeDeviceLogin } from '../../src/commands/auth.js';
 import { readCredentials, writeCredentials } from '../../src/credentials.js';
 import { writeManifest } from '../../src/manifest.js';
+import { createProgram } from '../../src/program.js';
 import type { ApiClient, MeResponse } from '../../src/api-client.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
 
 function sessionMe(): MeResponse {
 	return {
-		auth: { mode: 'session', keyType: 'session', environment: null },
+		auth: { mode: 'session', keyType: null, environment: null, role: 'owner' },
 		user: {
 			id: 'user_1',
 			email: 'xavier@test.com',
@@ -30,7 +32,7 @@ function sessionMe(): MeResponse {
 
 function apiKeyMe(): MeResponse {
 	return {
-		auth: { mode: 'api-key', keyType: 'live', environment: 'live' },
+		auth: { mode: 'api-key', keyType: 'standard', environment: 'live', role: null },
 		user: null,
 		key: {
 			id: 'k1',
@@ -425,6 +427,98 @@ describe('auth commands', () => {
 				apiClient: client,
 			});
 			expect(result.mode).toBe('api-key');
+		});
+	});
+	describe('poli whoami (the command)', () => {
+		const API_URL = 'https://api.test';
+		let projectDir: string;
+		let me: MeResponse;
+		let logs: string[];
+		let savedStdoutTTY: boolean | undefined;
+
+		beforeEach(async () => {
+			projectDir = await mkdtemp(join(tmpdir(), 'poli-whoami-cmd-'));
+			vi.stubEnv('HOME', fakeHome);
+			vi.stubEnv('POLI_API_URL', API_URL);
+			vi.stubEnv('POLI_PAGE_API_KEY', '');
+			vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
+			vi.stubGlobal(
+				'fetch',
+				vi.fn(async (url: string) =>
+					url === `${API_URL}/v1/me`
+						? new Response(JSON.stringify(me), {
+								status: 200,
+								headers: { 'Content-Type': 'application/json' },
+							})
+						: new Response('unexpected', { status: 500 })
+				)
+			);
+			logs = [];
+			vi.spyOn(console, 'log').mockImplementation((msg: unknown = '') => {
+				logs.push(stripVTControlCharacters(String(msg)));
+			});
+			savedStdoutTTY = process.stdout.isTTY;
+			process.stdout.isTTY = true;
+		});
+
+		afterEach(async () => {
+			process.stdout.isTTY = savedStdoutTTY as true;
+			vi.unstubAllEnvs();
+			vi.unstubAllGlobals();
+			vi.restoreAllMocks();
+			await rm(projectDir, { recursive: true, force: true });
+		});
+
+		function whoami() {
+			return createProgram().parseAsync(['whoami'], { from: 'user' });
+		}
+
+		it("prints the session's role in the linked organization", async () => {
+			await writeCredentials(
+				{
+					session: 'session-token',
+					user: { id: 'user_1', name: 'Xavier', email: 'xavier@test.com' },
+					orgs: { acme: {} },
+				},
+				fakeHome
+			);
+			await writeManifest(projectDir, {
+				project: { name: 'p' },
+				cloud: {
+					orgSlug: 'acme',
+					orgId: 'org_uuid_acme',
+					projectSlug: 'p',
+					projectId: 'proj_1',
+				},
+			});
+			me = { ...sessionMe(), auth: { ...sessionMe().auth, role: 'admin' } };
+			await whoami();
+			expect(logs).toEqual(['xavier@test.com @ acme (session, role=admin)']);
+		});
+
+		it("prints a service key's environment name and role", async () => {
+			vi.stubEnv('POLI_PAGE_API_KEY', 'pp_staging_0123456789abcdef0123456789abcdef');
+			me = {
+				...apiKeyMe(),
+				auth: {
+					mode: 'api-key',
+					keyType: 'service',
+					environment: 'staging',
+					role: 'developer',
+				},
+				key: { ...apiKeyMe().key!, preview: 'pp_staging_xxx…abcd' },
+			};
+			await whoami();
+			expect(logs).toEqual([
+				'pp_staging_xxx…abcd @ acme (api-key, environment=staging, role=developer)',
+			]);
+		});
+
+		it('prints no role for a standard key, which has none', async () => {
+			vi.stubEnv('POLI_PAGE_API_KEY', 'pp_live_0123456789abcdef0123456789abcdef');
+			me = apiKeyMe();
+			await whoami();
+			expect(logs).toEqual(['pp_live_xxx…abcd @ acme (api-key, environment=live)']);
 		});
 	});
 });

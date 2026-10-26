@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { readProjectManifest } from '../manifest.js';
-import { getSessionToken } from '../credentials.js';
+import { readCredentials } from '../credentials.js';
+import { resolveAuth } from '../auth.js';
 import {
 	ApiError,
 	createApiClient,
@@ -35,6 +36,10 @@ const ENVIRONMENT_NAME_MAX_LENGTH = 20;
 
 class PublishUsageError extends Error {
 	readonly exitCode = ExitCode.INVALID_USAGE;
+}
+
+class PublishNotAuthorizedError extends Error {
+	readonly exitCode = ExitCode.NOT_AUTHORIZED;
 }
 
 function validateEnvironmentName(name: string | undefined): string {
@@ -136,8 +141,12 @@ export async function executePublish(options: PublishOptions): Promise<PublishRe
 		);
 	}
 
-	const session = await getSessionToken(options.homeDir);
 	const client = options.apiClient ?? createApiClient();
+	// A session wins over POLI_PAGE_API_KEY, as in resolveAuth.
+	const session = (await readCredentials(options.homeDir))?.session;
+	if (!session) {
+		return publishWithApiKey(cwd, environment, options, client);
+	}
 
 	const manifest = await readProjectManifest(cwd);
 	const orgId = manifest.cloud?.orgId;
@@ -156,9 +165,57 @@ export async function executePublish(options: PublishOptions): Promise<PublishRe
 	await confirmProtected(target, options);
 
 	try {
-		return await client.publish(session, orgId, project, body);
+		return await client.publish(`Bearer ${session}`, orgId, project, body);
 	} catch (err) {
 		throw explainPublishError(err, project, environment, environments);
+	}
+}
+
+/**
+ * Publishes with `POLI_PAGE_API_KEY`: only a service key may, into its own
+ * environment. `GET /v1/me` tells a service key from a standard one, since
+ * both share the `pp_{environment}_…` format. The key carries the
+ * organization, so no org header and no environment list; nothing prompts,
+ * and the API applies the protected-environment rule.
+ */
+async function publishWithApiKey(
+	cwd: string,
+	environment: string,
+	options: PublishOptions,
+	client: ApiClient
+): Promise<PublishResult> {
+	// No session here, so this is the key or "Not logged in".
+	const { authorization } = await resolveAuth({ homeDir: options.homeDir });
+
+	const manifest = await readProjectManifest(cwd);
+	const project = manifest.cloud?.projectSlug;
+	if (!project) {
+		throw new Error('Project is not linked. Run `poli link` first.');
+	}
+
+	const body = await buildPublishBody(cwd, environment, options.message);
+
+	const { auth } = await client.getMe(authorization);
+	if (auth.keyType !== 'service') {
+		throw new PublishNotAuthorizedError(
+			'Standard API keys can only render. Use a service key or `poli login`.'
+		);
+	}
+	if (auth.environment !== environment) {
+		throw new PublishUsageError(
+			`This service key publishes to "${auth.environment}" only, not "${environment}". Run \`poli publish --env ${auth.environment}\`, or use a key for "${environment}".`
+		);
+	}
+
+	try {
+		return await client.publish(authorization, undefined, project, body);
+	} catch (err) {
+		if (err instanceof EnvironmentProtectedError) {
+			throw new EnvironmentProtectedError(
+				`Environment "${environment}" is protected: this service key needs the \`admin\` role to publish to it.`
+			);
+		}
+		throw explainPublishError(err, project, environment, []);
 	}
 }
 
