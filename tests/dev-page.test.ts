@@ -16,7 +16,7 @@ describe('dev page template', () => {
 	});
 
 	it('titles the error overlay accurately for every failure stage', () => {
-		const stages: Array<DevError['stage']> = ['sync', 'render', 'pdf', 'project'];
+		const stages: Array<DevError['stage']> = ['sync', 'render', 'project'];
 		const titles = stages.map((stage) => DEV_ERROR_TITLES[stage]);
 
 		// Every stage has its own non-empty, distinct title — no stage
@@ -25,11 +25,19 @@ describe('dev page template', () => {
 		expect(new Set(titles).size).toBe(stages.length);
 		expect(DEV_ERROR_TITLES.sync).toBe('Sync failed');
 		expect(DEV_ERROR_TITLES.render).toBe('Render failed');
-		expect(DEV_ERROR_TITLES.pdf).toMatch(/PDF/);
 		expect(DEV_ERROR_TITLES.project).toMatch(/project/i);
 
 		// The page embeds the table verbatim, so the browser shows exactly
 		// these titles.
 		expect(DEV_PAGE_HTML).toContain(JSON.stringify(DEV_ERROR_TITLES));
+	});
+
+	it('shows the draft PDF in the frame and has no separate PDF or live-preview mode', () => {
+		expect(DEV_PAGE_HTML).toContain('<iframe id="frame" src="/pdf"');
+		expect(DEV_PAGE_HTML).toContain("frame.src = '/pdf?v=' + version;");
+		expect(DEV_PAGE_HTML).not.toContain('Render PDF');
+		expect(DEV_PAGE_HTML).not.toContain('Live preview');
+		expect(DEV_PAGE_HTML).not.toContain('/api/pdf');
+		expect(DEV_PAGE_HTML).not.toContain('pageCount');
 	});
 });
