@@ -1,11 +1,7 @@
 import { Command } from 'commander';
 import { resolveAuth } from '../../auth.js';
 import { readManifest } from '../../manifest.js';
-import {
-	createApiClient,
-	type ApiClient,
-	type DocumentDescriptor,
-} from '../../api-client.js';
+import { createApiClient, type ApiClient, type DocumentDescriptor } from '../../api-client.js';
 import { errorToExitCode } from '../../exit-codes.js';
 import { shouldEmitJson } from '../../output.js';
 
@@ -72,16 +68,14 @@ export function registerDocumentsGetCommand(documents: Command): void {
 type ChalkFn = (s: string) => string;
 type ChalkLike = Record<'green' | 'cyan' | 'yellow' | 'red' | 'gray' | 'bold' | 'dim', ChalkFn>;
 
-function printDescriptor(doc: DocumentDescriptor, chalk: ChalkLike): void {
+export function printDescriptor(doc: DocumentDescriptor, chalk: ChalkLike): void {
 	const created = new Date(doc.createdAt).toLocaleString();
 	const expires = new Date(doc.expiresAt).toLocaleString();
 	const tplLabel = doc.templateSlug ?? '(unknown)';
-	// `version: null` from the API means "draft" (api-spec §11.3).
-	const versionLabel = doc.version ? `v${doc.version}` : 'draft';
 	const orientationLabel = doc.orientation ?? '';
 
 	console.log(chalk.green(`✓ Document ${chalk.bold(doc.documentId)}`));
-	console.log(`  Template:    ${tplLabel} ${versionLabel}`);
+	console.log(`  Template:    ${tplLabel}`);
 	console.log(`  Environment: ${doc.environment}`);
 	console.log(`  Format:      ${doc.format}${orientationLabel ? ' ' + orientationLabel : ''}`);
 	console.log(`  Pages:       ${doc.pageCount}`);
