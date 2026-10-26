@@ -9,25 +9,6 @@ export interface CloudContext {
 	projectId: string;
 }
 
-export const EXACT_SEMVER = /^\d+\.\d+\.\d+$/;
-const PARTIAL_SEMVER = /^\d+(?:\.\d+)?$/;
-
-export function validateExactSemver(version: string): void {
-	if (version === 'latest') {
-		throw new Error(
-			'`latest` was retired. Run `poli versions list` and pin an exact semver like `1.2.3`.'
-		);
-	}
-	if (PARTIAL_SEMVER.test(version)) {
-		throw new Error(
-			'Use an exact semver `X.Y.Z`. Partial versions like `1.0` were retired.'
-		);
-	}
-	if (!EXACT_SEMVER.test(version)) {
-		throw new Error('Invalid version: must be an exact semver `X.Y.Z`.');
-	}
-}
-
 export async function resolveCloudContext(options: {
 	cwd?: string;
 	apiClient?: ApiClient;

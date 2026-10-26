@@ -3,7 +3,7 @@ import { computeDelta, hashContent, syncWithRetry } from '../src/sync-engine.js'
 import {
 	OrgMigratingError,
 	NotAMemberError,
-	SystemProjectLockedError,
+	UnsupportedFileTypeError,
 	type PatchFilesResult,
 } from '../src/api-client.js';
 
@@ -44,9 +44,7 @@ describe('computeDelta', () => {
 	});
 
 	it('classifies a content change as `modified`, not `added`', () => {
-		const oldHashes = new Map([
-			['templates/inv.html', hashContent('<h1>old</h1>')],
-		]);
+		const oldHashes = new Map([['templates/inv.html', hashContent('<h1>old</h1>')]]);
 		const newFiles = new Map([['templates/inv.html', '<h1>new</h1>']]);
 
 		const delta = computeDelta(oldHashes, newFiles);
@@ -78,9 +76,7 @@ describe('computeDelta', () => {
 	});
 
 	it('classifies a missing file as `deleted`', () => {
-		const oldHashes = new Map([
-			['templates/old.html', hashContent('<h1>old</h1>')],
-		]);
+		const oldHashes = new Map([['templates/old.html', hashContent('<h1>old</h1>')]]);
 		const newFiles = new Map<string, string>();
 
 		const delta = computeDelta(oldHashes, newFiles);
@@ -201,21 +197,19 @@ describe('syncWithRetry', () => {
 		const sleepFn = vi.fn();
 		const syncFn = vi.fn().mockRejectedValue(new NotAMemberError('not a member'));
 
-		await expect(syncWithRetry({ syncFn, sleepFn })).rejects.toBeInstanceOf(
-			NotAMemberError
-		);
+		await expect(syncWithRetry({ syncFn, sleepFn })).rejects.toBeInstanceOf(NotAMemberError);
 		expect(syncFn).toHaveBeenCalledTimes(1);
 		expect(sleepFn).not.toHaveBeenCalled();
 	});
 
-	it('throws immediately on SYSTEM_PROJECT_LOCKED (non-retryable)', async () => {
+	it('throws immediately on UNSUPPORTED_FILE_TYPE (non-retryable)', async () => {
 		const sleepFn = vi.fn();
 		const syncFn = vi
 			.fn()
-			.mockRejectedValue(new SystemProjectLockedError('system project'));
+			.mockRejectedValue(new UnsupportedFileTypeError('unsupported file type'));
 
 		await expect(syncWithRetry({ syncFn, sleepFn })).rejects.toBeInstanceOf(
-			SystemProjectLockedError
+			UnsupportedFileTypeError
 		);
 		expect(syncFn).toHaveBeenCalledTimes(1);
 		expect(sleepFn).not.toHaveBeenCalled();
@@ -229,9 +223,9 @@ describe('syncWithRetry', () => {
 			throw new TypeError('fetch failed');
 		});
 
-		await expect(
-			syncWithRetry({ syncFn, sleepFn, signal: controller.signal })
-		).rejects.toThrow(/abort/i);
+		await expect(syncWithRetry({ syncFn, sleepFn, signal: controller.signal })).rejects.toThrow(
+			/abort/i
+		);
 		expect(syncFn).toHaveBeenCalledTimes(1);
 	});
 });

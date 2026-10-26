@@ -75,7 +75,7 @@ export async function executeLink(options: LinkOptions): Promise<void> {
 		projectId = existing.id;
 	} else {
 		// The API expects the full project bundle (manifest + templates +
-		// optional images + tailwind) — same payload shape as `updateProject`.
+		// optional images + tailwind).
 		// The server derives the slug from `manifest.project.name`.
 		const payload = await collectProjectPayload(cwd, manifest);
 		const created = await client.createProject(session, org.id, payload);
@@ -131,9 +131,7 @@ export function registerLinkCommands(program: Command) {
 
 				if (orgs.length === 0) {
 					console.error(
-						chalk.red(
-							'No organizations found. Create one via the dashboard first.'
-						)
+						chalk.red('No organizations found. Create one via the dashboard first.')
 					);
 					process.exitCode = ExitCode.INVALID_LOCAL_STATE;
 					return;
@@ -164,9 +162,7 @@ export function registerLinkCommands(program: Command) {
 				await executeUnlink();
 				console.log(chalk.green('Project unlinked from cloud.'));
 			} catch (error) {
-				console.error(
-					chalk.red(error instanceof Error ? error.message : 'Unlink failed')
-				);
+				console.error(chalk.red(error instanceof Error ? error.message : 'Unlink failed'));
 				process.exitCode = errorToExitCode(error);
 			}
 		});

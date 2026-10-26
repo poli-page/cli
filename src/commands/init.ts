@@ -340,7 +340,9 @@ async function runInitStarter(name: string | undefined, opts: InitCommandOptions
 		console.log(`  ${chalk.bold('Next steps:')}`);
 		console.log(`  ${chalk.cyan(`cd ${name ?? opts.starter}`)}`);
 		console.log(`  ${chalk.cyan('poli watch')}  — live sync of your edits to the cloud draft`);
-		console.log(`  ${chalk.cyan('poli push')}   — push a new sandbox version`);
+		console.log(
+			`  ${chalk.cyan('poli publish --env sandbox')}  — publish the project to the sandbox environment`
+		);
 		console.log('  Then re-run the dashboard snippet to see your change.');
 		console.log();
 	} catch (error) {

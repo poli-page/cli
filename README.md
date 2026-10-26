@@ -19,7 +19,6 @@ Command-line tool for [Poli Page](https://poli.page) — scaffold projects, mana
   - [Cloud sync](#cloud-sync)
   - [Live development](#live-development)
   - [Environments](#environments)
-  - [Versioning](#versioning)
   - [Render](#render)
   - [Documents](#documents)
 - [Manifest format](#manifest-format)
@@ -70,12 +69,11 @@ poli link
 # 5. Render a PDF using the local template against the cloud engine
 poli render invoice -o invoice.pdf
 
-# 6. Push your work as a SANDBOX version
-poli push --message "Initial draft"
+# 6. Publish the project to the sandbox environment
+poli publish --env sandbox
 
-# 7. Promote to LIVE when ready
-poli versions list
-poli promote 1.0.0
+# 7. Publish it to live when ready
+poli publish --env live -m "First release"
 ```
 
 To iterate on a template with live feedback against the cloud:
@@ -120,7 +118,6 @@ A key renders only its own environment, and never the draft: the draft (`poli re
 ```bash
 export POLI_PAGE_API_KEY=pp_live_xxx
 poli render invoice@live -o invoice.pdf
-poli push --message "Release v1.0.5"
 ```
 
 ### Precedence
@@ -133,7 +130,7 @@ This means a developer can keep `POLI_PAGE_API_KEY` set in `.zshrc` for occasion
 
 ## Commands
 
-24 commands grouped by category.
+16 commands grouped by category.
 
 ### Project lifecycle
 
@@ -172,8 +169,8 @@ A non-empty target directory is refused unless you pass `--force`. Then:
 
 ```bash
 cd getting-started
-poli watch   # live sync of your edits to the cloud draft
-poli push    # push a new sandbox version
+poli watch                   # live sync of your edits to the cloud draft
+poli publish --env sandbox   # publish the project to the sandbox environment
 ```
 
 and re-run the dashboard snippet to see your change.
@@ -282,7 +279,7 @@ poli dev -d ./big.json   # render every template against your own data
 | Flag                 | Default            | Meaning                                                    |
 | -------------------- | ------------------ | ---------------------------------------------------------- |
 | `-p, --port <n>`     | `7654`             | Port to bind on `127.0.0.1`. Walks upwards when it is busy. |
-| `-d, --data <path>`  | the template mock  | JSON data file, same shape as `poli preview -d`.            |
+| `-d, --data <path>`  | the template mock  | JSON data file, same shape as `poli render -d`.             |
 | `--no-open`          | opens the browser  | Skip launching a browser on start.                          |
 | `[template]`         | first in manifest  | Which template to show first.                               |
 
@@ -376,69 +373,6 @@ Environments of acme, project invoices:
 ```
 
 Outside a linked folder, or with `--org` naming another organization, it lists the organization's environments with their protected and read-only flags and how many projects are published in each (`PROJECTS`). When you belong to several organizations and no project is linked, `--org` is required: without it the command exits `2` and lists your organizations' slugs. An environment is read-only when the organization's plan no longer covers it.
-
-### Versioning
-
-#### `poli push`
-
-Sync the current local draft and create a new SANDBOX version. The body shape is one of two mutually exclusive forms (api-spec §9.1):
-
-- Bump-driven: `--patch` (default), `--minor`, or `--major`. Anchored on the manifest's `cloud.track` (set by the previous push, or by `--track`).
-- Explicit: pass an exact semver as a positional argument (`poli push 1.0.2`). The server returns 409 `VERSION_CONFLICT` if the version already exists in any state.
-
-```bash
-poli push --message "Tweaked invoice header"        # patch (default), anchored on cloud.track
-poli push --major --message "BREAKING: new schema"  # ignores track, picks max(major)+1
-poli push --minor
-poli push 1.0.2                                     # explicit version (no track logic)
-poli push --track 1.0 --patch                       # override the manifest track (CI)
-```
-
-> An explicit positional version is mutually exclusive with `--patch` / `--minor` / `--major` and with `--track`.
-
-**Hotfix flow** — 1.0.1 LIVE in prod, 2.0.0 SANDBOX in dev:
-
-```bash
-git checkout v1.0.1                # restore 1.0.1 from your own history: the local project is the source of truth
-# fix the bug…
-poli push --track 1.0 --patch      # produces 1.0.2 (anchored on track 1.0), not 2.0.1
-poli promote 1.0.2
-```
-
-After the push, `cloud.track` is updated to the major.minor of the version the server returned (no-op for patches on the same family).
-
-#### `poli versions list` (alias `ls`)
-
-Display all versions of the linked project with their state badges.
-
-```
-STATE       VERSION    PUSHED        MESSAGE
-LIVE        2.0.0      3 days ago    Major redesign
-LIVE        1.0.5      1 week ago    Hotfix URSSAF
-SANDBOX     1.1.0      2 hours ago
-DEPRECATED  1.0.2      3 weeks ago
-```
-
-#### `poli promote <version>`
-
-Move a SANDBOX version to LIVE. Confirmation prompt unless `--yes`.
-
-#### `poli unpromote <version>`
-
-Move a LIVE version back to SANDBOX. Shows a usage preview (calls in the last 24h, the next-latest LIVE) before confirming.
-
-```bash
-poli unpromote 1.0.5
-poli unpromote 1.0.5 --force    # allow unpromoting the last LIVE version
-```
-
-#### `poli versions deprecate <version>`
-
-Mark a SANDBOX version as DEPRECATED.
-
-#### `poli versions un-deprecate <version>`
-
-Move a DEPRECATED version back to SANDBOX.
 
 ### Render
 
@@ -600,7 +534,7 @@ The `cloud:` block is written by `poli link`, removed by `poli unlink`. **No API
 
 ### Output conventions
 
-Every command that returns a payload (renders, descriptors, lists, version mutations) follows the same output rule:
+Every command that returns a payload (renders, descriptors, publishes) follows the same output rule:
 
 | Context | Stdout |
 | ------- | ------ |
@@ -610,7 +544,7 @@ Every command that returns a payload (renders, descriptors, lists, version mutat
 
 Either the summary **or** the JSON — never both at once. Errors always go to stderr with a clear message.
 
-Commands that take this contract: `render`, `documents get`, `documents preview`, `documents thumbnails`, `whoami`, `versions list`, `publish`, `env list`, `push`, `promote`, `unpromote`, `versions deprecate`, `versions un-deprecate`, `init --starter`.
+Commands that take this contract: `render`, `documents get`, `documents preview`, `documents thumbnails`, `whoami`, `publish`, `env list`, `init --starter`.
 
 Imperative commands (`init` without `--starter`, `new`, `link`, `unlink`, `logout`, `documents delete`, `watch`, `login`) don't have a JSON payload to forward — they just acknowledge with a `✓` line on success.
 
@@ -620,12 +554,12 @@ Imperative commands (`init` without `--starter`, `new`, `link`, `unlink`, `logou
 
 | Code | Meaning                                                                                                |
 | ---- | ------------------------------------------------------------------------------------------------------ |
-| `0`  | Success (or no-op, e.g. `promote` when nothing changes)                                                |
-| `1`  | Recoverable inconsistency (already logged in, already linked, version already live)                    |
+| `0`  | Success                                                                                                |
+| `1`  | Recoverable inconsistency (already logged in, already linked)                                          |
 | `2`  | Invalid usage (bad args, template not found, project not published in that environment, non-TTY context where TTY is required) |
 | `3`  | Network / API error (timeout, 5xx, unspecified 4xx)                                                    |
 | `4`  | Not authenticated — run `poli login` or set `POLI_PAGE_API_KEY`                                        |
-| `5`  | Not authorized (insufficient role, protected environment, `THUMBNAILS_NOT_AVAILABLE`, system project locked) |
+| `5`  | Not authorized (insufficient role, protected environment, `THUMBNAILS_NOT_AVAILABLE`)                  |
 | `6`  | Invalid local state (no project, project not linked, empty folder where required)                      |
 
 These map to the centralised `ExitCode` constants in `src/exit-codes.ts`. Every handler routes errors through `errorToExitCode(err)`.
@@ -730,10 +664,6 @@ Your org is being migrated to a new tier. `poli watch` retries automatically aft
 ### `poli watch` doesn't fire on save
 
 Make sure you're not editing inside an ignored directory. Default ignores: `node_modules/`, `.git/`, `output/`, `dist/`, `*.log`, `.DS_Store`. The watcher uses `chokidar` v5; if your editor saves via "atomic write + rename" (some Vim setups), the rename event fires within the debounce window and triggers a sync.
-
-### CI pipeline rejected with exit `5` on `poli promote`
-
-Service-account `developer` keys cannot promote. Either use an `admin` SA, or run `poli promote` from a developer's interactive session. Service-account roles are fixed at creation.
 
 ---
 
