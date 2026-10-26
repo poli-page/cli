@@ -421,6 +421,7 @@ describe('poli publish', () => {
 		const API_URL = 'https://api.test';
 		const RESULT = publishResult({ bundleHash: `sha256:0123456789abcdef${'0'.repeat(48)}` });
 		let fetchMock: ReturnType<typeof vi.fn>;
+		let publishAnswer: () => Response;
 		let logs: string[];
 		let errors: string[];
 		let savedExitCode: typeof process.exitCode;
@@ -439,21 +440,24 @@ describe('poli publish', () => {
 			return createProgram().parseAsync(['publish', ...args], { from: 'user' });
 		}
 
+		function jsonResponse(status: number, body: unknown) {
+			return new Response(JSON.stringify(body), {
+				status,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+
 		beforeEach(() => {
 			vi.stubEnv('HOME', fakeHome);
 			vi.stubEnv('POLI_API_URL', API_URL);
 			vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
+			publishAnswer = () => jsonResponse(200, RESULT);
 			fetchMock = vi.fn(async (url: string) => {
-				const body = url.endsWith('/organizations/org_1/environments')
-					? ENVIRONMENTS
-					: url === `${API_URL}/v1/projects/invoices/publish`
-						? RESULT
-						: undefined;
-				if (body === undefined) return new Response('unexpected', { status: 500 });
-				return new Response(JSON.stringify(body), {
-					status: 200,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				if (url.endsWith('/organizations/org_1/environments')) {
+					return jsonResponse(200, ENVIRONMENTS);
+				}
+				if (url === `${API_URL}/v1/projects/invoices/publish`) return publishAnswer();
+				return new Response('unexpected', { status: 500 });
 			});
 			vi.stubGlobal('fetch', fetchMock);
 			logs = [];
@@ -510,6 +514,33 @@ describe('poli publish', () => {
 			expect(errors.join('\n')).toMatch(/draft.*not an environment/i);
 			expect(logs).toEqual([]);
 			expect(fetchMock).not.toHaveBeenCalled();
+		});
+
+		it('PUBLISH_IN_PROGRESS from the API: the reason on stderr, exit 3, one attempt, even with --json', async () => {
+			setTTY(true, true);
+			publishAnswer = () =>
+				jsonResponse(409, { error: 'PUBLISH_IN_PROGRESS', requestId: 'req-test' });
+			await poli('--env', 'sandbox', '--json');
+			expect(process.exitCode).toBe(ExitCode.NETWORK_OR_API_ERROR);
+			expect(errors).toEqual([
+				'Another publish of invoices to "sandbox" is running. Wait for it to finish, then publish again.',
+			]);
+			expect(logs).toEqual([]);
+			expect(publishCalls()).toHaveLength(1);
+		});
+
+		it('UNSUPPORTED_FILE_TYPE from the API: the path it names on stderr, exit 2', async () => {
+			setTTY(true, true);
+			publishAnswer = () =>
+				jsonResponse(400, {
+					error: 'UNSUPPORTED_FILE_TYPE',
+					detail: 'Unsupported project file "templates/invoice/x.svg".',
+					requestId: 'req-test',
+				});
+			await poli('--env', 'sandbox');
+			expect(process.exitCode).toBe(ExitCode.INVALID_USAGE);
+			expect(errors.join('\n')).toContain('templates/invoice/x.svg');
+			expect(logs).toEqual([]);
 		});
 
 		it('asks before publishing to a protected environment when stdin and stdout are TTYs', async () => {

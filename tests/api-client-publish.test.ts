@@ -98,4 +98,26 @@ describe('api-client listEnvironments', () => {
 		const headers = (init as RequestInit).headers as Record<string, string>;
 		expect(headers.Authorization).toBe('Bearer sess-tok');
 	});
+
+	// The organization id comes from poli-page.json, which the user can edit.
+	it('encodes the organization id in the path', async () => {
+		const fetchMock = mockFetchOnce(200, []);
+		const client = createApiClient('https://api.test');
+		await client.listEnvironments('sess-tok', 'x/../..');
+		expect(fetchMock.mock.calls[0][0]).toBe(
+			'https://api.test/api/organizations/x%2F..%2F../environments'
+		);
+	});
+
+	it.each(['.', '..'])(
+		'refuses the dot segment "%s" as an organization id without a request',
+		async (orgId) => {
+			const fetchMock = mockFetchOnce(200, []);
+			const client = createApiClient('https://api.test');
+			await expect(client.listEnvironments('sess-tok', orgId)).rejects.toThrow(
+				'Invalid organization ID.'
+			);
+			expect(fetchMock).not.toHaveBeenCalled();
+		}
+	);
 });

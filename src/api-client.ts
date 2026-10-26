@@ -746,12 +746,20 @@ export function createApiClient(baseUrl?: string): ApiClient {
 		},
 
 		async listEnvironments(session, orgId) {
-			const response = await request(`/api/organizations/${orgId}/environments`, {
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${session}`,
-				},
-			});
+			// encodeURIComponent leaves the dot segments as they are, and the URL
+			// parser would resolve them against the path.
+			if (orgId === '.' || orgId === '..') {
+				throw new Error('Invalid organization ID.');
+			}
+			const response = await request(
+				`/api/organizations/${encodeURIComponent(orgId)}/environments`,
+				{
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${session}`,
+					},
+				}
+			);
 			return response.json() as Promise<EnvironmentInfo[]>;
 		},
 
