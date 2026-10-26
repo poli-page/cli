@@ -8,8 +8,7 @@ const fakeDescriptor: RenderResult = {
 	projectSlug: 'invoices',
 	templateId: 'tpl_1',
 	templateSlug: 'invoice',
-	version: '1.0.5',
-	environment: 'live',
+	environment: 'production',
 	apiKeyId: 'key_1',
 	createdAt: '2026-05-07T12:00:00.000Z',
 	pageCount: 2,
@@ -20,6 +19,7 @@ const fakeDescriptor: RenderResult = {
 	metadata: {},
 	presignedPdfUrl: 'https://s3.example/doc_abc123.pdf?sig=abc',
 	expiresAt: '2026-05-07T12:15:00.000Z',
+	diagnostics: [{ kind: 'missing-asset', message: 'Image not found', path: 'images/logo.png' }],
 };
 
 function mockFetchOnce(status: number, body: unknown): ReturnType<typeof vi.fn> {
@@ -44,7 +44,7 @@ describe('api-client render', () => {
 		const result = await client.render('Bearer pp_live_abc', 'org_1', {
 			project: 'invoices',
 			template: 'invoice',
-			version: '1.0.5',
+			environment: 'production',
 			data: { title: 'Hello' },
 		});
 
@@ -62,7 +62,7 @@ describe('api-client render', () => {
 		expect(body).toEqual({
 			project: 'invoices',
 			template: 'invoice',
-			version: '1.0.5',
+			environment: 'production',
 			data: { title: 'Hello' },
 		});
 	});
@@ -74,7 +74,6 @@ describe('api-client render', () => {
 		await client.render('Bearer pp_test_x', undefined, {
 			project: 'invoices',
 			template: 'invoice',
-			version: 'draft',
 			data: {},
 		});
 

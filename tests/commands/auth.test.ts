@@ -9,6 +9,7 @@ import { writeManifest } from '../../src/manifest.js';
 import { createProgram } from '../../src/program.js';
 import type { ApiClient, MeResponse } from '../../src/api-client.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
+import { testApiKey } from '../helpers/api-key.js';
 
 function sessionMe(): MeResponse {
 	return {
@@ -318,7 +319,7 @@ describe('auth commands', () => {
 		});
 
 		it('returns api-key-mode payload when POLI_PAGE_API_KEY is set', async () => {
-			process.env.POLI_PAGE_API_KEY = 'pp_live_envkey';
+			process.env.POLI_PAGE_API_KEY = testApiKey('live');
 
 			let receivedAuth = '';
 			let receivedOrgId: string | undefined;
@@ -337,7 +338,7 @@ describe('auth commands', () => {
 			});
 
 			expect(result.mode).toBe('api-key');
-			expect(receivedAuth).toBe('Bearer pp_live_envkey');
+			expect(receivedAuth).toBe(`Bearer ${testApiKey('live')}`);
 			expect(receivedOrgId).toBeUndefined();
 			expect(result.payload.key?.preview).toBe('pp_live_xxx…abcd');
 			expect(result.payload.auth.environment).toBe('live');
@@ -415,7 +416,7 @@ describe('auth commands', () => {
 		});
 
 		it('does not require a manifest in api-key mode', async () => {
-			process.env.POLI_PAGE_API_KEY = 'pp_test_envkey';
+			process.env.POLI_PAGE_API_KEY = testApiKey('test');
 
 			const client = createMockApiClient({
 				getMe: async () => apiKeyMe(),
