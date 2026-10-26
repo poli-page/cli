@@ -16,6 +16,20 @@ export async function readManifest(projectDir: string): Promise<PoliPageManifest
 	return parseManifest(raw);
 }
 
+/** `readManifest`, reporting a missing file as "not in a Poli Page project". */
+export async function readProjectManifest(projectDir: string): Promise<PoliPageManifest> {
+	try {
+		return await readManifest(projectDir);
+	} catch (err) {
+		if (err instanceof Error && /ENOENT/.test(err.message)) {
+			throw new Error(
+				`No ${MANIFEST_FILENAME} found in ${projectDir}. Are you in a Poli Page project?`
+			);
+		}
+		throw err;
+	}
+}
+
 export async function writeManifest(
 	projectDir: string,
 	manifest: PoliPageManifest

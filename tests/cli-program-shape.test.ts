@@ -54,6 +54,22 @@ describe('cli program shape — push', () => {
 	});
 });
 
+describe('cli program shape — publish', () => {
+	const cmd = findCommand('publish');
+
+	it('takes no positional argument', () => {
+		const args = (cmd as unknown as { registeredArguments: unknown[] }).registeredArguments;
+		expect(args).toHaveLength(0);
+	});
+
+	it('exposes --env / -m, --message / -y, --yes / --json', () => {
+		const flags = cmd.options.map((o) => o.flags);
+		expect(flags).toEqual(
+			expect.arrayContaining(['--env <name>', '-m, --message <text>', '-y, --yes', '--json'])
+		);
+	});
+});
+
 describe('cli program shape — render', () => {
 	const cmd = findCommand('render');
 

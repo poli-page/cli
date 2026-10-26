@@ -104,6 +104,23 @@ export class VersionConflictError extends ApiError {
 		super('VERSION_CONFLICT', 409, message, retryAfter);
 	}
 }
+export class EnvironmentProtectedError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('ENVIRONMENT_PROTECTED', 403, message, retryAfter);
+	}
+}
+export class EnvironmentNotFoundError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('ENVIRONMENT_NOT_FOUND', 404, message, retryAfter);
+	}
+}
+export class UnsupportedFileTypeError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('UNSUPPORTED_FILE_TYPE', 400, message, retryAfter);
+	}
+}
+// No class for PUBLISH_IN_PROGRESS: the API sends it as 409 on a publish and
+// 503 on a render, and a registry class carries one fixed status.
 
 type TypedErrorCtor = new (message: string, retryAfter?: number) => ApiError;
 
@@ -126,6 +143,9 @@ const TYPED_ERROR_REGISTRY: Record<string, TypedErrorCtor> = {
 	SYSTEM_PROJECT_IMMUTABLE: SystemProjectImmutableError,
 	INVALID_TRACK_FORMAT: InvalidTrackFormatError,
 	VERSION_CONFLICT: VersionConflictError,
+	ENVIRONMENT_PROTECTED: EnvironmentProtectedError,
+	ENVIRONMENT_NOT_FOUND: EnvironmentNotFoundError,
+	UNSUPPORTED_FILE_TYPE: UnsupportedFileTypeError,
 };
 
 export interface ApiKeyInfo {
@@ -209,15 +229,47 @@ export interface DocumentPreviewResult {
 	pageCount: number;
 }
 
-export interface PatchFilesEntry {
+/**
+ * One project file on the wire (draft sync and publish). The API decodes
+ * `content` by `encoding` only, never by the path's extension.
+ */
+export interface ProjectFileEntry {
 	path: string;
+	encoding: 'utf8' | 'base64';
 	content: string;
 }
 
 export interface PatchFilesBody {
-	added: PatchFilesEntry[];
-	modified: PatchFilesEntry[];
+	added: ProjectFileEntry[];
+	modified: ProjectFileEntry[];
 	deleted: string[];
+}
+
+/** `POST /v1/projects/:project/publish` body: the whole local project. */
+export interface PublishBody {
+	environment: string;
+	message?: string;
+	files: ProjectFileEntry[];
+}
+
+export interface PublishResult {
+	environment: string;
+	project: string;
+	publishedAt: string;
+	/** `sha256:<64 hex>` */
+	bundleHash: string;
+	logId: string;
+	fileCount: number;
+	totalBytes: number;
+}
+
+export interface EnvironmentInfo {
+	name: string;
+	kind: 'sandbox' | 'standard';
+	protected: boolean;
+	readOnly: boolean;
+	createdAt: string;
+	projectCount: number;
 }
 
 export interface PatchFilesResult {
@@ -331,6 +383,13 @@ export interface ApiClient {
 		projectId: string,
 		body: PatchFilesBody
 	): Promise<PatchFilesResult>;
+	listEnvironments(session: string, orgId: string): Promise<EnvironmentInfo[]>;
+	publish(
+		session: string,
+		orgId: string,
+		project: string,
+		body: PublishBody
+	): Promise<PublishResult>;
 	createApiKey(
 		session: string,
 		orgId: string,
@@ -693,6 +752,40 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				}
 			);
 			return response.json() as Promise<PatchFilesResult>;
+		},
+
+		async listEnvironments(session, orgId) {
+			// encodeURIComponent leaves the dot segments as they are, and the URL
+			// parser would resolve them against the path.
+			if (orgId === '.' || orgId === '..') {
+				throw new Error('Invalid organization ID.');
+			}
+			const response = await request(
+				`/api/organizations/${encodeURIComponent(orgId)}/environments`,
+				{
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${session}`,
+					},
+				}
+			);
+			return response.json() as Promise<EnvironmentInfo[]>;
+		},
+
+		async publish(session, orgId, project, body) {
+			const response = await request(
+				`/v1/projects/${encodeURIComponent(project)}/publish`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${session}`,
+						'X-Poli-Org-Id': orgId,
+					},
+					body: JSON.stringify(body),
+				}
+			);
+			return response.json() as Promise<PublishResult>;
 		},
 
 		async pushVersion(session, orgId, projectId, body) {

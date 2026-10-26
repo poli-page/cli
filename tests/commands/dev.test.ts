@@ -301,6 +301,10 @@ describe('poli dev', () => {
 			const paths = patchBodies[0].modified.map((e) => e.path).sort();
 			expect(paths).toContain('poli-page.json');
 			expect(paths).toContain('templates/invoice/invoice.html');
+			// The API refuses an entry without `encoding` (400 VALIDATION_ERROR).
+			for (const entry of patchBodies[0].modified) {
+				expect(entry.encoding).toBe('utf8');
+			}
 
 			expect(draftCalls).toHaveLength(1);
 			// The draft renders through the signed-in session only: the body
@@ -493,8 +497,12 @@ describe('poli dev', () => {
 
 			// One start-up push + one delta push.
 			expect(patchBodies).toHaveLength(2);
-			expect(patchBodies[1].modified.map((e) => e.path)).toEqual([
-				'templates/invoice/invoice.html',
+			expect(patchBodies[1].modified).toEqual([
+				{
+					path: 'templates/invoice/invoice.html',
+					encoding: 'utf8',
+					content: '<h1>v2</h1>',
+				},
 			]);
 			expect(draftCalls).toHaveLength(2);
 

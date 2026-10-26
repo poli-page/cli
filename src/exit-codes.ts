@@ -39,6 +39,9 @@ import {
 	InvalidVersionForKeyEnvError,
 	VersionRequiredError,
 	MissingOrgContextError,
+	EnvironmentProtectedError,
+	EnvironmentNotFoundError,
+	UnsupportedFileTypeError,
 } from './api-client.js';
 
 /**
@@ -56,8 +59,10 @@ export function errorToExitCode(err: unknown): ExitCodeValue {
 
 	if (err instanceof Error) {
 		// Auth-domain typed errors map to "not authorised" (insufficient role,
-		// org in payment grace/cancelled/purged, system project locked).
+		// org in payment grace/cancelled/purged, system project locked,
+		// protected environment).
 		if (
+			err instanceof EnvironmentProtectedError ||
 			err instanceof NotAMemberError ||
 			err instanceof OrgPaymentGraceError ||
 			err instanceof OrgCancelledError ||
@@ -90,6 +95,8 @@ export function errorToExitCode(err: unknown): ExitCodeValue {
 			err instanceof VersionRequiredError ||
 			err instanceof MissingOrgContextError ||
 			err instanceof DocumentNotFoundError ||
+			err instanceof EnvironmentNotFoundError ||
+			err instanceof UnsupportedFileTypeError ||
 			/Invalid version|exact semver|Template .+ not found|template not found|Missing <documentId>/i.test(
 				err.message
 			)

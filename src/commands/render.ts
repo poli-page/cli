@@ -10,6 +10,7 @@ import {
 	type RenderResult as ApiRenderResult,
 } from '../api-client.js';
 import { resolveAuth } from '../auth.js';
+import { isValidEnvironmentName } from '../environment-name.js';
 import { ExitCode, errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 import { formatOrientationSlug } from '../format-resolver.js';
@@ -38,10 +39,6 @@ export type RenderResult =
 	| { kind: 'environment'; descriptor: ApiRenderResult; outputPath?: string };
 
 const DRAFT = 'draft';
-// K2: 1-20 characters, lowercase letters, digits and single inner hyphens,
-// starting with a letter.
-const ENVIRONMENT_NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
-const MAX_ENVIRONMENT_NAME_LENGTH = 20;
 
 class RenderUsageError extends Error {
 	readonly exitCode = ExitCode.INVALID_USAGE;
@@ -86,7 +83,7 @@ function validateTarget(name: string, target: string): void {
 			`\`${name}@${target}\`: templates no longer have versions. Render a published environment with \`${name}@<environment>\` (e.g. \`${name}@sandbox\`), or the draft with \`${name}\`.`
 		);
 	}
-	if (target.length > MAX_ENVIRONMENT_NAME_LENGTH || !ENVIRONMENT_NAME.test(target)) {
+	if (!isValidEnvironmentName(target)) {
 		throw new RenderUsageError(
 			`Invalid environment name \`${target}\`: 1-20 lowercase letters, digits and single inner hyphens, starting with a letter. Use \`${name}@<environment>\`.`
 		);

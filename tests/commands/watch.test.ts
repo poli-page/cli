@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeWatch, type WatchEvent } from '../../src/commands/watch.js';
 import { writeCredentials } from '../../src/credentials.js';
-import { type ApiClient, SystemProjectLockedError } from '../../src/api-client.js';
+import {
+	type ApiClient,
+	type PatchFilesBody,
+	SystemProjectLockedError,
+} from '../../src/api-client.js';
 import type { FileWatcher, FileWatcherOptions } from '../../src/file-watcher.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
@@ -129,8 +133,8 @@ describe('executeWatch', () => {
 
 	it('emits a "ready" event after the initial snapshot, then "syncing" → "synced" on save', async () => {
 		await setupLinkedProject(tempDir, fakeHome);
-		await mkdir(join(tempDir, 'templates'), { recursive: true });
-		await writeFile(join(tempDir, 'templates', 'inv.html'), '<h1>v1</h1>');
+		await mkdir(join(tempDir, 'templates', 'inv'), { recursive: true });
+		await writeFile(join(tempDir, 'templates', 'inv', 'inv.html'), '<h1>v1</h1>');
 
 		const events: WatchEvent[] = [];
 		const controller = new AbortController();
@@ -165,8 +169,8 @@ describe('executeWatch', () => {
 		expect(patchCalls).toHaveLength(0);
 
 		// Simulate a save event
-		await writeFile(join(tempDir, 'templates', 'inv.html'), '<h1>v2</h1>');
-		await getController().emit(['templates/inv.html']);
+		await writeFile(join(tempDir, 'templates', 'inv', 'inv.html'), '<h1>v2</h1>');
+		await getController().emit(['templates/inv/inv.html']);
 		await new Promise((r) => setTimeout(r, 50));
 
 		expect(patchCalls).toHaveLength(1);
@@ -183,7 +187,8 @@ describe('executeWatch', () => {
 		// `getting-started` is a normal project now: no read-only guard,
 		// no "run poli init" message.
 		await setupLinkedProject(tempDir, fakeHome);
-		await writeFile(join(tempDir, 'a.html'), 'init');
+		await mkdir(join(tempDir, 'partials'), { recursive: true });
+		await writeFile(join(tempDir, 'partials', 'a.html'), 'init');
 
 		const events: WatchEvent[] = [];
 		const controller = new AbortController();
@@ -209,15 +214,15 @@ describe('executeWatch', () => {
 		});
 
 		await new Promise((r) => setTimeout(r, 50));
-		await writeFile(join(tempDir, 'a.html'), 'change');
-		await getController().emit(['a.html']);
+		await writeFile(join(tempDir, 'partials', 'a.html'), 'change');
+		await getController().emit(['partials/a.html']);
 
 		await vi.waitFor(() =>
 			expect(events.find((e) => e.type === 'error')?.message).toBe('system project')
 		);
 
-		await writeFile(join(tempDir, 'a.html'), 'change again');
-		await getController().emit(['a.html']);
+		await writeFile(join(tempDir, 'partials', 'a.html'), 'change again');
+		await getController().emit(['partials/a.html']);
 		await vi.waitFor(() => expect(events.at(-1)?.type).toBe('synced'));
 		expect(calls).toBe(2);
 
@@ -227,7 +232,8 @@ describe('executeWatch', () => {
 
 	it('emits "synced" with no patchFiles call when the batch contains no real changes', async () => {
 		await setupLinkedProject(tempDir, fakeHome);
-		await writeFile(join(tempDir, 'a.html'), 'same');
+		await mkdir(join(tempDir, 'partials'), { recursive: true });
+		await writeFile(join(tempDir, 'partials', 'a.html'), 'same');
 
 		const events: WatchEvent[] = [];
 		const controller = new AbortController();
@@ -253,7 +259,7 @@ describe('executeWatch', () => {
 
 		await new Promise((r) => setTimeout(r, 50));
 		// Re-emit without any actual content change
-		await getController().emit(['a.html']);
+		await getController().emit(['partials/a.html']);
 		await new Promise((r) => setTimeout(r, 50));
 
 		expect(patchCalled).toBe(0);
@@ -281,10 +287,10 @@ describe('executeWatch', () => {
 			const controller = new AbortController();
 			const { factory, getController } = createManualWatcherFactory();
 
-			let lastBody: PatchBody | null = null;
+			let lastBody: PatchFilesBody | null = null;
 			const client = makeStubClient({
 				patchFiles: async (_session, _orgId, _projectId, body) => {
-					lastBody = body as PatchBody;
+					lastBody = body as PatchFilesBody;
 					return { syncedAt: '2026-05-09T10:00:00.000Z' };
 				},
 			});
@@ -310,6 +316,7 @@ describe('executeWatch', () => {
 			expect(lastBody!.modified).toHaveLength(1);
 			const entry = lastBody!.modified[0];
 			expect(entry.path).toBe('assets/images/logo.png');
+			expect(entry.encoding).toBe('base64');
 			const decoded = Buffer.from(entry.content, 'base64');
 			expect(decoded.equals(updatedBytes)).toBe(true);
 
@@ -319,16 +326,16 @@ describe('executeWatch', () => {
 
 		it('keeps text files (.html, .json, .css) as utf-8 verbatim — no base64', async () => {
 			await setupLinkedProject(tempDir, fakeHome);
-			await mkdir(join(tempDir, 'templates'), { recursive: true });
-			await writeFile(join(tempDir, 'templates', 'inv.html'), '<h1>v1</h1>');
+			await mkdir(join(tempDir, 'templates', 'inv'), { recursive: true });
+			await writeFile(join(tempDir, 'templates', 'inv', 'inv.html'), '<h1>v1</h1>');
 
 			const controller = new AbortController();
 			const { factory, getController } = createManualWatcherFactory();
 
-			let lastBody: PatchBody | null = null;
+			let lastBody: PatchFilesBody | null = null;
 			const client = makeStubClient({
 				patchFiles: async (_session, _orgId, _projectId, body) => {
-					lastBody = body as PatchBody;
+					lastBody = body as PatchFilesBody;
 					return { syncedAt: '2026-05-09T10:00:00.000Z' };
 				},
 			});
@@ -343,13 +350,20 @@ describe('executeWatch', () => {
 			});
 
 			await new Promise((r) => setTimeout(r, 50));
-			await writeFile(join(tempDir, 'templates', 'inv.html'), '<h1>v2 — éléphant</h1>');
-			await getController().emit(['templates/inv.html']);
+			await writeFile(
+				join(tempDir, 'templates', 'inv', 'inv.html'),
+				'<h1>v2 — éléphant</h1>'
+			);
+			await getController().emit(['templates/inv/inv.html']);
 			await new Promise((r) => setTimeout(r, 50));
 
 			expect(lastBody).not.toBeNull();
 			expect(lastBody!.modified).toHaveLength(1);
-			expect(lastBody!.modified[0].content).toBe('<h1>v2 — éléphant</h1>');
+			expect(lastBody!.modified[0]).toEqual({
+				path: 'templates/inv/inv.html',
+				encoding: 'utf8',
+				content: '<h1>v2 — éléphant</h1>',
+			});
 
 			controller.abort();
 			await runPromise;
@@ -366,10 +380,10 @@ describe('executeWatch', () => {
 			const controller = new AbortController();
 			const { factory, getController } = createManualWatcherFactory();
 
-			let lastBody: PatchBody | null = null;
+			let lastBody: PatchFilesBody | null = null;
 			const client = makeStubClient({
 				patchFiles: async (_session, _orgId, _projectId, body) => {
-					lastBody = body as PatchBody;
+					lastBody = body as PatchFilesBody;
 					return { syncedAt: '2026-05-09T10:00:00.000Z' };
 				},
 			});
@@ -394,6 +408,7 @@ describe('executeWatch', () => {
 			expect(lastBody!.added).toHaveLength(1);
 			const entry = lastBody!.added[0];
 			expect(entry.path).toBe('assets/fonts/inter.woff2');
+			expect(entry.encoding).toBe('base64');
 			expect(Buffer.from(entry.content, 'base64').equals(fontBytes)).toBe(true);
 
 			controller.abort();
@@ -401,9 +416,3 @@ describe('executeWatch', () => {
 		});
 	});
 });
-
-interface PatchBody {
-	added: Array<{ path: string; content: string }>;
-	modified: Array<{ path: string; content: string }>;
-	deleted: string[];
-}

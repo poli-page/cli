@@ -1,13 +1,19 @@
 import { createHash } from 'node:crypto';
-import { ApiError, OrgMigratingError, type PatchFilesEntry, type PatchFilesResult } from './api-client.js';
+import {
+	ApiError,
+	OrgMigratingError,
+	type ProjectFileEntry,
+	type PatchFilesResult,
+} from './api-client.js';
+import { toProjectFileEntry } from './project-files.js';
 
 export function hashContent(content: string | Buffer): string {
 	return createHash('sha256').update(content).digest('hex');
 }
 
 export interface ComputeDeltaResult {
-	added: PatchFilesEntry[];
-	modified: PatchFilesEntry[];
+	added: ProjectFileEntry[];
+	modified: ProjectFileEntry[];
 	deleted: string[];
 	newHashes: Map<string, string>;
 }
@@ -67,8 +73,8 @@ export function computeDelta(
 	oldHashes: Map<string, string>,
 	newFiles: Map<string, string>
 ): ComputeDeltaResult {
-	const added: PatchFilesEntry[] = [];
-	const modified: PatchFilesEntry[] = [];
+	const added: ProjectFileEntry[] = [];
+	const modified: ProjectFileEntry[] = [];
 	const deleted: string[] = [];
 	const newHashes = new Map<string, string>();
 
@@ -77,9 +83,9 @@ export function computeDelta(
 		newHashes.set(path, newHash);
 		const oldHash = oldHashes.get(path);
 		if (oldHash === undefined) {
-			added.push({ path, content });
+			added.push(toProjectFileEntry(path, content));
 		} else if (oldHash !== newHash) {
-			modified.push({ path, content });
+			modified.push(toProjectFileEntry(path, content));
 		}
 	}
 

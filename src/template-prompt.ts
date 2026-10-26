@@ -69,7 +69,7 @@ export async function promptForStarterTemplate(
 		return null;
 	}
 
-	const confirmFn = options.confirmFn ?? defaultConfirm;
+	const confirmFn = options.confirmFn ?? confirmPrompt;
 	const wantsTemplate = await confirmFn({
 		message: 'Add a starter template?',
 		default: false,
@@ -127,7 +127,7 @@ export async function promptForStarterTemplate(
 	return { ref };
 }
 
-async function defaultConfirm(args: {
+export async function confirmPrompt(args: {
 	message: string;
 	default?: boolean;
 }): Promise<boolean> {

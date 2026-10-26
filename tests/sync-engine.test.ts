@@ -53,9 +53,28 @@ describe('computeDelta', () => {
 
 		expect(delta.added).toHaveLength(0);
 		expect(delta.modified).toEqual([
-			{ path: 'templates/inv.html', content: '<h1>new</h1>' },
+			{ path: 'templates/inv.html', encoding: 'utf8', content: '<h1>new</h1>' },
 		]);
 		expect(delta.deleted).toHaveLength(0);
+	});
+
+	it('tags each added or modified entry with its encoding', () => {
+		const oldHashes = new Map([['assets/images/logo.png', hashContent('b2xk')]]);
+		const newFiles = new Map([
+			['assets/images/logo.png', 'bmV3'],
+			['assets/fonts/inter.woff2', 'd09GMg=='],
+			['partials/header.html', '<header></header>'],
+		]);
+
+		const delta = computeDelta(oldHashes, newFiles);
+
+		expect(delta.modified).toEqual([
+			{ path: 'assets/images/logo.png', encoding: 'base64', content: 'bmV3' },
+		]);
+		expect(delta.added).toEqual([
+			{ path: 'assets/fonts/inter.woff2', encoding: 'base64', content: 'd09GMg==' },
+			{ path: 'partials/header.html', encoding: 'utf8', content: '<header></header>' },
+		]);
 	});
 
 	it('classifies a missing file as `deleted`', () => {
