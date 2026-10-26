@@ -7,30 +7,18 @@ import { executeLink, executeUnlink } from '../../src/commands/link.js';
 import { writeCredentials } from '../../src/credentials.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import type { ApiClient } from '../../src/api-client.js';
+import { createFakeApiClient } from '../helpers/fake-api-client.js';
 
 function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
-	return {
-		signIn: async () => ({
-			user: { id: 'user_1', name: 'Xavier', email: 'xavier@test.com' },
-			session: 'mock-session-token',
-		}),
-		signUp: async () => ({
-			user: { id: 'user_1', name: 'Xavier', email: 'xavier@test.com' },
-			session: 'mock-session-token',
-		}),
+	return createFakeApiClient({
 		getOrganizations: async () => [
 			{ id: 'org_1', name: 'Acme Corp', slug: 'acme-corp' },
 			{ id: 'org_2', name: 'Beta Inc', slug: 'beta-inc' },
 		],
 		listProjects: async () => [],
 		createProject: async () => ({ id: 'proj_abc123' }),
-		createApiKey: async () => ({
-			key: 'pp_test_mock123',
-			info: { id: 'key_1', name: 'CLI (test)', environment: 'test' },
-		}),
-		render: async () => { throw new Error('not implemented in stub'); },
 		...overrides,
-	};
+	});
 }
 
 describe('poli link / unlink', () => {
@@ -118,7 +106,8 @@ describe('poli link / unlink', () => {
 			expect(receivedPayload).not.toHaveProperty('name');
 			expect(receivedPayload).not.toHaveProperty('slug');
 
-			const manifest = (receivedPayload as { manifest: { project: { name: string } } }).manifest;
+			const manifest = (receivedPayload as { manifest: { project: { name: string } } })
+				.manifest;
 			expect(manifest.project.name).toBe('test-project');
 		});
 
@@ -208,15 +197,13 @@ describe('poli link / unlink', () => {
 		});
 
 		it('should throw if not linked', async () => {
-			await expect(executeUnlink({ cwd: projectDir })).rejects.toThrow(
-				/not linked/
-			);
+			await expect(executeUnlink({ cwd: projectDir })).rejects.toThrow(/not linked/);
 		});
 
 		it('should throw if no poli-page.json', async () => {
-			await expect(
-				executeUnlink({ cwd: tempDir + '/nonexistent' })
-			).rejects.toThrow(/poli-page\.json/);
+			await expect(executeUnlink({ cwd: tempDir + '/nonexistent' })).rejects.toThrow(
+				/poli-page\.json/
+			);
 		});
 	});
 });

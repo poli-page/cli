@@ -2,14 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-	executeLogout,
-	executeWhoami,
-	executeDeviceLogin,
-} from '../../src/commands/auth.js';
+import { executeLogout, executeWhoami, executeDeviceLogin } from '../../src/commands/auth.js';
 import { readCredentials, writeCredentials } from '../../src/credentials.js';
 import { writeManifest } from '../../src/manifest.js';
 import type { ApiClient, MeResponse } from '../../src/api-client.js';
+import { createFakeApiClient } from '../helpers/fake-api-client.js';
 
 function sessionMe(): MeResponse {
 	return {
@@ -54,15 +51,7 @@ function apiKeyMe(): MeResponse {
 }
 
 function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
-	return {
-		signIn: async () => ({
-			user: { id: 'user_1', name: 'Xavier', email: 'xavier@test.com' },
-			session: 'mock-session-token',
-		}),
-		signUp: async () => ({
-			user: { id: 'user_1', name: 'Xavier', email: 'xavier@test.com' },
-			session: 'mock-session-token',
-		}),
+	return createFakeApiClient({
 		deviceRequest: async () => ({
 			deviceCode: 'device-code-123',
 			userCode: 'ABCD-1234',
@@ -75,29 +64,9 @@ function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
 			sessionToken: 'device-session-token',
 			user: { id: 'user_1', name: 'Xavier', email: 'xavier@test.com' },
 		}),
-		getOrganizations: async () => [
-			{ id: 'org_1', name: 'Acme Corp', slug: 'acme-corp' },
-		],
-		listProjects: async () => [],
-		createProject: async () => ({ id: 'proj_1' }),
-		updateProject: async () => {},
-		createApiKey: async () => ({
-			key: 'pp_test_mock',
-			info: { id: 'key_1', name: 'CLI (test)', environment: 'test' },
-		}),
-		render: async () => { throw new Error('not implemented in stub'); },
-		pushVersion: async () => ({
-			id: 'v_1',
-			version: '1.0.0',
-			major: 1,
-			minor: 0,
-			patch: 0,
-			createdAt: new Date().toISOString(),
-		}),
-		listVersions: async () => [],
-		getMe: async () => sessionMe(),
+		getOrganizations: async () => [{ id: 'org_1', name: 'Acme Corp', slug: 'acme-corp' }],
 		...overrides,
-	};
+	});
 }
 
 describe('auth commands', () => {
@@ -414,9 +383,7 @@ describe('auth commands', () => {
 			);
 
 			const client = createMockApiClient({
-				getOrganizations: async () => [
-					{ id: 'org_uuid_acme', slug: 'acme', name: 'Acme' },
-				],
+				getOrganizations: async () => [{ id: 'org_uuid_acme', slug: 'acme', name: 'Acme' }],
 			});
 
 			const result = await executeWhoami({

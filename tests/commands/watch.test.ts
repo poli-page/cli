@@ -7,94 +7,13 @@ import { writeCredentials } from '../../src/credentials.js';
 import { type ApiClient, SystemProjectLockedError } from '../../src/api-client.js';
 import type { FileWatcher, FileWatcherOptions } from '../../src/file-watcher.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
+import { createFakeApiClient } from '../helpers/fake-api-client.js';
 
 function makeStubClient(overrides: Partial<ApiClient> = {}): ApiClient {
-	return {
-		signIn: async () => ({ user: { id: 'u', name: 'n', email: 'e' }, session: 's' }),
-		signUp: async () => ({ user: { id: 'u', name: 'n', email: 'e' }, session: 's' }),
-		deviceRequest: async () => ({
-			deviceCode: 'd',
-			userCode: 'u',
-			verificationUrl: 'http://x',
-			expiresIn: 1,
-			interval: 1,
-		}),
-		devicePoll: async () => ({ status: 'authorization_pending' as const }),
+	return createFakeApiClient({
 		getOrganizations: async () => [{ id: 'org_1', name: 'Acme', slug: 'acme' }],
-		listProjects: async () => [],
-		createProject: async () => ({ id: 'p' }),
-		updateProject: async () => {},
-		patchFiles: async () => ({ syncedAt: '2026-05-06T10:00:00.000Z' }),
-		createApiKey: async () => ({
-			key: 'pp_test_x',
-			info: { id: 'k', name: 'n', environment: 'test' },
-		}),
-		render: async () => {
-			throw new Error('not implemented in stub');
-		},
-		getMe: async () => {
-			throw new Error('not implemented in stub');
-		},
-		pushVersion: async () => ({
-			id: 'v',
-			version: '1.0.0',
-			major: 1,
-			minor: 0,
-			patch: 0,
-			state: 'SANDBOX' as const,
-			createdAt: '',
-		}),
-		listVersions: async () => [],
-		promoteVersion: async () => ({
-			id: 'v',
-			version: '1.0.0',
-			major: 1,
-			minor: 0,
-			patch: 0,
-			state: 'LIVE' as const,
-			createdAt: '',
-		}),
-		unpromoteVersion: async () => ({
-			id: 'v',
-			version: '1.0.0',
-			major: 1,
-			minor: 0,
-			patch: 0,
-			state: 'SANDBOX' as const,
-			createdAt: '',
-		}),
-		unpromotePreview: async () => ({
-			currentLatestLive: null,
-			newLatestLiveAfterUnpromote: null,
-			willHaveNoLive: true,
-			recentLiveCalls: 0,
-		}),
-		deprecateVersion: async () => ({
-			id: 'v',
-			version: '1.0.0',
-			major: 1,
-			minor: 0,
-			patch: 0,
-			state: 'DEPRECATED' as const,
-			createdAt: '',
-		}),
-		undeprecateVersion: async () => ({
-			id: 'v',
-			version: '1.0.0',
-			major: 1,
-			minor: 0,
-			patch: 0,
-			state: 'SANDBOX' as const,
-			createdAt: '',
-		}),
-		getDocument: async () => {
-			throw new Error('not implemented in stub');
-		},
-		deleteDocument: async () => {},
-		documentThumbnails: async () => [],
-		documentPreview: async () => ({ html: '', pageCount: 0 }),
 		...overrides,
-	};
+	});
 }
 
 interface ManualWatcher {

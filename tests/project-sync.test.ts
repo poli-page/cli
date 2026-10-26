@@ -10,6 +10,7 @@ import {
 } from '../src/project-sync.js';
 import type { ApiClient, PatchFilesBody } from '../src/api-client.js';
 import type { CloudContext } from '../src/cloud-context.js';
+import { createFakeApiClient } from './helpers/fake-api-client.js';
 
 const ctx: CloudContext = {
 	session: 'sess',
@@ -19,12 +20,12 @@ const ctx: CloudContext = {
 };
 
 function makeClient(bodies: PatchFilesBody[]): ApiClient {
-	return {
+	return createFakeApiClient({
 		patchFiles: async (_session, _orgId, _projectId, body) => {
 			bodies.push(body);
 			return { syncedAt: '2026-09-01T10:00:00.000Z' };
 		},
-	} as unknown as ApiClient;
+	});
 }
 
 describe('shouldIgnoreProjectPath', () => {

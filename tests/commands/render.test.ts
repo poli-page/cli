@@ -4,11 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeInit } from '../../src/commands/init.js';
 import { setupTemplate } from '../helpers/setup-template.js';
-import {
-	executeRender,
-	parseTemplateSpec,
-	formatRenderJson,
-} from '../../src/commands/render.js';
+import { createFakeApiClient } from '../helpers/fake-api-client.js';
+import { executeRender, parseTemplateSpec, formatRenderJson } from '../../src/commands/render.js';
 import { writeCredentials } from '../../src/credentials.js';
 import { writeManifest, readManifest } from '../../src/manifest.js';
 import type { ApiClient, RenderResult } from '../../src/api-client.js';
@@ -52,46 +49,13 @@ function createMockApiClient(
 	} = {}
 ): ApiClient {
 	const defaultRender = (): RenderResult => makeFakeDescriptor();
-	return {
-		signIn: async () => ({
-			user: { id: 'user_1', name: 'Test', email: 'test@test.com' },
-			session: 'mock-session',
-		}),
-		signUp: async () => ({
-			user: { id: 'user_1', name: 'Test', email: 'test@test.com' },
-			session: 'mock-session',
-		}),
-		getOrganizations: async () => [{ id: 'org_1', name: 'Acme', slug: 'acme' }],
-		listProjects: async () => [],
-		createProject: async () => ({ id: 'proj_1' }),
-		createApiKey: async () => ({
-			key: 'pp_test_mock',
-			info: { id: 'key_1', name: 'CLI (test)', environment: 'test' },
-		}),
+	return createFakeApiClient({
 		render: async (authorization, orgIdHeader, payload) => {
 			const call: RenderCall = { authorization, orgIdHeader, payload };
 			options.calls?.push(call);
 			return options.render ? options.render(call) : defaultRender();
 		},
-		deviceRequest: async () => ({
-			deviceCode: 'dc',
-			userCode: 'uc',
-			verificationUrl: 'http://localhost',
-			expiresIn: 300,
-			interval: 5,
-		}),
-		devicePoll: async () => ({ status: 'authorization_pending' as const }),
-		updateProject: async () => {},
-		pushVersion: async () => ({
-			id: 'v_1',
-			version: '1.0.0',
-			major: 1,
-			minor: 0,
-			patch: 0,
-			createdAt: new Date().toISOString(),
-		}),
-		listVersions: async () => [],
-	} as unknown as ApiClient;
+	});
 }
 
 const fakeFetchPdf = async (): Promise<Buffer> => FAKE_PDF;
@@ -356,11 +320,7 @@ describe('poli render', () => {
 
 		it('reads custom data via -d <file> (flat shape)', async () => {
 			const dataPath = join(tempDir, 'data.json');
-			await writeFile(
-				dataPath,
-				JSON.stringify({ title: 'Custom', amount: 42 }),
-				'utf-8'
-			);
+			await writeFile(dataPath, JSON.stringify({ title: 'Custom', amount: 42 }), 'utf-8');
 
 			const calls: RenderCall[] = [];
 			await executeRender('invoice', {
@@ -429,11 +389,7 @@ describe('poli render', () => {
 
 		it('--data flat (no locale) drops the locale from the payload', async () => {
 			const dataPath = join(tempDir, 'data.json');
-			await writeFile(
-				dataPath,
-				JSON.stringify({ title: 'Flat override' }),
-				'utf-8'
-			);
+			await writeFile(dataPath, JSON.stringify({ title: 'Flat override' }), 'utf-8');
 
 			const calls: RenderCall[] = [];
 			await executeRender('invoice', {
@@ -468,8 +424,7 @@ describe('poli render', () => {
 				cwd: projectDir,
 				version: '1.0.5',
 				apiClient: createMockApiClient({
-					render: () =>
-						makeFakeDescriptor({ environment: 'live', version: '1.0.5' }),
+					render: () => makeFakeDescriptor({ environment: 'live', version: '1.0.5' }),
 				}),
 				homeDir: fakeHome,
 				fetchPdf: fakeFetchPdf,
@@ -539,15 +494,11 @@ describe('parseTemplateSpec', () => {
 	});
 
 	it('rejects a trailing @ (empty version)', () => {
-		expect(() => parseTemplateSpec('invoice@')).toThrow(
-			/version is required.*@/i
-		);
+		expect(() => parseTemplateSpec('invoice@')).toThrow(/version is required.*@/i);
 	});
 
 	it('rejects multiple @ separators', () => {
-		expect(() => parseTemplateSpec('invoice@1.0.0@latest')).toThrow(
-			/only one `@`/i
-		);
+		expect(() => parseTemplateSpec('invoice@1.0.0@latest')).toThrow(/only one `@`/i);
 	});
 
 	it('does not validate the version itself (defers to executeRender)', () => {

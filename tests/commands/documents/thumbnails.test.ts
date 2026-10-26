@@ -6,99 +6,13 @@ import { executeDocumentsThumbnails } from '../../../src/commands/documents/thum
 import {
 	ThumbnailsNotAvailableError,
 	DocumentNotFoundError,
-	type ApiClient,
 	type ThumbnailResult as ApiThumbnailResult,
 } from '../../../src/api-client.js';
+import { createFakeApiClient } from '../../helpers/fake-api-client.js';
 
 const TINY_PNG_BASE64 =
 	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAB' +
 	'Nl7BcQAAAABJRU5ErkJggg==';
-
-function makeStubClient(overrides: Partial<ApiClient> = {}): ApiClient {
-	return {
-		signIn: async () => ({ user: { id: 'u', name: 'n', email: 'e' }, session: 's' }),
-		signUp: async () => ({ user: { id: 'u', name: 'n', email: 'e' }, session: 's' }),
-		deviceRequest: async () => ({
-			deviceCode: 'd',
-			userCode: 'u',
-			verificationUrl: 'http://x',
-			expiresIn: 1,
-			interval: 1,
-		}),
-		devicePoll: async () => ({ status: 'authorization_pending' as const }),
-		getOrganizations: async () => [],
-		listProjects: async () => [],
-		createProject: async () => ({ id: 'p' }),
-		updateProject: async () => {},
-		createApiKey: async () => ({
-			key: 'pp_test_x',
-			info: { id: 'k', name: 'n', environment: 'test' },
-		}),
-		render: async () => { throw new Error('not implemented in stub'); },
-		getMe: async () => {
-			throw new Error('not implemented in stub');
-		},
-		pushVersion: async () => ({
-			id: 'v',
-			version: '1.0.0',
-			major: 1,
-			minor: 0,
-			patch: 0,
-			state: 'SANDBOX' as const,
-			createdAt: '',
-		}),
-		listVersions: async () => [],
-		promoteVersion: async () => ({
-			id: 'v',
-			version: '1.0.0',
-			major: 1,
-			minor: 0,
-			patch: 0,
-			state: 'LIVE' as const,
-			createdAt: '',
-		}),
-		unpromoteVersion: async () => ({
-			id: 'v',
-			version: '1.0.0',
-			major: 1,
-			minor: 0,
-			patch: 0,
-			state: 'SANDBOX' as const,
-			createdAt: '',
-		}),
-		unpromotePreview: async () => ({
-			currentLatestLive: null,
-			newLatestLiveAfterUnpromote: null,
-			willHaveNoLive: true,
-			recentLiveCalls: 0,
-		}),
-		deprecateVersion: async () => ({
-			id: 'v',
-			version: '1.0.0',
-			major: 1,
-			minor: 0,
-			patch: 0,
-			state: 'DEPRECATED' as const,
-			createdAt: '',
-		}),
-		undeprecateVersion: async () => ({
-			id: 'v',
-			version: '1.0.0',
-			major: 1,
-			minor: 0,
-			patch: 0,
-			state: 'SANDBOX' as const,
-			createdAt: '',
-		}),
-		getDocument: async () => {
-			throw new Error('not implemented in stub');
-		},
-		deleteDocument: async () => {},
-		documentThumbnails: async () => [],
-		documentPreview: async () => ({ html: '', pageCount: 0 }),
-		...overrides,
-	};
-}
 
 function fakeThumb(page: number, contentType = 'image/png'): ApiThumbnailResult {
 	return {
@@ -133,7 +47,7 @@ describe('executeDocumentsThumbnails', () => {
 	});
 
 	it('writes PNG files to ./output/thumbnails/<id>/page-N.png by default', async () => {
-		const client = makeStubClient({
+		const client = createFakeApiClient({
 			documentThumbnails: async () => [fakeThumb(1), fakeThumb(2)],
 		});
 
@@ -156,7 +70,7 @@ describe('executeDocumentsThumbnails', () => {
 	});
 
 	it('writes JPEG when format=jpeg and uses .jpeg extension', async () => {
-		const client = makeStubClient({
+		const client = createFakeApiClient({
 			documentThumbnails: async () => [fakeThumb(1, 'image/jpeg')],
 		});
 
@@ -172,7 +86,7 @@ describe('executeDocumentsThumbnails', () => {
 
 	it('forwards width / quality / pages to the API', async () => {
 		let captured: Record<string, unknown> = {};
-		const client = makeStubClient({
+		const client = createFakeApiClient({
 			documentThumbnails: async (_a, _o, _id, opts) => {
 				captured = opts as unknown as Record<string, unknown>;
 				return [fakeThumb(1), fakeThumb(3)];
@@ -199,7 +113,7 @@ describe('executeDocumentsThumbnails', () => {
 
 	it('writes to custom output directory via -o', async () => {
 		const customDir = join(tempDir, 'out-thumbs');
-		const client = makeStubClient({
+		const client = createFakeApiClient({
 			documentThumbnails: async () => [fakeThumb(1)],
 		});
 
@@ -214,11 +128,9 @@ describe('executeDocumentsThumbnails', () => {
 	});
 
 	it('propagates ThumbnailsNotAvailableError (free tier)', async () => {
-		const client = makeStubClient({
+		const client = createFakeApiClient({
 			documentThumbnails: async () => {
-				throw new ThumbnailsNotAvailableError(
-					'Thumbnails require a paid plan.'
-				);
+				throw new ThumbnailsNotAvailableError('Thumbnails require a paid plan.');
 			},
 		});
 
@@ -232,7 +144,7 @@ describe('executeDocumentsThumbnails', () => {
 	});
 
 	it('propagates DocumentNotFoundError', async () => {
-		const client = makeStubClient({
+		const client = createFakeApiClient({
 			documentThumbnails: async () => {
 				throw new DocumentNotFoundError('not found');
 			},
