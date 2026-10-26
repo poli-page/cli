@@ -231,8 +231,8 @@ export interface DocumentDescriptor {
 	projectSlug: string | null;
 	templateId: string | null;
 	templateSlug: string | null;
-	version: string | null;
-	environment: 'sandbox' | 'live';
+	/** The name of the environment the document was rendered in. */
+	environment: string;
 	apiKeyId: string | null;
 	createdAt: string;
 	pageCount: number;
@@ -245,11 +245,20 @@ export interface DocumentDescriptor {
 	expiresAt: string;
 }
 
+/** Something a render did that its PDF alone does not show (api-spec §11.3). */
+export interface RenderDiagnostic {
+	kind: 'clipped' | 'missing-asset' | 'dropped-font';
+	message: string;
+	elementId?: string;
+	path?: string;
+}
+
 /**
- * Result of `POST /v1/render`. Same shape as `DocumentDescriptor` since
- * every render now produces a stored document (api-spec §11.3).
+ * Result of `POST /v1/render`: the stored document's descriptor plus the
+ * render's diagnostics, which are not stored with the document, so
+ * `GET /v1/documents/:id` does not return them (api-spec §11.3).
  */
-export type RenderResult = DocumentDescriptor;
+export type RenderResult = DocumentDescriptor & { diagnostics: RenderDiagnostic[] };
 
 /**
  * Result of `POST /v1/render/preview`. No document is persisted, so the
@@ -338,6 +347,16 @@ export interface ApiClient {
 		orgIdHeader: string | undefined,
 		payload: Record<string, unknown>
 	): Promise<PreviewApiResult>;
+	/**
+	 * `POST /v1/render/draft`: renders the project's draft and answers the
+	 * PDF bytes. Session only (an API key gets `403 DRAFT_REQUIRES_SESSION`);
+	 * nothing is stored or counted, and no page count comes back.
+	 */
+	renderDraft(
+		authorization: string,
+		orgIdHeader: string,
+		payload: Record<string, unknown>
+	): Promise<Buffer>;
 	getMe(authorization: string, orgIdHeader?: string): Promise<MeResponse>;
 	// `renderThumbnails` was retired with `/v1/render/thumbnails` (api-spec §11.4).
 	// Thumbnails now come from a stored document via `documentThumbnails`.
@@ -635,6 +654,19 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				body: JSON.stringify(payload),
 			});
 			return response.json() as Promise<PreviewApiResult>;
+		},
+
+		async renderDraft(authorization, orgIdHeader, payload) {
+			const response = await request('/v1/render/draft', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: authorization,
+					'X-Poli-Org-Id': orgIdHeader,
+				},
+				body: JSON.stringify(payload),
+			});
+			return Buffer.from(await response.arrayBuffer());
 		},
 
 		async updateProject(session, orgId, projectId, payload) {

@@ -176,7 +176,7 @@ export function registerPreviewCommand(program: Command) {
 			const { default: chalk } = await import('chalk');
 
 			try {
-				const { name, version } = parseTemplateSpec(spec);
+				const { name, target: version } = parseTemplateSpec(spec);
 				const result = await executePreview(name, {
 					output: opts.output,
 					data: opts.data,

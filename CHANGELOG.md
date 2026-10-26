@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (BREAKING)
+- **`poli render` takes `name@<environment>` instead of `name@X.Y.Z`, and an API key never renders the draft.** `poli render name` (or `name@draft`) renders the draft through `POST /v1/render/draft`, with a `poli login` session only: the API answers the PDF, which is written to the usual path (or `-o`); nothing is stored or counted, so `--no-download` is refused for the draft, and `--json` prints `{ template, environment: "draft", outputPath }`. `poli render name@<environment>` sends `environment` to `POST /v1/render` and no longer sends `version`, which the API refuses. The environment name is checked locally (1-20 characters, lowercase letters, digits and single inner hyphens, starting with a letter); `name@1.2.3` and `name@latest` are refused with a pointer to `name@<environment>`. With an API key, `poli render name` and a render of another environment than the key's are refused before any call, exit code `2`. `PROJECT_NOT_IN_ENVIRONMENT` says the project is not published there and suggests `poli publish --env <environment>`; `ENVIRONMENT_NOT_FOUND` and `TEMPLATE_NOT_FOUND` name what is missing (all three exit `2`); `503 PUBLISH_IN_PROGRESS` waits `Retry-After`, retries once, then exits `3`. The success line reads `name@draft` / `name@<environment>`, with `billed` for every environment except `sandbox`, never for the draft.
+- **`POLI_PAGE_API_KEY` is checked in full: `pp_<environment>_` followed by 32 lowercase hex characters.** Any other value (including a bare `pp_` prefix) is refused with exit code `4`. The key's environment is read from it, and every message that shows a key format uses `pp_<environment>_…`.
+- **The document descriptor has no `version`, and `environment` is any environment name.** `ApiClient.render` returns the descriptor plus the render's `diagnostics`; `poli documents get` prints the environment and no version. `ApiClient.renderDraft()` returns the draft PDF bytes.
+
 ## [0.9.0] — 2026-10-18
 
 ### Added

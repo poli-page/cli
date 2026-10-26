@@ -1,19 +1,16 @@
 import { Command } from 'commander';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { loadProject, findTemplate, loadTemplate, unwrapMockJson } from '../project-loader.js';
 import {
-	loadProject,
-	findTemplate,
-	loadTemplate,
-	unwrapMockJson,
-} from '../project-loader.js';
-import {
+	ApiError,
 	createApiClient,
 	type ApiClient,
 	type RenderResult as ApiRenderResult,
 } from '../api-client.js';
 import { resolveAuth } from '../auth.js';
-import { errorToExitCode } from '../exit-codes.js';
+import { ExitCode, errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 import { formatOrientationSlug } from '../format-resolver.js';
 
@@ -21,51 +18,79 @@ export interface RenderOptions {
 	cwd?: string;
 	output?: string;
 	data?: string;
-	version?: string;
+	/** `draft` (the default) or the name of an environment the project is published in. */
+	target?: string;
 	noDownload?: boolean;
 	apiClient?: ApiClient;
 	homeDir?: string;
 	/** Injectable for testing — defaults to global `fetch` on the presigned URL. */
 	fetchPdf?: (url: string) => Promise<Buffer>;
+	/** Injectable for testing — the wait before the `PUBLISH_IN_PROGRESS` retry. */
+	sleep?: (ms: number) => Promise<void>;
 }
-
-export interface RenderResult {
-	descriptor: ApiRenderResult;
-	outputPath?: string;
-}
-
-const EXACT_SEMVER = /^\d+\.\d+\.\d+$/;
-const PARTIAL_SEMVER = /^\d+(?:\.\d+)?$/;
 
 /**
- * Parses a template spec of the form `name`, `name@draft`, or `name@X.Y.Z`.
- *
- * Purely structural — semver validity is checked downstream by
- * `executeRender` so the same friendly error path applies whether the
- * user wrote `--version` (legacy) or `name@version`.
+ * The draft renders to PDF bytes only: no stored document, no descriptor.
+ * An environment render stores a document and returns its descriptor.
  */
-export function parseTemplateSpec(spec: string): { name: string; version: string } {
+export type RenderResult =
+	| { kind: 'draft'; template: string; outputPath: string }
+	| { kind: 'environment'; descriptor: ApiRenderResult; outputPath?: string };
+
+const DRAFT = 'draft';
+// K2: 1-20 characters, lowercase letters, digits and single inner hyphens,
+// starting with a letter.
+const ENVIRONMENT_NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+const MAX_ENVIRONMENT_NAME_LENGTH = 20;
+
+class RenderUsageError extends Error {
+	readonly exitCode = ExitCode.INVALID_USAGE;
+}
+
+/**
+ * Parses a template spec of the form `name`, `name@draft`, or `name@<environment>`.
+ *
+ * Purely structural — the target is checked by `executeRender`, so
+ * programmatic callers get the same errors as the command line.
+ */
+export function parseTemplateSpec(spec: string): { name: string; target: string } {
 	if (spec === '') {
-		throw new Error('Template name is required.');
+		throw new RenderUsageError('Template name is required.');
 	}
 	const atIdx = spec.indexOf('@');
 	if (atIdx === -1) {
-		return { name: spec, version: 'draft' };
+		return { name: spec, target: DRAFT };
 	}
 	const name = spec.slice(0, atIdx);
 	const rest = spec.slice(atIdx + 1);
 	if (name === '') {
-		throw new Error('Template name is required (got empty name in `@version` spec).');
+		throw new RenderUsageError(
+			'Template name is required (got empty name in `@environment` spec).'
+		);
 	}
 	if (rest === '') {
-		throw new Error(
-			'Version is required after `@` (e.g. `invoice@1.2.3` or `invoice@draft`).'
+		throw new RenderUsageError(
+			'Environment is required after `@` (e.g. `invoice@sandbox` or `invoice@draft`).'
 		);
 	}
 	if (rest.includes('@')) {
-		throw new Error('Invalid template spec: only one `@` is allowed.');
+		throw new RenderUsageError('Invalid template spec: only one `@` is allowed.');
 	}
-	return { name, version: rest };
+	return { name, target: rest };
+}
+
+function validateTarget(name: string, target: string): void {
+	if (target === DRAFT) return;
+	if (target === 'latest' || /^\d/.test(target)) {
+		throw new RenderUsageError(
+			`\`${name}@${target}\`: templates no longer have versions. Render a published environment with \`${name}@<environment>\` (e.g. \`${name}@sandbox\`), or the draft with \`${name}\`.`
+		);
+	}
+	if (target.length > MAX_ENVIRONMENT_NAME_LENGTH || !ENVIRONMENT_NAME.test(target)) {
+		throw new RenderUsageError(
+			`Invalid environment name \`${target}\`: 1-20 lowercase letters, digits and single inner hyphens, starting with a letter. Use \`${name}@<environment>\`.`
+		);
+	}
 }
 
 export async function executeRender(
@@ -73,14 +98,19 @@ export async function executeRender(
 	options: RenderOptions = {}
 ): Promise<RenderResult> {
 	const cwd = options.cwd ?? process.cwd();
-	const version = options.version ?? 'draft';
+	const target = options.target ?? DRAFT;
 
-	validateVersion(version);
+	validateTarget(templateName, target);
 
 	// `-o` and `--no-download` are mutually exclusive: -o means "write the PDF
 	// to that path", --no-download means "don't fetch the PDF at all".
 	if (options.noDownload && options.output) {
 		throw new Error('Use either `-o, --output` or `--no-download`, not both.');
+	}
+	if (options.noDownload && target === DRAFT) {
+		throw new RenderUsageError(
+			`\`--no-download\` needs a stored document, and the draft is never stored. Drop \`--no-download\`, or render \`${templateName}@<environment>\`.`
+		);
 	}
 
 	const { manifest, projectDir } = await loadProject(cwd);
@@ -100,30 +130,14 @@ export async function executeRender(
 	}
 
 	if (!manifest.cloud?.projectSlug) {
-		throw new Error(
-			"This folder isn't linked to a cloud project. Run `poli link` first."
-		);
+		throw new Error("This folder isn't linked to a cloud project. Run `poli link` first.");
 	}
+	const project = manifest.cloud.projectSlug;
 
 	const auth = await resolveAuth({
 		manifestOrgId: manifest.cloud.orgId,
 		homeDir: options.homeDir,
 	});
-
-	const client = options.apiClient ?? createApiClient();
-	const descriptor = await client.render(auth.authorization, auth.orgIdHeader, {
-		project: manifest.cloud.projectSlug,
-		template: entry.name,
-		version,
-		data,
-		format: entry.format,
-		orientation: entry.orientation,
-		...(locale ? { locale } : {}),
-	});
-
-	if (options.noDownload) {
-		return { descriptor };
-	}
 
 	// Default download target:
 	//   output/<templateSlug>/<format-orientation>/<templateSlug>.pdf
@@ -140,58 +154,146 @@ export async function executeRender(
 				`${entry.name}.pdf`
 			);
 
+	const client = options.apiClient ?? createApiClient();
+	const payload = {
+		project,
+		template: entry.name,
+		data,
+		format: entry.format,
+		orientation: entry.orientation,
+		...(locale ? { locale } : {}),
+	};
+
+	// G1: only a session renders the draft. K1: a key renders only the
+	// environment it is bound to. Both are refused before any API call.
+	if (target === DRAFT) {
+		if (auth.mode === 'api-key') {
+			throw new RenderUsageError(
+				`API keys render a published environment: use \`${templateName}@<environment>\`. This key renders \`${auth.environment}\`: \`${templateName}@${auth.environment}\`.`
+			);
+		}
+		const pdf = await client.renderDraft(auth.authorization, auth.orgIdHeader, payload);
+		await writePdf(outputPath, pdf);
+		return { kind: 'draft', template: entry.name, outputPath };
+	}
+
+	if (auth.mode === 'api-key' && target !== auth.environment) {
+		throw new RenderUsageError(
+			`This API key renders the \`${auth.environment}\` environment, not \`${target}\`. Use \`${templateName}@${auth.environment}\`, or a key for \`${target}\`.`
+		);
+	}
+
+	const descriptor = await renderEnvironment(
+		() =>
+			client.render(auth.authorization, auth.orgIdHeader, {
+				...payload,
+				environment: target,
+			}),
+		{ project, template: entry.name, environment: target },
+		options.sleep ?? sleep
+	);
+
+	if (options.noDownload) {
+		return { kind: 'environment', descriptor };
+	}
+
 	const pdfBuffer = options.fetchPdf
 		? await options.fetchPdf(descriptor.presignedPdfUrl)
 		: await defaultFetchPdf(descriptor.presignedPdfUrl);
+	await writePdf(outputPath, pdfBuffer);
 
-	await mkdir(dirname(outputPath), { recursive: true });
-	await writeFile(outputPath, pdfBuffer);
+	return { kind: 'environment', descriptor, outputPath };
+}
 
-	return { descriptor, outputPath };
+/**
+ * Run an environment render, retrying once after `Retry-After` while a
+ * publish of the same project and environment holds it, and turning the
+ * environment errors into messages that say what to do.
+ */
+async function renderEnvironment(
+	render: () => Promise<ApiRenderResult>,
+	ctx: { project: string; template: string; environment: string },
+	wait: (ms: number) => Promise<void>
+): Promise<ApiRenderResult> {
+	try {
+		try {
+			return await render();
+		} catch (err) {
+			if (!(err instanceof ApiError) || err.code !== 'PUBLISH_IN_PROGRESS') throw err;
+			await wait((err.retryAfter ?? 1) * 1000);
+			return await render();
+		}
+	} catch (err) {
+		throw describeEnvironmentError(err, ctx);
+	}
+}
+
+function describeEnvironmentError(
+	err: unknown,
+	{ project, template, environment }: { project: string; template: string; environment: string }
+): unknown {
+	if (!(err instanceof ApiError)) return err;
+	switch (err.code) {
+		case 'PROJECT_NOT_IN_ENVIRONMENT':
+			return new RenderUsageError(
+				`Project \`${project}\` is not published in \`${environment}\`. Publish it with \`poli publish --env ${environment}\`.`
+			);
+		case 'ENVIRONMENT_NOT_FOUND':
+			return new RenderUsageError(`This organization has no environment \`${environment}\`.`);
+		case 'TEMPLATE_NOT_FOUND':
+			return new RenderUsageError(
+				`Template \`${template}\` is not in the copy of \`${project}\` published in \`${environment}\`. Publish it with \`poli publish --env ${environment}\`.`
+			);
+		case 'PUBLISH_IN_PROGRESS':
+			return new ApiError(
+				err.code,
+				err.httpStatus,
+				`A publish of \`${project}\` to \`${environment}\` is still running. Try again in a moment.`,
+				err.retryAfter
+			);
+		default:
+			return err;
+	}
+}
+
+/**
+ * The success-line label: `name@draft`, `name@<env>`, and `(billed)` for
+ * every environment but `sandbox` (R1/R2). The draft is never counted.
+ */
+export function renderLabel(name: string, environment: string): string {
+	const billed = environment !== DRAFT && environment !== 'sandbox';
+	return `${name}@${environment}${billed ? ' (billed)' : ''}`;
 }
 
 /**
  * Build the JSON payload printed by `poli render --json`.
  *
- * Spreads the API descriptor and conditionally adds `outputPath` so callers
- * can locate the written PDF. `outputPath` is absent when `--no-download`
- * was passed (no file written).
+ * An environment render prints the API descriptor, plus `outputPath` when a
+ * PDF was written (absent with `--no-download`). The draft has no
+ * descriptor: it prints `{ template, environment: "draft", outputPath }`.
  */
 export function formatRenderJson(result: RenderResult): unknown {
+	if (result.kind === 'draft') {
+		return { template: result.template, environment: DRAFT, outputPath: result.outputPath };
+	}
 	if (result.outputPath) {
 		return { ...result.descriptor, outputPath: result.outputPath };
 	}
 	return result.descriptor;
 }
 
+async function writePdf(outputPath: string, pdf: Buffer): Promise<void> {
+	await mkdir(dirname(outputPath), { recursive: true });
+	await writeFile(outputPath, pdf);
+}
+
 async function defaultFetchPdf(url: string): Promise<Buffer> {
 	const response = await fetch(url);
 	if (!response.ok) {
-		throw new Error(
-			`Failed to download PDF from presigned URL (HTTP ${response.status}).`
-		);
+		throw new Error(`Failed to download PDF from presigned URL (HTTP ${response.status}).`);
 	}
 	const arrayBuffer = await response.arrayBuffer();
 	return Buffer.from(arrayBuffer);
-}
-
-function validateVersion(version: string): void {
-	if (version === 'draft') return;
-	if (version === 'latest') {
-		throw new Error(
-			'`latest` was retired. Run `poli versions list` and pin an exact semver like `1.2.3`.'
-		);
-	}
-	if (PARTIAL_SEMVER.test(version)) {
-		throw new Error(
-			'Use an exact semver `X.Y.Z`. Partial versions like `1.0` were retired.'
-		);
-	}
-	if (!EXACT_SEMVER.test(version)) {
-		throw new Error(
-			'Invalid version: must be `draft` or an exact semver `X.Y.Z`.'
-		);
-	}
 }
 
 export function registerRenderCommand(program: Command) {
@@ -200,24 +302,24 @@ export function registerRenderCommand(program: Command) {
 		.description('Render a PDF from a template')
 		.argument(
 			'<spec>',
-			'Template spec: `name` (draft) or `name@X.Y.Z` (explicit version)'
+			'Template spec: `name` (the draft, needs `poli login`) or `name@<environment>` (a published environment)'
 		)
 		.option('-o, --output <path>', 'Output file path')
 		.option('-d, --data <path>', 'JSON data file (overrides mock data)')
 		.option(
 			'--no-download',
-			'Skip fetching the presigned PDF URL — only emit the JSON descriptor'
+			'Skip fetching the presigned PDF URL — only emit the JSON descriptor (environment renders only)'
 		)
 		.option('--json', 'Force JSON output even in a TTY')
 		.action(async (spec: string, opts) => {
 			const { default: chalk } = await import('chalk');
 
 			try {
-				const { name, version } = parseTemplateSpec(spec);
+				const { name, target } = parseTemplateSpec(spec);
 				const result = await executeRender(name, {
 					output: opts.output,
 					data: opts.data,
-					version,
+					target,
 					noDownload: opts.download === false,
 				});
 
@@ -228,21 +330,19 @@ export function registerRenderCommand(program: Command) {
 					return;
 				}
 
-				const env = result.descriptor.environment;
-				const versionLabel = result.descriptor.version
-					? `v${result.descriptor.version}`
-					: 'vdraft';
-				const envSuffix = ` (${env}${env === 'live' ? ', billed' : ''})`;
-				if (result.outputPath) {
+				if (result.kind === 'draft') {
 					console.log(
-						chalk.green(
-							`✓ Rendered ${name} ${versionLabel}${envSuffix} → ${result.outputPath}`
-						)
+						chalk.green(`✓ Rendered ${renderLabel(name, DRAFT)} → ${result.outputPath}`)
 					);
+					return;
+				}
+				const label = renderLabel(name, result.descriptor.environment);
+				if (result.outputPath) {
+					console.log(chalk.green(`✓ Rendered ${label} → ${result.outputPath}`));
 				} else {
 					console.log(
 						chalk.green(
-							`✓ Document ${chalk.bold(result.descriptor.documentId)} ${versionLabel}${envSuffix} (no download)`
+							`✓ Document ${chalk.bold(result.descriptor.documentId)} ${label} (no download)`
 						)
 					);
 					console.log(

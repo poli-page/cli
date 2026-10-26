@@ -6,10 +6,11 @@ import { resolveAuth } from '../src/auth.js';
 import { createApiClient } from '../src/api-client.js';
 import { writeManifest } from '../src/manifest.js';
 import type { PoliPageManifest } from '../src/manifest.js';
+import { testApiKey } from './helpers/api-key.js';
 
 /**
- * CI-style integration tests: the user has set POLI_PAGE_API_KEY (typically
- * pp_sa_*) but never ran `poli login`. The CLI must talk to the API in
+ * CI-style integration tests: the user has set POLI_PAGE_API_KEY (a
+ * `pp_<environment>_…` key) but never ran `poli login`. The CLI must talk to the API in
  * api-key mode without any session token.
  */
 describe('CI integration with POLI_PAGE_API_KEY', () => {
@@ -34,25 +35,24 @@ describe('CI integration with POLI_PAGE_API_KEY', () => {
 		}
 	});
 
-	it('resolveAuth returns api-key mode for pp_sa_live_* with no session', async () => {
-		process.env.POLI_PAGE_API_KEY = 'pp_sa_live_abc123def456';
+	it('resolveAuth returns api-key mode for a pp_<environment>_ key with no session', async () => {
+		process.env.POLI_PAGE_API_KEY = testApiKey('live');
 		const ctx = await resolveAuth({ homeDir: fakeHome });
 		expect(ctx).toEqual({
 			mode: 'api-key',
-			authorization: 'Bearer pp_sa_live_abc123def456',
+			authorization: `Bearer ${testApiKey('live')}`,
+			environment: 'live',
 		});
 		expect(ctx.orgIdHeader).toBeUndefined();
 	});
 
 	it('resolveAuth rejects keys not starting with pp_', async () => {
 		process.env.POLI_PAGE_API_KEY = 'not_a_pp_key';
-		await expect(resolveAuth({ homeDir: fakeHome })).rejects.toThrow(
-			/POLI_PAGE_API_KEY.*pp_/i
-		);
+		await expect(resolveAuth({ homeDir: fakeHome })).rejects.toThrow(/POLI_PAGE_API_KEY.*pp_/i);
 	});
 
-	it('passes the Bearer pp_sa_* header on the underlying request (createApiClient)', async () => {
-		process.env.POLI_PAGE_API_KEY = 'pp_sa_live_abc';
+	it('passes the Bearer key header on the underlying request (createApiClient)', async () => {
+		process.env.POLI_PAGE_API_KEY = testApiKey('live');
 		const fetchMock = vi.fn().mockResolvedValue(
 			new Response(JSON.stringify({ thumbnails: [] }), {
 				status: 200,
@@ -71,13 +71,13 @@ describe('CI integration with POLI_PAGE_API_KEY', () => {
 			string,
 			string
 		>;
-		expect(headers.Authorization).toBe('Bearer pp_sa_live_abc');
+		expect(headers.Authorization).toBe(`Bearer ${testApiKey('live')}`);
 		expect(headers['X-Poli-Org-Id']).toBeUndefined();
 		vi.unstubAllGlobals();
 	});
 
-	it('end-to-end: poli versions list works in CI with pp_sa_live_* (no login)', async () => {
-		process.env.POLI_PAGE_API_KEY = 'pp_sa_live_abc';
+	it('end-to-end: poli versions list works in CI with a key (no login)', async () => {
+		process.env.POLI_PAGE_API_KEY = testApiKey('live');
 		await writeManifest(tempDir, {
 			project: { name: 'demo', version: '0.1.0' },
 			cloud: {
@@ -90,10 +90,10 @@ describe('CI integration with POLI_PAGE_API_KEY', () => {
 		} as PoliPageManifest);
 
 		// resolveCloudContext (used by executeVersionsList) currently uses the
-		// session path: it requires credentials and session tokens. The pp_sa_*
+		// session path: it requires credentials and session tokens. The API-key
 		// CI path applies only to commands that go through resolveAuth (render,
 		// documents, push). versions list is intentionally session-only.
-		// We verify here that resolveAuth itself works with pp_sa_* end-to-end
+		// We verify here that resolveAuth itself works with a key end-to-end
 		// for an api-client method.
 		const ctx = await resolveAuth({
 			homeDir: fakeHome,
@@ -103,7 +103,7 @@ describe('CI integration with POLI_PAGE_API_KEY', () => {
 	});
 
 	it('credentials file precedence: session wins over env var', async () => {
-		process.env.POLI_PAGE_API_KEY = 'pp_sa_live_should_be_ignored';
+		process.env.POLI_PAGE_API_KEY = testApiKey('live');
 		const { writeCredentials } = await import('../src/credentials.js');
 		await writeCredentials(
 			{

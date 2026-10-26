@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { createApiClient, type RenderResult } from '../src/api-client.js';
+import { ApiError, createApiClient, type RenderResult } from '../src/api-client.js';
 
 const fakeDescriptor: RenderResult = {
 	documentId: 'doc_abc123',
@@ -8,8 +8,7 @@ const fakeDescriptor: RenderResult = {
 	projectSlug: 'invoices',
 	templateId: 'tpl_1',
 	templateSlug: 'invoice',
-	version: '1.0.5',
-	environment: 'live',
+	environment: 'production',
 	apiKeyId: 'key_1',
 	createdAt: '2026-05-07T12:00:00.000Z',
 	pageCount: 2,
@@ -20,6 +19,7 @@ const fakeDescriptor: RenderResult = {
 	metadata: {},
 	presignedPdfUrl: 'https://s3.example/doc_abc123.pdf?sig=abc',
 	expiresAt: '2026-05-07T12:15:00.000Z',
+	diagnostics: [{ kind: 'missing-asset', message: 'Image not found', path: 'images/logo.png' }],
 };
 
 function mockFetchOnce(status: number, body: unknown): ReturnType<typeof vi.fn> {
@@ -44,7 +44,7 @@ describe('api-client render', () => {
 		const result = await client.render('Bearer pp_live_abc', 'org_1', {
 			project: 'invoices',
 			template: 'invoice',
-			version: '1.0.5',
+			environment: 'production',
 			data: { title: 'Hello' },
 		});
 
@@ -62,7 +62,7 @@ describe('api-client render', () => {
 		expect(body).toEqual({
 			project: 'invoices',
 			template: 'invoice',
-			version: '1.0.5',
+			environment: 'production',
 			data: { title: 'Hello' },
 		});
 	});
@@ -74,7 +74,6 @@ describe('api-client render', () => {
 		await client.render('Bearer pp_test_x', undefined, {
 			project: 'invoices',
 			template: 'invoice',
-			version: 'draft',
 			data: {},
 		});
 
@@ -83,5 +82,59 @@ describe('api-client render', () => {
 			string
 		>;
 		expect(headers['X-Poli-Org-Id']).toBeUndefined();
+	});
+});
+
+describe('api-client renderDraft', () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('POSTs /v1/render/draft with the session and org header and returns the PDF bytes', async () => {
+		const pdf = Buffer.from('%PDF-1.7 draft');
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(pdf, { status: 200, headers: { 'Content-Type': 'application/pdf' } })
+			);
+		vi.stubGlobal('fetch', fetchMock);
+
+		const client = createApiClient('https://api.test');
+		const result = await client.renderDraft('Bearer sess', 'org_1', {
+			project: 'invoices',
+			template: 'invoice',
+			data: { title: 'Hello' },
+		});
+
+		expect(Buffer.isBuffer(result)).toBe(true);
+		expect(result.equals(pdf)).toBe(true);
+
+		const [url, init] = fetchMock.mock.calls[0];
+		expect(url).toBe('https://api.test/v1/render/draft');
+		expect((init as RequestInit).method).toBe('POST');
+		const headers = (init as RequestInit).headers as Record<string, string>;
+		expect(headers.Authorization).toBe('Bearer sess');
+		expect(headers['X-Poli-Org-Id']).toBe('org_1');
+		expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+			project: 'invoices',
+			template: 'invoice',
+			data: { title: 'Hello' },
+		});
+	});
+
+	it('surfaces 403 DRAFT_REQUIRES_SESSION as an ApiError', async () => {
+		mockFetchOnce(403, {
+			error: 'DRAFT_REQUIRES_SESSION',
+			detail: 'Only a session renders the draft.',
+		});
+
+		const client = createApiClient('https://api.test');
+		const error = await client
+			.renderDraft('Bearer pp_live_x', 'org_1', { project: 'p', template: 't', data: {} })
+			.catch((err: unknown) => err);
+
+		expect(error).toBeInstanceOf(ApiError);
+		expect((error as ApiError).code).toBe('DRAFT_REQUIRES_SESSION');
+		expect((error as ApiError).httpStatus).toBe(403);
 	});
 });
