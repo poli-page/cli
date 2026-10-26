@@ -82,7 +82,7 @@ To iterate on a template with live feedback against the cloud:
 ```bash
 poli dev
 # opens http://127.0.0.1:7654 — edit a template, save, and the browser
-# shows the freshly rendered document about a second later
+# reloads the freshly rendered PDF of your draft
 ```
 
 `poli dev` is the code-first alternative to the desktop editor. If you only want
@@ -260,10 +260,13 @@ you need the same sync inside a script or alongside a browser preview, use
 
 #### `poli dev [template]`
 
-Live-reloading preview server for template authors. On every save it syncs the
-project to the cloud draft, re-renders the active template through
-`POST /v1/render/preview`, and pushes a reload to every connected browser over
-Server-Sent Events — no polling, no fixed delay.
+Live PDF preview server for template authors. On every save it syncs the
+project to the cloud draft, renders the active template's draft to PDF through
+`POST /v1/render/draft` with your signed-in session, and pushes a reload to every
+connected browser over Server-Sent Events — no polling, no fixed delay. Draft
+renders are session-only: they carry no watermark, are never stored as a
+document, and are not counted. `POLI_PAGE_API_KEY` plays no part: an API key
+cannot render the draft.
 
 ```bash
 poli dev                 # first template in the manifest
@@ -290,13 +293,12 @@ The served page gives you:
   moves nothing: the current template stays on screen and is re-rendered.
 - **A pin.** Click *Pin* to freeze the view on the current template so an
   unrelated save cannot yank you away. Unpin to follow again.
-- **Render PDF.** The HTML preview is fast but approximate. This button runs the
-  real `POST /v1/render` for the active template and shows the resulting PDF
-  inline, so you can check the actual outcome — pagination, page breaks, fonts.
-  It creates a stored document, exactly like `poli render`.
+- **The real PDF.** Every render is the actual PDF of the draft — pagination,
+  page breaks, fonts — shown in the browser's PDF viewer and reloaded after each
+  successful sync. There is no separate HTML preview mode.
 - **An error overlay.** A failed compile or render is shown with its message
   (and `file:line:column` when the engine reports a position) on top of the last
-  good render, which stays visible behind it. A render error clears on the next
+  good PDF, which stays visible behind it. A render error clears on the next
   successful render; a failed sync stays shown until a sync succeeds, even when
   a render succeeds in between (the cloud draft is still out of date).
 
