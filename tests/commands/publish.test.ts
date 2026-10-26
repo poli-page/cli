@@ -2,7 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, writeFile, mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import { executePublish } from '../../src/commands/publish.js';
+import { createProgram } from '../../src/program.js';
 import { writeCredentials } from '../../src/credentials.js';
 import {
 	ApiError,
@@ -17,6 +19,9 @@ import {
 import { ExitCode, errorToExitCode } from '../../src/exit-codes.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
+
+const { confirmMock } = vi.hoisted(() => ({ confirmMock: vi.fn() }));
+vi.mock('@inquirer/prompts', () => ({ confirm: confirmMock }));
 
 const MANIFEST = {
 	project: { name: 'Invoices' },
@@ -410,5 +415,127 @@ describe('poli publish', () => {
 			expect(err.message).toContain('templates/invoice/x.svg');
 			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
 		});
+	});
+
+	describe('the command', () => {
+		const API_URL = 'https://api.test';
+		const RESULT = publishResult({ bundleHash: `sha256:0123456789abcdef${'0'.repeat(48)}` });
+		let fetchMock: ReturnType<typeof vi.fn>;
+		let logs: string[];
+		let errors: string[];
+		let savedExitCode: typeof process.exitCode;
+		let savedTTY: { stdin: boolean | undefined; stdout: boolean | undefined };
+
+		function setTTY(stdin: boolean, stdout: boolean) {
+			process.stdin.isTTY = stdin;
+			process.stdout.isTTY = stdout;
+		}
+
+		function publishCalls() {
+			return fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/publish'));
+		}
+
+		function poli(...args: string[]) {
+			return createProgram().parseAsync(['publish', ...args], { from: 'user' });
+		}
+
+		beforeEach(() => {
+			vi.stubEnv('HOME', fakeHome);
+			vi.stubEnv('POLI_API_URL', API_URL);
+			vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
+			fetchMock = vi.fn(async (url: string) => {
+				const body = url.endsWith('/organizations/org_1/environments')
+					? ENVIRONMENTS
+					: url === `${API_URL}/v1/projects/invoices/publish`
+						? RESULT
+						: undefined;
+				if (body === undefined) return new Response('unexpected', { status: 500 });
+				return new Response(JSON.stringify(body), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				});
+			});
+			vi.stubGlobal('fetch', fetchMock);
+			logs = [];
+			errors = [];
+			vi.spyOn(console, 'log').mockImplementation((msg: unknown = '') => {
+				logs.push(stripVTControlCharacters(String(msg)));
+			});
+			vi.spyOn(console, 'error').mockImplementation((msg: unknown = '') => {
+				errors.push(stripVTControlCharacters(String(msg)));
+			});
+			savedExitCode = process.exitCode;
+			process.exitCode = undefined;
+			savedTTY = { stdin: process.stdin.isTTY, stdout: process.stdout.isTTY };
+			confirmMock.mockReset();
+		});
+
+		afterEach(() => {
+			process.stdin.isTTY = savedTTY.stdin as true;
+			process.stdout.isTTY = savedTTY.stdout as true;
+			process.exitCode = savedExitCode;
+			vi.unstubAllGlobals();
+			vi.restoreAllMocks();
+		});
+
+		it('prints the environment, project, 12-character hash, file count and log id in a TTY', async () => {
+			setTTY(true, true);
+			await poli('--env', 'sandbox');
+			expect(errors).toEqual([]);
+			expect(process.exitCode).toBeUndefined();
+			expect(logs).toEqual([
+				'✓ Published invoices to sandbox',
+				'  Bundle:  0123456789ab (3 files)',
+				'  Log id:  log_1',
+			]);
+			expect(publishCalls()).toHaveLength(1);
+		});
+
+		it('prints the result as JSON with --json', async () => {
+			setTTY(true, true);
+			await poli('--env', 'sandbox', '--json');
+			expect(JSON.parse(logs.join('\n'))).toEqual(RESULT);
+		});
+
+		it('prints the result as JSON when stdout is piped', async () => {
+			setTTY(true, false);
+			await poli('--env', 'sandbox', '--yes');
+			expect(JSON.parse(logs.join('\n'))).toEqual(RESULT);
+		});
+
+		it('--env draft exits 2 with the reason on stderr and calls no API', async () => {
+			setTTY(true, true);
+			await poli('--env', 'draft');
+			expect(process.exitCode).toBe(ExitCode.INVALID_USAGE);
+			expect(errors.join('\n')).toMatch(/draft.*not an environment/i);
+			expect(logs).toEqual([]);
+			expect(fetchMock).not.toHaveBeenCalled();
+		});
+
+		it('asks before publishing to a protected environment when stdin and stdout are TTYs', async () => {
+			setTTY(true, true);
+			confirmMock.mockResolvedValue(true);
+			await poli('--env', 'live');
+			expect(confirmMock).toHaveBeenCalledWith({
+				message: '"live" is a protected environment. Publish to it?',
+				default: false,
+			});
+			expect(publishCalls()).toHaveLength(1);
+		});
+
+		it.each([
+			['stdin', false, true],
+			['stdout', true, false],
+		])(
+			'does not prompt when %s is not a TTY: a protected environment needs --yes (exit 2)',
+			async (_stream, stdin, stdout) => {
+				setTTY(stdin, stdout);
+				await poli('--env', 'live');
+				expect(confirmMock).not.toHaveBeenCalled();
+				expect(process.exitCode).toBe(ExitCode.INVALID_USAGE);
+				expect(errors.join('\n')).toMatch(/--yes/);
+				expect(publishCalls()).toHaveLength(0);
+			}
+		);
 	});
 });

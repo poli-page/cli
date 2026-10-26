@@ -15,6 +15,7 @@ import { ExitCode, errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 import { toProjectFileEntries } from '../project-files.js';
 import { readAllProjectFiles } from '../project-sync.js';
+import { confirmPrompt } from '../template-prompt.js';
 
 export interface PublishOptions {
 	cwd?: string;
@@ -152,11 +153,9 @@ export async function executePublish(options: PublishOptions): Promise<PublishRe
 	}
 }
 
-async function defaultConfirm(environment: string): Promise<boolean> {
-	const { confirm } = await import('@inquirer/prompts');
-	return confirm({
+function confirmProtectedPublish(environment: string): Promise<boolean> {
+	return confirmPrompt({
 		message: `"${environment}" is a protected environment. Publish to it?`,
-		default: false,
 	});
 }
 
@@ -176,7 +175,7 @@ export function registerPublishCommand(program: Command) {
 					env: opts.env,
 					message: opts.message,
 					yes: opts.yes,
-					confirmFn: interactive ? defaultConfirm : undefined,
+					confirmFn: interactive ? confirmProtectedPublish : undefined,
 				});
 
 				if (shouldEmitJson(opts)) {
