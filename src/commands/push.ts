@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { readManifest, writeManifest } from '../manifest.js';
+import { readProjectManifest, writeManifest } from '../manifest.js';
 import { getSessionToken } from '../credentials.js';
 import {
 	createApiClient,
@@ -8,7 +8,6 @@ import {
 	type PushVersionBody,
 } from '../api-client.js';
 import { collectProjectPayload } from '../project-loader.js';
-import { MANIFEST_FILENAME } from '../constants.js';
 import { errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 
@@ -86,17 +85,7 @@ export async function executePush(options: PushOptions = {}): Promise<VersionInf
 	const session = await getSessionToken(options.homeDir);
 	const client = options.apiClient ?? createApiClient();
 
-	let manifest;
-	try {
-		manifest = await readManifest(cwd);
-	} catch (err) {
-		if (err instanceof Error && /ENOENT/.test(err.message)) {
-			throw new Error(
-				`No ${MANIFEST_FILENAME} found in ${cwd}. Are you in a Poli Page project?`
-			);
-		}
-		throw err;
-	}
+	const manifest = await readProjectManifest(cwd);
 
 	if (!manifest.cloud?.orgId || !manifest.cloud.projectId) {
 		throw new Error('Project is not linked. Run `poli link` first.');

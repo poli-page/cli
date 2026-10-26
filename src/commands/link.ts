@@ -1,9 +1,8 @@
 import { Command } from 'commander';
-import { readManifest, writeManifest } from '../manifest.js';
+import { readProjectManifest, writeManifest } from '../manifest.js';
 import { getSessionToken, readCredentials } from '../credentials.js';
 import { createApiClient, type ApiClient } from '../api-client.js';
 import { collectProjectPayload } from '../project-loader.js';
-import { MANIFEST_FILENAME } from '../constants.js';
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
 
 export interface LinkOptions {
@@ -56,17 +55,7 @@ export async function executeLink(options: LinkOptions): Promise<void> {
 	const client = options.apiClient ?? createApiClient();
 	const session = await getSessionToken(options.homeDir);
 
-	let manifest;
-	try {
-		manifest = await readManifest(cwd);
-	} catch (err) {
-		if (err instanceof Error && /ENOENT/.test(err.message)) {
-			throw new Error(
-				`No ${MANIFEST_FILENAME} found in ${cwd}. Are you in a Poli Page project?`
-			);
-		}
-		throw err;
-	}
+	const manifest = await readProjectManifest(cwd);
 
 	if (manifest.cloud) {
 		throw new Error(
@@ -110,17 +99,7 @@ export interface UnlinkOptions {
 export async function executeUnlink(options: UnlinkOptions = {}): Promise<void> {
 	const cwd = options.cwd ?? process.cwd();
 
-	let manifest;
-	try {
-		manifest = await readManifest(cwd);
-	} catch (err) {
-		if (err instanceof Error && /ENOENT/.test(err.message)) {
-			throw new Error(
-				`No ${MANIFEST_FILENAME} found in ${cwd}. Are you in a Poli Page project?`
-			);
-		}
-		throw err;
-	}
+	const manifest = await readProjectManifest(cwd);
 
 	if (!manifest.cloud) {
 		throw new Error('Project is not linked to any organization.');

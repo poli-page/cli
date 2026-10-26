@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { readManifest } from '../manifest.js';
+import { readProjectManifest } from '../manifest.js';
 import { getSessionToken } from '../credentials.js';
 import {
 	ApiError,
@@ -11,7 +11,6 @@ import {
 	type PublishBody,
 	type PublishResult,
 } from '../api-client.js';
-import { MANIFEST_FILENAME } from '../constants.js';
 import { ExitCode, errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 import { toProjectFileEntries } from '../project-files.js';
@@ -66,6 +65,58 @@ function environmentNotFound(
 	);
 }
 
+async function buildPublishBody(
+	cwd: string,
+	environment: string,
+	message: string | undefined
+): Promise<PublishBody> {
+	const body: PublishBody = {
+		environment,
+		...(message ? { message } : {}),
+		files: toProjectFileEntries(await readAllProjectFiles(cwd)),
+	};
+	const bodyBytes = Buffer.byteLength(JSON.stringify(body));
+	if (bodyBytes > BUNDLE_MAX_BYTES) {
+		throw new PublishUsageError(
+			`The publish bundle is ${(bodyBytes / (1024 * 1024)).toFixed(1)} MiB; the limit is 5 MiB. Shrink or remove large assets.`
+		);
+	}
+	return body;
+}
+
+async function confirmProtected(target: EnvironmentInfo, options: PublishOptions): Promise<void> {
+	if (!target.protected || options.yes === true || process.env.CI === 'true') return;
+	if (!options.confirmFn) {
+		throw new PublishUsageError(
+			`Environment "${target.name}" is protected. Pass --yes to publish to it without a prompt.`
+		);
+	}
+	if (!(await options.confirmFn(target.name))) {
+		throw new Error('Publish cancelled.');
+	}
+}
+
+/** The API's publish errors, reworded with the project and environment they are about. */
+function explainPublishError(err: unknown, project: string, environment: string): unknown {
+	if (err instanceof EnvironmentProtectedError) {
+		return new EnvironmentProtectedError(
+			`Environment "${environment}" is protected: only an owner or admin of the organization can publish to it.`
+		);
+	}
+	if (err instanceof EnvironmentNotFoundError) {
+		return environmentNotFound(environment);
+	}
+	if (err instanceof ApiError && err.code === 'PUBLISH_IN_PROGRESS') {
+		return new ApiError(
+			err.code,
+			err.httpStatus,
+			`Another publish of ${project} to "${environment}" is running. Wait for it to finish, then publish again.`,
+			err.retryAfter
+		);
+	}
+	return err;
+}
+
 export async function executePublish(options: PublishOptions): Promise<PublishResult> {
 	const cwd = options.cwd ?? process.cwd();
 	const environment = validateEnvironmentName(options.env);
@@ -78,73 +129,26 @@ export async function executePublish(options: PublishOptions): Promise<PublishRe
 	const session = await getSessionToken(options.homeDir);
 	const client = options.apiClient ?? createApiClient();
 
-	let manifest;
-	try {
-		manifest = await readManifest(cwd);
-	} catch (err) {
-		if (err instanceof Error && /ENOENT/.test(err.message)) {
-			throw new Error(
-				`No ${MANIFEST_FILENAME} found in ${cwd}. Are you in a Poli Page project?`
-			);
-		}
-		throw err;
-	}
+	const manifest = await readProjectManifest(cwd);
 	const orgId = manifest.cloud?.orgId;
 	const project = manifest.cloud?.projectSlug;
 	if (!orgId || !project) {
 		throw new Error('Project is not linked. Run `poli link` first.');
 	}
 
-	const body: PublishBody = {
-		environment,
-		...(options.message ? { message: options.message } : {}),
-		files: toProjectFileEntries(await readAllProjectFiles(cwd)),
-	};
-	const bodyBytes = Buffer.byteLength(JSON.stringify(body));
-	if (bodyBytes > BUNDLE_MAX_BYTES) {
-		throw new PublishUsageError(
-			`The publish bundle is ${(bodyBytes / (1024 * 1024)).toFixed(1)} MiB; the limit is 5 MiB. Shrink or remove large assets.`
-		);
-	}
+	const body = await buildPublishBody(cwd, environment, options.message);
 
 	const environments = await client.listEnvironments(session, orgId);
 	const target = environments.find((e) => e.name === environment);
 	if (!target) {
 		throw environmentNotFound(environment, environments);
 	}
-
-	const yes = options.yes === true || process.env.CI === 'true';
-	if (target.protected && !yes) {
-		if (!options.confirmFn) {
-			throw new PublishUsageError(
-				`Environment "${environment}" is protected. Pass --yes to publish to it without a prompt.`
-			);
-		}
-		if (!(await options.confirmFn(environment))) {
-			throw new Error('Publish cancelled.');
-		}
-	}
+	await confirmProtected(target, options);
 
 	try {
 		return await client.publish(session, orgId, project, body);
 	} catch (err) {
-		if (err instanceof EnvironmentProtectedError) {
-			throw new EnvironmentProtectedError(
-				`Environment "${environment}" is protected: only an owner or admin of the organization can publish to it.`
-			);
-		}
-		if (err instanceof EnvironmentNotFoundError) {
-			throw environmentNotFound(environment);
-		}
-		if (err instanceof ApiError && err.code === 'PUBLISH_IN_PROGRESS') {
-			throw new ApiError(
-				err.code,
-				err.httpStatus,
-				`Another publish of ${project} to "${environment}" is running. Wait for it to finish, then publish again.`,
-				err.retryAfter
-			);
-		}
-		throw err;
+		throw explainPublishError(err, project, environment);
 	}
 }
 
