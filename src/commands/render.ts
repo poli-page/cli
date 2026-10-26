@@ -140,7 +140,7 @@ export async function executeRender(
 	//   output/<templateSlug>/<format-orientation>/<templateSlug>.pdf
 	// The format/orientation segment lets the same template coexist on disk
 	// at multiple page formats without overwriting itself, and aligns with
-	// the layout produced by `poli preview` and the desktop editor.
+	// the layout produced by the desktop editor.
 	const outputPath = options.output
 		? resolve(cwd, options.output)
 		: join(

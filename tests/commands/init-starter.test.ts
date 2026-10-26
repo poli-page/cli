@@ -502,8 +502,8 @@ describe('poli init --starter: command output', () => {
 
 			const output = logs.join('\n');
 			expect(output).toContain('poli watch');
-			expect(output).toContain('poli push');
-			expect(output).not.toContain('poli publish');
+			expect(output).toContain('poli publish --env sandbox');
+			expect(output).not.toContain('poli push');
 		});
 	});
 });

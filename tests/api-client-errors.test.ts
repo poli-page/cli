@@ -8,18 +8,11 @@ import {
 	OrgCancelledError,
 	OrgPurgedError,
 	OrgMigratingError,
-	InvalidVersionFormatError,
-	InvalidVersionForKeyEnvError,
-	VersionRequiredError,
 	MissingOrgContextError,
 	NotAMemberError,
 	ThumbnailsNotAvailableError,
 	DocumentNotFoundError,
 	DocumentGoneError,
-	SystemProjectLockedError,
-	SystemProjectImmutableError,
-	InvalidTrackFormatError,
-	VersionConflictError,
 	EnvironmentProtectedError,
 	EnvironmentNotFoundError,
 	UnsupportedFileTypeError,
@@ -89,18 +82,11 @@ describe('api-client error mapping', () => {
 			['ORGANIZATION_CANCELLED', 403, OrgCancelledError],
 			['ORGANIZATION_PURGED', 410, OrgPurgedError],
 			['ORGANIZATION_MIGRATING', 503, OrgMigratingError],
-			['INVALID_VERSION_FORMAT', 400, InvalidVersionFormatError],
-			['INVALID_VERSION_FOR_KEY_ENV', 400, InvalidVersionForKeyEnvError],
-			['VERSION_REQUIRED', 400, VersionRequiredError],
 			['MISSING_ORG_CONTEXT', 400, MissingOrgContextError],
 			['NOT_A_MEMBER', 403, NotAMemberError],
 			['THUMBNAILS_NOT_AVAILABLE', 403, ThumbnailsNotAvailableError],
 			['DOCUMENT_NOT_FOUND', 404, DocumentNotFoundError],
 			['DOCUMENT_GONE', 410, DocumentGoneError],
-			['SYSTEM_PROJECT_LOCKED', 403, SystemProjectLockedError],
-			['SYSTEM_PROJECT_IMMUTABLE', 403, SystemProjectImmutableError],
-			['INVALID_TRACK_FORMAT', 400, InvalidTrackFormatError],
-			['VERSION_CONFLICT', 409, VersionConflictError],
 			['ENVIRONMENT_PROTECTED', 403, EnvironmentProtectedError],
 			['ENVIRONMENT_NOT_FOUND', 404, EnvironmentNotFoundError],
 			['UNSUPPORTED_FILE_TYPE', 400, UnsupportedFileTypeError],
@@ -135,6 +121,27 @@ describe('api-client error mapping', () => {
 			expect(err.code).toBe('PAYMENT_REQUIRED');
 			expect(err.httpStatus).toBe(402);
 		});
+
+		// Versions, push and system projects are gone from the API, which no
+		// longer sends these codes.
+		it.each([
+			['INVALID_VERSION_FORMAT', 400],
+			['INVALID_VERSION_FOR_KEY_ENV', 400],
+			['VERSION_REQUIRED', 400],
+			['SYSTEM_PROJECT_LOCKED', 403],
+			['SYSTEM_PROJECT_IMMUTABLE', 403],
+			['INVALID_TRACK_FORMAT', 400],
+			['VERSION_CONFLICT', 409],
+		])(
+			'has no typed class for %s (%i): a generic ApiError, exit code 3',
+			async (code, status) => {
+				mockFetchOnce(status, envelope(code));
+				const err = await callAnyEndpoint().catch((e) => e);
+				expect(err.constructor).toBe(ApiError);
+				expect(err.code).toBe(code);
+				expect(errorToExitCode(err)).toBe(ExitCode.NETWORK_OR_API_ERROR);
+			}
+		);
 
 		// The API answers PUBLISH_IN_PROGRESS with 409 on a publish and 503 on a
 		// render, so one class with a fixed status would misreport one of them.

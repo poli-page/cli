@@ -44,21 +44,6 @@ export class OrgMigratingError extends ApiError {
 		super('ORGANIZATION_MIGRATING', 503, message, retryAfter);
 	}
 }
-export class InvalidVersionFormatError extends ApiError {
-	constructor(message: string, retryAfter?: number) {
-		super('INVALID_VERSION_FORMAT', 400, message, retryAfter);
-	}
-}
-export class InvalidVersionForKeyEnvError extends ApiError {
-	constructor(message: string, retryAfter?: number) {
-		super('INVALID_VERSION_FOR_KEY_ENV', 400, message, retryAfter);
-	}
-}
-export class VersionRequiredError extends ApiError {
-	constructor(message: string, retryAfter?: number) {
-		super('VERSION_REQUIRED', 400, message, retryAfter);
-	}
-}
 export class MissingOrgContextError extends ApiError {
 	constructor(message: string, retryAfter?: number) {
 		super('MISSING_ORG_CONTEXT', 400, message, retryAfter);
@@ -82,26 +67,6 @@ export class DocumentNotFoundError extends ApiError {
 export class DocumentGoneError extends ApiError {
 	constructor(message: string, retryAfter?: number) {
 		super('DOCUMENT_GONE', 410, message, retryAfter);
-	}
-}
-export class SystemProjectLockedError extends ApiError {
-	constructor(message: string, retryAfter?: number) {
-		super('SYSTEM_PROJECT_LOCKED', 403, message, retryAfter);
-	}
-}
-export class SystemProjectImmutableError extends ApiError {
-	constructor(message: string, retryAfter?: number) {
-		super('SYSTEM_PROJECT_IMMUTABLE', 403, message, retryAfter);
-	}
-}
-export class InvalidTrackFormatError extends ApiError {
-	constructor(message: string, retryAfter?: number) {
-		super('INVALID_TRACK_FORMAT', 400, message, retryAfter);
-	}
-}
-export class VersionConflictError extends ApiError {
-	constructor(message: string, retryAfter?: number) {
-		super('VERSION_CONFLICT', 409, message, retryAfter);
 	}
 }
 export class EnvironmentProtectedError extends ApiError {
@@ -131,64 +96,15 @@ const TYPED_ERROR_REGISTRY: Record<string, TypedErrorCtor> = {
 	ORGANIZATION_CANCELLED: OrgCancelledError,
 	ORGANIZATION_PURGED: OrgPurgedError,
 	ORGANIZATION_MIGRATING: OrgMigratingError,
-	INVALID_VERSION_FORMAT: InvalidVersionFormatError,
-	INVALID_VERSION_FOR_KEY_ENV: InvalidVersionForKeyEnvError,
-	VERSION_REQUIRED: VersionRequiredError,
 	MISSING_ORG_CONTEXT: MissingOrgContextError,
 	NOT_A_MEMBER: NotAMemberError,
 	THUMBNAILS_NOT_AVAILABLE: ThumbnailsNotAvailableError,
 	DOCUMENT_NOT_FOUND: DocumentNotFoundError,
 	DOCUMENT_GONE: DocumentGoneError,
-	SYSTEM_PROJECT_LOCKED: SystemProjectLockedError,
-	SYSTEM_PROJECT_IMMUTABLE: SystemProjectImmutableError,
-	INVALID_TRACK_FORMAT: InvalidTrackFormatError,
-	VERSION_CONFLICT: VersionConflictError,
 	ENVIRONMENT_PROTECTED: EnvironmentProtectedError,
 	ENVIRONMENT_NOT_FOUND: EnvironmentNotFoundError,
 	UNSUPPORTED_FILE_TYPE: UnsupportedFileTypeError,
 };
-
-export type VersionState = 'SANDBOX' | 'LIVE' | 'DEPRECATED' | 'DELETED';
-
-export interface VersionInfo {
-	id: string;
-	version: string;
-	major: number;
-	minor: number;
-	patch: number;
-	state: VersionState;
-	bumpType?: 'patch' | 'minor' | 'major';
-	message?: string;
-	pushedBy?: string;
-	createdAt: string;
-	promotedAt?: string;
-	promotedBy?: string;
-	unpromotedAt?: string;
-	unpromotedBy?: string;
-}
-
-/**
- * `POST /projects/:projectId/push` body. Two mutually exclusive shapes
- * (api-spec §9.1):
- *
- *  1. Bump-driven: `{ bumpType, track?, message? }`. Track anchors
- *     `--patch` / `--minor` on a specific `major.minor` family. `--major`
- *     ignores the track and always picks `max(major)+1`.
- *
- *  2. Explicit: `{ version, message? }`. The caller declares the exact
- *     version. Server returns `409 VERSION_CONFLICT` if it already
- *     exists in any state.
- */
-export type PushVersionBody =
-	| { bumpType: 'patch' | 'minor' | 'major'; track?: string; message?: string }
-	| { version: string; message?: string };
-
-export interface UnpromotePreview {
-	currentLatestLive: string | null;
-	newLatestLiveAfterUnpromote: string | null;
-	willHaveNoLive: boolean;
-	recentLiveCalls: number;
-}
 
 export interface DeviceRequestResult {
 	deviceCode: string;
@@ -307,17 +223,6 @@ export interface RenderDiagnostic {
  */
 export type RenderResult = DocumentDescriptor & { diagnostics: RenderDiagnostic[] };
 
-/**
- * Result of `POST /v1/render/preview`. No document is persisted, so the
- * shape is intentionally minimal: just the rendered HTML, page count,
- * and the environment the call was billed against.
- */
-export interface PreviewApiResult {
-	html: string;
-	totalPages: number;
-	environment: 'sandbox' | 'live';
-}
-
 export interface MeResponse {
 	auth: {
 		mode: 'session' | 'api-key';
@@ -370,12 +275,6 @@ export interface ApiClient {
 		orgId: string,
 		payload: Record<string, unknown>
 	): Promise<{ id: string }>;
-	updateProject(
-		session: string,
-		orgId: string,
-		projectId: string,
-		payload: Record<string, unknown>
-	): Promise<void>;
 	patchFiles(
 		session: string,
 		orgId: string,
@@ -395,11 +294,6 @@ export interface ApiClient {
 		orgIdHeader: string | undefined,
 		payload: Record<string, unknown>
 	): Promise<RenderResult>;
-	renderPreview(
-		authorization: string,
-		orgIdHeader: string | undefined,
-		payload: Record<string, unknown>
-	): Promise<PreviewApiResult>;
 	/**
 	 * `POST /v1/render/draft`: renders the project's draft and answers the
 	 * PDF bytes. Session only (an API key gets `403 DRAFT_REQUIRES_SESSION`);
@@ -434,44 +328,6 @@ export interface ApiClient {
 		orgIdHeader: string | undefined,
 		id: string
 	): Promise<DocumentPreviewResult>;
-	pushVersion(
-		session: string,
-		orgId: string,
-		projectId: string,
-		body: PushVersionBody
-	): Promise<VersionInfo>;
-	listVersions(session: string, orgId: string, projectId: string): Promise<VersionInfo[]>;
-	promoteVersion(
-		session: string,
-		orgId: string,
-		projectId: string,
-		version: string
-	): Promise<VersionInfo>;
-	unpromoteVersion(
-		session: string,
-		orgId: string,
-		projectId: string,
-		version: string,
-		body?: { force?: boolean }
-	): Promise<VersionInfo>;
-	unpromotePreview(
-		session: string,
-		orgId: string,
-		projectId: string,
-		version: string
-	): Promise<UnpromotePreview>;
-	deprecateVersion(
-		session: string,
-		orgId: string,
-		projectId: string,
-		version: string
-	): Promise<VersionInfo>;
-	undeprecateVersion(
-		session: string,
-		orgId: string,
-		projectId: string,
-		version: string
-	): Promise<VersionInfo>;
 }
 
 export function createApiClient(baseUrl?: string): ApiClient {
@@ -681,22 +537,6 @@ export function createApiClient(baseUrl?: string): ApiClient {
 			return response.json() as Promise<RenderResult>;
 		},
 
-		async renderPreview(authorization, orgIdHeader, payload) {
-			const headers: Record<string, string> = {
-				'Content-Type': 'application/json',
-				Authorization: authorization,
-			};
-			if (orgIdHeader) {
-				headers['X-Poli-Org-Id'] = orgIdHeader;
-			}
-			const response = await request('/v1/render/preview', {
-				method: 'POST',
-				headers,
-				body: JSON.stringify(payload),
-			});
-			return response.json() as Promise<PreviewApiResult>;
-		},
-
 		async renderDraft(authorization, orgIdHeader, payload) {
 			const response = await request('/v1/render/draft', {
 				method: 'POST',
@@ -708,17 +548,6 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				body: JSON.stringify(payload),
 			});
 			return Buffer.from(await response.arrayBuffer());
-		},
-
-		async updateProject(session, orgId, projectId, payload) {
-			await request(`/api/organizations/${orgId}/projects/${projectId}`, {
-				method: 'PUT',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${session}`,
-				},
-				body: JSON.stringify(payload),
-			});
 		},
 
 		async patchFiles(session, orgId, projectId, body) {
@@ -771,105 +600,6 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				}
 			);
 			return response.json() as Promise<PublishResult>;
-		},
-
-		async pushVersion(session, orgId, projectId, body) {
-			const response = await request(
-				`/api/organizations/${orgId}/projects/${projectId}/push`,
-				{
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						Authorization: `Bearer ${session}`,
-					},
-					body: JSON.stringify(body),
-				}
-			);
-			return response.json() as Promise<VersionInfo>;
-		},
-
-		async promoteVersion(session, orgId, projectId, version) {
-			const response = await request(
-				`/api/organizations/${orgId}/projects/${projectId}/versions/${version}/promote`,
-				{
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						Authorization: `Bearer ${session}`,
-					},
-				}
-			);
-			return response.json() as Promise<VersionInfo>;
-		},
-
-		async unpromoteVersion(session, orgId, projectId, version, body) {
-			const response = await request(
-				`/api/organizations/${orgId}/projects/${projectId}/versions/${version}/unpromote`,
-				{
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						Authorization: `Bearer ${session}`,
-					},
-					body: JSON.stringify(body ?? {}),
-				}
-			);
-			return response.json() as Promise<VersionInfo>;
-		},
-
-		async unpromotePreview(session, orgId, projectId, version) {
-			const response = await request(
-				`/api/organizations/${orgId}/projects/${projectId}/versions/${version}/unpromote-preview`,
-				{
-					method: 'GET',
-					headers: {
-						'Content-Type': 'application/json',
-						Authorization: `Bearer ${session}`,
-					},
-				}
-			);
-			return response.json() as Promise<UnpromotePreview>;
-		},
-
-		async deprecateVersion(session, orgId, projectId, version) {
-			const response = await request(
-				`/api/organizations/${orgId}/projects/${projectId}/versions/${version}/deprecate`,
-				{
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						Authorization: `Bearer ${session}`,
-					},
-				}
-			);
-			return response.json() as Promise<VersionInfo>;
-		},
-
-		async undeprecateVersion(session, orgId, projectId, version) {
-			const response = await request(
-				`/api/organizations/${orgId}/projects/${projectId}/versions/${version}/un-deprecate`,
-				{
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						Authorization: `Bearer ${session}`,
-					},
-				}
-			);
-			return response.json() as Promise<VersionInfo>;
-		},
-
-		async listVersions(session, orgId, projectId) {
-			const response = await request(
-				`/api/organizations/${orgId}/projects/${projectId}/versions`,
-				{
-					headers: {
-						'Content-Type': 'application/json',
-						Authorization: `Bearer ${session}`,
-					},
-				}
-			);
-			return response.json() as Promise<VersionInfo[]>;
 		},
 	};
 }

@@ -71,7 +71,7 @@ export interface DevOptions {
 	maxPortAttempts?: number;
 	/** Open the browser on start. Defaults to true. */
 	open?: boolean;
-	/** `-d, --data <path>` — overrides every template's mock, like `poli preview`. */
+	/** `-d, --data <path>` — overrides every template's mock, like `poli render -d`. */
 	data?: string;
 	signal?: AbortSignal;
 	watcherFactory?: (options: FileWatcherOptions) => FileWatcher;
@@ -221,14 +221,14 @@ export async function startDevSession(
 	// it) but every render payload needs it. Without this guard the
 	// server boots and then fails every render into the overlay forever —
 	// fail fast instead, with the same message (and exit code) as
-	// `poli preview`.
+	// `poli render`.
 	if (!manifest.cloud?.projectSlug) {
 		throw new Error("This folder isn't linked to a cloud project. Run `poli link` first.");
 	}
 
 	if (templateName !== undefined) {
 		// Fail fast on an unknown name given on the command line — same
-		// message (and exit code) as `poli render` / `poli preview`.
+		// message (and exit code) as `poli render`.
 		findTemplate(manifest, templateName);
 	}
 
