@@ -76,8 +76,7 @@ describe('poli init', () => {
 		const content = await readFile(manifestPath, 'utf-8');
 		const manifest = JSON.parse(content);
 
-		expect(manifest.project.name).toBe('billing-templates');
-		expect(manifest.project.version).toBe('0.0.0');
+		expect(manifest.project).toEqual({ name: 'billing-templates' });
 		expect(manifest.templates).toEqual([]);
 		expect(manifest.fonts).toEqual([]);
 	});

@@ -4,10 +4,7 @@ import { MANIFEST_FILENAME } from './constants.js';
 import { parseManifest, type PoliPageManifest } from './manifest.schema.js';
 
 export type { PoliPageManifest } from './manifest.schema.js';
-export {
-	ManifestValidationError,
-	type ManifestValidationIssue,
-} from './manifest.schema.js';
+export { ManifestValidationError, type ManifestValidationIssue } from './manifest.schema.js';
 
 export async function readManifest(projectDir: string): Promise<PoliPageManifest> {
 	const manifestPath = join(projectDir, MANIFEST_FILENAME);
@@ -30,14 +27,26 @@ export async function readProjectManifest(projectDir: string): Promise<PoliPageM
 	}
 }
 
-export async function writeManifest(
-	projectDir: string,
-	manifest: PoliPageManifest
-): Promise<void> {
+/**
+ * Writes `poli-page.json`. `project.version` and `cloud.track` went away
+ * with versions (F3), but the passthrough schema keeps them on read, so
+ * every write drops them, without a word.
+ */
+export async function writeManifest(projectDir: string, manifest: PoliPageManifest): Promise<void> {
 	const manifestPath = join(projectDir, MANIFEST_FILENAME);
 	await writeFile(
 		manifestPath,
-		JSON.stringify(manifest, null, '\t') + '\n',
+		JSON.stringify(withoutRetiredFields(manifest), null, '\t') + '\n',
 		'utf-8'
 	);
+}
+
+function withoutRetiredFields(manifest: PoliPageManifest): PoliPageManifest {
+	const { version: _version, ...project } = manifest.project;
+	const out: PoliPageManifest = { ...manifest, project };
+	if (manifest.cloud) {
+		const { track: _track, ...cloud } = manifest.cloud;
+		out.cloud = cloud;
+	}
+	return out;
 }

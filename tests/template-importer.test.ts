@@ -68,7 +68,7 @@ async function setupBlankProject(): Promise<{ projectDir: string; fakeHome: stri
 	await mkdir(join(projectDir, 'assets', 'images'), { recursive: true });
 	await writeFile(join(projectDir, 'tailwind.css'), '@import "tailwindcss";\n', 'utf-8');
 	await writeManifest(projectDir, {
-		project: { name: 'test-project', version: '0.1.0' },
+		project: { name: 'test-project' },
 		fonts: [],
 		templates: [],
 	});
