@@ -17,6 +17,7 @@ import { errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 import { formatOrientationSlug } from '../format-resolver.js';
 import { parseTemplateSpec } from './render.js';
+import { validateExactSemver } from '../cloud-context.js';
 
 export interface PreviewOptions {
 	cwd?: string;
@@ -45,9 +46,6 @@ export interface PreviewResult {
 	descriptor: PreviewDescriptor;
 	outputPath?: string;
 }
-
-const EXACT_SEMVER = /^\d+\.\d+\.\d+$/;
-const PARTIAL_SEMVER = /^\d+(?:\.\d+)?$/;
 
 export async function executePreview(
 	templateName: string,
@@ -140,21 +138,7 @@ export async function executePreview(
 
 function validateVersion(version: string): void {
 	if (version === 'draft') return;
-	if (version === 'latest') {
-		throw new Error(
-			'`latest` was retired. Run `poli versions list` and pin an exact semver like `1.2.3`.'
-		);
-	}
-	if (PARTIAL_SEMVER.test(version)) {
-		throw new Error(
-			'Use an exact semver `X.Y.Z`. Partial versions like `1.0` were retired.'
-		);
-	}
-	if (!EXACT_SEMVER.test(version)) {
-		throw new Error(
-			'Invalid version: must be `draft` or an exact semver `X.Y.Z`.'
-		);
-	}
+	validateExactSemver(version);
 }
 
 export function registerPreviewCommand(program: Command) {
@@ -176,7 +160,7 @@ export function registerPreviewCommand(program: Command) {
 			const { default: chalk } = await import('chalk');
 
 			try {
-				const { name, version } = parseTemplateSpec(spec);
+				const { name, target: version } = parseTemplateSpec(spec);
 				const result = await executePreview(name, {
 					output: opts.output,
 					data: opts.data,

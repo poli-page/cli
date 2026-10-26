@@ -107,17 +107,19 @@ After `poli login`, the session token is stored at `~/.polipage/credentials.json
 
 ### Programmatic (CI / CD / scripts)
 
-Set the `POLI_PAGE_API_KEY` environment variable. The value must start with `pp_`:
+Set the `POLI_PAGE_API_KEY` environment variable. Every key is bound to one environment and carries its name: `pp_<environment>_` followed by 32 lowercase hex characters. The CLI checks the whole key before any call.
 
-| Prefix      | Use case                                                          |
-| ----------- | ----------------------------------------------------------------- |
-| `pp_test_*` | Sandbox renders (unmetered, no quota)                             |
-| `pp_live_*` | Live renders (counts in the monthly quota, billable)              |
-| `pp_sa_*`   | Service account — recommended for CI; rotates without breaking dev|
+| Key                     | Renders                                                          |
+| ----------------------- | ---------------------------------------------------------------- |
+| `pp_sandbox_…`          | `name@sandbox` — free, watermarked, not counted                  |
+| `pp_live_…`             | `name@live` — counted in the monthly quota                       |
+| `pp_<environment>_…`    | `name@<environment>` — counted in the monthly quota              |
+
+A key renders only its own environment, and never the draft: the draft (`poli render name`) needs `poli login`.
 
 ```bash
-export POLI_PAGE_API_KEY=pp_sa_live_xxx
-poli render invoice -o invoice.pdf
+export POLI_PAGE_API_KEY=pp_live_xxx
+poli render invoice@live -o invoice.pdf
 poli push --message "Release v1.0.5"
 ```
 
@@ -415,55 +417,68 @@ Move a DEPRECATED version back to SANDBOX.
 
 #### `poli render <spec>`
 
-Render a template against the cloud engine. The `<spec>` is either the bare template `name` (renders the draft) or `name@<X.Y.Z>` to pin an exact published version (npm-style). Every render produces a stored document (api-spec §11.3) — the CLI receives a JSON descriptor with `documentId`, `presignedPdfUrl`, `expiresAt`, and 13 other fields. By default it then fetches the URL and writes the PDF locally; pass `--no-download` to skip that step.
+Render a template against the cloud engine. The `<spec>` is either the bare template `name` (the draft) or `name@<environment>` (what is published in that environment).
+
+- **The draft** (`name`, or `name@draft`) renders through `POST /v1/render/draft` and needs a `poli login` session: an API key never renders the draft. The API answers the PDF itself, which the CLI writes locally. Nothing is stored, watermarked or counted, so there is no document and `--no-download` is refused.
+- **An environment** (`name@<environment>`) renders through `POST /v1/render` with `environment: <environment>`. Every such render produces a stored document (api-spec §11.3): the CLI receives a JSON descriptor (`documentId`, `presignedPdfUrl`, `expiresAt`, `environment`, `diagnostics`, …), then fetches the URL and writes the PDF locally; pass `--no-download` to skip that step. With an API key, the environment must be the key's own; another one is refused before any call, naming the key's environment.
 
 ```bash
-poli render invoice                                          # default: draft, downloads PDF
-poli render invoice@1.0.5                                    # exact semver pin
-poli render invoice@draft --data ./mock.json                 # explicit draft + custom data
+poli render invoice                                          # the draft (session), downloads PDF
+poli render invoice@sandbox                                  # what is published in sandbox
+poli render invoice@production --data ./mock.json            # an environment + custom data
 poli render invoice -o ./out/invoice.pdf                     # custom path
-poli render invoice --no-download                            # JSON descriptor only
+poli render invoice@sandbox --no-download                    # JSON descriptor only
 ```
 
 Spec rules:
 
 - `name` → renders the draft (equivalent to `name@draft`).
-- `name@<X.Y.Z>` → exact semver only. `latest`, `1.0`, etc. are rejected with a friendly error.
+- `name@<environment>` → an environment name: 1-20 characters, lowercase letters, digits and single inner hyphens, starting with a letter. `draft` is not an environment name: `name@draft` means the draft. Versions are gone: `name@1.2.3` and `name@latest` are refused with a pointer to `name@<environment>` (exit code `2`).
 
 Flags:
 
 - `--data <file>` — JSON data overrides the mock
 - `-o <file>` — output PDF path. Incompatible with `--no-download`
-- `--no-download` — skip the presigned URL fetch (CI/CD pipelines)
+- `--no-download` — skip the presigned URL fetch (CI/CD pipelines). Environment renders only
 - `--json` — force JSON output even in a TTY
+
+With `--json` (or piped), an environment render prints the API descriptor plus `outputPath`; a draft render, which has no descriptor, prints `{ "template", "environment": "draft", "outputPath" }`.
+
+Errors:
+
+- `404 PROJECT_NOT_IN_ENVIRONMENT` — the project was never published there: run `poli publish --env <environment>`. Exit code `2`.
+- `404 ENVIRONMENT_NOT_FOUND` / `404 TEMPLATE_NOT_FOUND` — the environment does not exist, or the published copy has no such template. Exit code `2`.
+- `503 PUBLISH_IN_PROGRESS` — a publish of that project and environment is running: the CLI waits `Retry-After` and retries once, then exits `3`.
 
 [Output rules](#output-conventions) apply: in a TTY you see only the `✓` line, in a pipe you see only the JSON descriptor, with `--json` you always see the JSON. Pipelines stay clean:
 
 ```bash
-$ DOC_ID=$(poli render invoice | jq -r '.documentId')
+$ DOC_ID=$(poli render invoice@sandbox | jq -r '.documentId')
 $ poli documents thumbnails "$DOC_ID" --width 400
 ```
 
-Resolved environment is exposed in the success line (TTY):
+The success line (TTY) names what was rendered, and says `billed` when the render counts:
 
 ```
-✓ Rendered invoice v1.0.5 (live, billed) → ./output/invoice/invoice.pdf
-✓ Rendered invoice vdraft (sandbox) → ./output/invoice/invoice.pdf
+✓ Rendered invoice@production (billed) → ./output/invoice/a4-portrait/invoice.pdf
+✓ Rendered invoice@sandbox → ./output/invoice/a4-portrait/invoice.pdf
+✓ Rendered invoice@draft → ./output/invoice/a4-portrait/invoice.pdf
 ```
 
 Counter:
-- `version: draft` or `X.Y.Z` SANDBOX/DEPRECATED → unmetered
-- `version: X.Y.Z` LIVE → counts in monthly quota
+- the draft → never counted
+- `sandbox` → free, never counted (and the only watermarked environment)
+- every other environment → counts in the monthly quota
 
 ### Documents
 
-Documents are the cloud-stored output of every `poli render` invocation (or the same render endpoints called via the SDK or REST API). The CLI lets you inspect, delete, and re-derive thumbnails or preview HTML from them.
+Documents are the cloud-stored output of every `poli render name@<environment>` invocation (or the same render endpoints called via the SDK or REST API); a draft render (`poli render name`) is never stored. The CLI lets you inspect, delete, and re-derive thumbnails or preview HTML from them.
 
 There is intentionally **no `poli documents list`** — your application is responsible for tracking the `documentId` values it cares about.
 
 #### `poli documents get <id>`
 
-Returns the document JSON descriptor — same 16-field shape as `poli render`. Output rules: in a TTY you see only the human-readable summary; in a pipe you see only the JSON descriptor; `--json` forces JSON. The CLI never downloads the PDF — `curl` the `presignedPdfUrl` or hand it to the browser yourself.
+Returns the document JSON descriptor — the shape `poli render name@<environment>` prints, without the render's `diagnostics`. The summary shows the environment the document was rendered in. Output rules: in a TTY you see only the human-readable summary; in a pipe you see only the JSON descriptor; `--json` forces JSON. The CLI never downloads the PDF — `curl` the `presignedPdfUrl` or hand it to the browser yourself.
 
 ```bash
 poli documents get doc_abc123
@@ -543,7 +558,7 @@ The `cloud:` block is written by `poli link`, removed by `poli unlink`. **No API
 
 | Variable             | Effect                                                                                                                                                                                                                                          |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POLI_PAGE_API_KEY`  | Single env var for any API key in CI/CD. Accepts `pp_test_*`, `pp_live_*`, or `pp_sa_*`. Must start with `pp_`. **Precedence**: when a credentials file is also present, the session wins.                                                       |
+| `POLI_PAGE_API_KEY`  | Single env var for any API key in CI/CD: `pp_<environment>_` followed by 32 lowercase hex characters, checked in full before any call. The key renders only its own environment. **Precedence**: when a credentials file is also present, the session wins. |
 | `POLI_API_URL`       | Override the API base URL (precedence: `--api-url` flag → `POLI_API_URL` → `poli-page.json` `cloud.apiUrl` → `~/.polipage/credentials.json` `apiUrl` → default `https://api.poli.page`).                                                          |
 | `POLI_PAGE_ENV`      | Default render env (`sandbox` or `live`) when commands accept an env hint.                                                                                                                                                                       |
 | `NO_COLOR`           | Disable ANSI colors (Unix standard).                                                                                                                                                                                                            |
@@ -580,7 +595,7 @@ Imperative commands (`init` without `--starter`, `new`, `link`, `unlink`, `logou
 | ---- | ------------------------------------------------------------------------------------------------------ |
 | `0`  | Success (or no-op, e.g. `promote` when nothing changes)                                                |
 | `1`  | Recoverable inconsistency (already logged in, already linked, version already live)                    |
-| `2`  | Invalid usage (bad args, template not found, version not found, non-TTY context where TTY is required) |
+| `2`  | Invalid usage (bad args, template not found, project not published in that environment, non-TTY context where TTY is required) |
 | `3`  | Network / API error (timeout, 5xx, unspecified 4xx)                                                    |
 | `4`  | Not authenticated — run `poli login` or set `POLI_PAGE_API_KEY`                                        |
 | `5`  | Not authorized (insufficient role, protected environment, `THUMBNAILS_NOT_AVAILABLE`, system project locked) |
@@ -611,14 +626,14 @@ jobs:
         with:
           node-version: '22'
       - run: npm install -g @poli-page/cli
-      - run: poli render invoice@1.0.5 -o ./artifacts/invoice.pdf
+      - run: poli render invoice@production -o ./artifacts/invoice.pdf
       - uses: actions/upload-artifact@v4
         with:
           name: invoice-pdf
           path: ./artifacts/invoice.pdf
 ```
 
-Recommended: use a **service account key** (`pp_sa_live_*`) so rotating it does not log out any developer.
+The key decides the environment: a `pp_production_…` key renders `invoice@production` and nothing else. Recommended: use a **service account key** so rotating it does not log out any developer.
 
 ### GitLab CI
 
@@ -629,7 +644,7 @@ render:
     POLI_PAGE_API_KEY: $POLI_PAGE_API_KEY
   script:
     - npm install -g @poli-page/cli
-    - poli render invoice@1.0.5 -o invoice.pdf
+    - poli render invoice@production -o invoice.pdf
   artifacts:
     paths:
       - invoice.pdf
@@ -640,7 +655,7 @@ render:
 ```bash
 # In a build script
 npm install -g @poli-page/cli
-POLI_PAGE_API_KEY=pp_sa_live_xxx poli render homepage-pdf -o ./public/welcome.pdf
+POLI_PAGE_API_KEY=pp_production_xxx poli render homepage-pdf@production -o ./public/welcome.pdf
 ```
 
 Service accounts have a **fixed role and environment** at creation. The CLI does not try to switch them — the API enforces the permissions.
@@ -653,17 +668,25 @@ Service accounts have a **fixed role and environment** at creation. The CLI does
 
 Either run `poli login` interactively, or export `POLI_PAGE_API_KEY` for CI use. Exit code `4`.
 
-### `POLI_PAGE_API_KEY must start with \`pp_\`...`
+### `POLI_PAGE_API_KEY must be a Poli Page API key: \`pp_<environment>_…\`...`
 
-You set the variable but its value does not match the `pp_*` prefix. Rotate the key from the dashboard's API keys page. Exit code `4`.
+You set the variable but its value is not a whole key: `pp_`, the environment name, `_`, then 32 lowercase hex characters. Copy the key again, or create one from the dashboard's API keys page. Exit code `4`.
 
 ### `This folder isn't linked to a cloud project. Run \`poli link\` first.`
 
-You're in session mode and the local manifest has no `cloud:` block. Either run `poli link`, or switch to api-key mode with `POLI_PAGE_API_KEY=pp_*` (which carries the org context implicitly). Exit code `6`.
+You're in session mode and the local manifest has no `cloud:` block. Either run `poli link`, or switch to api-key mode with `POLI_PAGE_API_KEY=pp_<environment>_…` (which carries the org context implicitly). Exit code `6`.
 
-### `\`latest\` was retired. Run \`poli versions list\` and pin an exact semver...`
+### `API keys render a published environment: use \`name@<environment>\``
 
-The CLI now requires an exact `X.Y.Z` semver when pinning a version. List the published versions with `poli versions list` and pick one. Exit code `2`.
+`poli render name` renders the draft, which only a `poli login` session can do. With an API key, render the key's environment: `poli render name@<environment>`. Exit code `2`.
+
+### `This API key renders the \`<a>\` environment, not \`<b>\``
+
+A key renders only the environment in its prefix. Render `name@<a>`, or use a key for `<b>`. Exit code `2`.
+
+### `\`invoice@1.2.3\`: templates no longer have versions...`
+
+Render specs name an environment, not a version: `poli render invoice@<environment>`, or `poli render invoice` for the draft. Exit code `2`.
 
 ### `403 THUMBNAILS_NOT_AVAILABLE`
 
@@ -671,7 +694,7 @@ Thumbnails via `poli documents thumbnails` are a paid-tier feature. Upgrade to S
 
 ### `429 OVERAGE_CAP_EXCEEDED`
 
-Your org has crossed the monthly cap on `live` PDF renders (counted across `poli render` against a LIVE version and `poli documents thumbnails` on a LIVE document). Wait until the next billing period or raise the cap from your dashboard. Exit code `3`.
+Your org has crossed the monthly cap on `live` PDF renders (counted across `poli render` in any environment other than `sandbox` and `poli documents thumbnails` on a LIVE document). Wait until the next billing period or raise the cap from your dashboard. Exit code `3`.
 
 ### `503 ORGANIZATION_MIGRATING`
 
