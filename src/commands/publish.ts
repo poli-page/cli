@@ -11,7 +11,7 @@ import {
 	type PublishBody,
 	type PublishResult,
 } from '../api-client.js';
-import { ExitCode, errorToExitCode } from '../exit-codes.js';
+import { UsageError, errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 import { toProjectFileEntries } from '../project-files.js';
 import { readAllProjectFiles } from '../project-sync.js';
@@ -33,23 +33,19 @@ const BUNDLE_MAX_BYTES = 5 * 1024 * 1024;
 const ENVIRONMENT_NAME_RE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 const ENVIRONMENT_NAME_MAX_LENGTH = 20;
 
-class PublishUsageError extends Error {
-	readonly exitCode = ExitCode.INVALID_USAGE;
-}
-
 function validateEnvironmentName(name: string | undefined): string {
 	if (name === undefined) {
-		throw new PublishUsageError(
+		throw new UsageError(
 			'--env is required: name the environment to publish to (for example `--env sandbox`).'
 		);
 	}
 	if (name === 'draft') {
-		throw new PublishUsageError(
+		throw new UsageError(
 			'`draft` is not an environment: `poli watch` and `poli dev` sync the draft. Publish to an environment such as `sandbox` or `live`.'
 		);
 	}
 	if (name.length > ENVIRONMENT_NAME_MAX_LENGTH || !ENVIRONMENT_NAME_RE.test(name)) {
-		throw new PublishUsageError(
+		throw new UsageError(
 			`Invalid environment name "${name}": use 1-20 characters, lowercase letters, digits and single inner hyphens, starting with a letter.`
 		);
 	}
@@ -78,7 +74,7 @@ async function buildPublishBody(
 	};
 	const bodyBytes = Buffer.byteLength(JSON.stringify(body));
 	if (bodyBytes > BUNDLE_MAX_BYTES) {
-		throw new PublishUsageError(
+		throw new UsageError(
 			`The publish bundle is ${(bodyBytes / (1024 * 1024)).toFixed(1)} MiB; the limit is 5 MiB. Shrink or remove large assets.`
 		);
 	}
@@ -88,7 +84,7 @@ async function buildPublishBody(
 async function confirmProtected(target: EnvironmentInfo, options: PublishOptions): Promise<void> {
 	if (!target.protected || options.yes === true || process.env.CI === 'true') return;
 	if (!options.confirmFn) {
-		throw new PublishUsageError(
+		throw new UsageError(
 			`Environment "${target.name}" is protected. Pass --yes to publish to it without a prompt.`
 		);
 	}
@@ -131,7 +127,7 @@ export async function executePublish(options: PublishOptions): Promise<PublishRe
 	const cwd = options.cwd ?? process.cwd();
 	const environment = validateEnvironmentName(options.env);
 	if (options.message !== undefined && options.message.length > MESSAGE_MAX_LENGTH) {
-		throw new PublishUsageError(
+		throw new UsageError(
 			`Publish message is too long (${options.message.length} characters). The maximum is ${MESSAGE_MAX_LENGTH}.`
 		);
 	}

@@ -6,7 +6,7 @@ import {
 	type PublishLogEntry,
 } from '../api-client.js';
 import { getSessionToken } from '../credentials.js';
-import { ExitCode, errorToExitCode } from '../exit-codes.js';
+import { UsageError, errorToExitCode } from '../exit-codes.js';
 import { readManifest, type PoliPageManifest } from '../manifest.js';
 import { shouldEmitJson } from '../output.js';
 import { findOrganization, type Organization } from './link.js';
@@ -15,10 +15,6 @@ import { shortBundleHash } from './publish.js';
 type EnvListResult =
 	| { scope: 'project'; org: string; project: string; environments: ProjectEnvironmentState[] }
 	| { scope: 'organization'; org: string; environments: EnvironmentInfo[] };
-
-class EnvUsageError extends Error {
-	readonly exitCode = ExitCode.INVALID_USAGE;
-}
 
 /** The manifest's `cloud` block, or `undefined` when the folder has no poli-page.json. */
 async function readLinkedProject(cwd: string): Promise<PoliPageManifest['cloud']> {
@@ -39,7 +35,7 @@ function selectOrganization(
 		try {
 			return findOrganization(orgs, flag);
 		} catch (err) {
-			throw new EnvUsageError((err as Error).message);
+			throw new UsageError((err as Error).message);
 		}
 	}
 	if (linkedSlug !== undefined) return findOrganization(orgs, linkedSlug);
@@ -47,7 +43,7 @@ function selectOrganization(
 	if (orgs.length === 0) {
 		throw new Error('Your account has no organization yet. Create one in the dashboard.');
 	}
-	throw new EnvUsageError(
+	throw new UsageError(
 		`You belong to several organizations: ${orgs.map((o) => o.slug).join(', ')}. Pick one with --org <slug>.`
 	);
 }

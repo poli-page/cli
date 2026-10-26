@@ -23,6 +23,11 @@ export const ExitCode = {
 
 export type ExitCodeValue = (typeof ExitCode)[keyof typeof ExitCode];
 
+/** Bad arguments or flags: exits with INVALID_USAGE through `errorToExitCode`. */
+export class UsageError extends Error {
+	readonly exitCode = ExitCode.INVALID_USAGE;
+}
+
 import {
 	ApiError,
 	NotAMemberError,

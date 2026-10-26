@@ -533,6 +533,16 @@ export function createApiClient(baseUrl?: string): ApiClient {
 		return response;
 	}
 
+	/** `value` encoded as one path segment; `label` names it in the error. */
+	function idSegment(value: string, label: string): string {
+		// encodeURIComponent leaves the dot segments as they are, and the URL
+		// parser would resolve them against the path.
+		if (value === '.' || value === '..') {
+			throw new Error(`Invalid ${label} ID.`);
+		}
+		return encodeURIComponent(value);
+	}
+
 	return {
 		async signIn(email, password) {
 			const response = await request('/api/auth/sign-in/email', {
@@ -777,13 +787,8 @@ export function createApiClient(baseUrl?: string): ApiClient {
 		},
 
 		async listEnvironments(session, orgId) {
-			// encodeURIComponent leaves the dot segments as they are, and the URL
-			// parser would resolve them against the path.
-			if (orgId === '.' || orgId === '..') {
-				throw new Error('Invalid organization ID.');
-			}
 			const response = await request(
-				`/api/organizations/${encodeURIComponent(orgId)}/environments`,
+				`/api/organizations/${idSegment(orgId, 'organization')}/environments`,
 				{
 					headers: {
 						'Content-Type': 'application/json',
@@ -795,15 +800,8 @@ export function createApiClient(baseUrl?: string): ApiClient {
 		},
 
 		async getProjectEnvironments(session, orgId, projectId) {
-			// Dot segments survive encodeURIComponent and the URL parser resolves them.
-			if (orgId === '.' || orgId === '..') {
-				throw new Error('Invalid organization ID.');
-			}
-			if (projectId === '.' || projectId === '..') {
-				throw new Error('Invalid project ID.');
-			}
 			const response = await request(
-				`/api/organizations/${encodeURIComponent(orgId)}/projects/${encodeURIComponent(projectId)}/environments`,
+				`/api/organizations/${idSegment(orgId, 'organization')}/projects/${idSegment(projectId, 'project')}/environments`,
 				{
 					headers: {
 						'Content-Type': 'application/json',
