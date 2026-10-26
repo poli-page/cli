@@ -528,6 +528,11 @@ describe('poli dev', () => {
 				'rendering',
 				'rendered',
 			]);
+			// A draft render is a PDF: there is no page count to report.
+			expect(events.find((e) => e.type === 'rendered')).toEqual({
+				type: 'rendered',
+				template: 'invoice',
+			});
 
 			// No watcher batch → no further renders, however long we wait.
 			await new Promise((r) => setTimeout(r, 250));
