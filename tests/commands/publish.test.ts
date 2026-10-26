@@ -308,7 +308,7 @@ describe('poli publish', () => {
 			expect(calls).toHaveLength(0);
 		});
 
-		it('names the environment when the API answers ENVIRONMENT_NOT_FOUND', async () => {
+		it('names the environment and the others that exist when the API answers ENVIRONMENT_NOT_FOUND', async () => {
 			const client = makeClient([], {
 				publish: async () => {
 					throw new EnvironmentNotFoundError('404 ENVIRONMENT_NOT_FOUND');
@@ -317,6 +317,7 @@ describe('poli publish', () => {
 			const err = await run({ env: 'sandbox' }, client).catch((e) => e);
 			expect(err).toBeInstanceOf(EnvironmentNotFoundError);
 			expect(err.message).toContain('"sandbox"');
+			expect(err.message).toContain('Environments: live.');
 			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
 		});
 	});

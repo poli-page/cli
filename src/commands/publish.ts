@@ -98,14 +98,23 @@ async function confirmProtected(target: EnvironmentInfo, options: PublishOptions
 }
 
 /** The API's publish errors, reworded with the project and environment they are about. */
-function explainPublishError(err: unknown, project: string, environment: string): unknown {
+function explainPublishError(
+	err: unknown,
+	project: string,
+	environment: string,
+	environments: EnvironmentInfo[]
+): unknown {
 	if (err instanceof EnvironmentProtectedError) {
 		return new EnvironmentProtectedError(
 			`Environment "${environment}" is protected: only an owner or admin of the organization can publish to it.`
 		);
 	}
 	if (err instanceof EnvironmentNotFoundError) {
-		return environmentNotFound(environment);
+		// The preflight list still holds the environment the API just reported gone.
+		return environmentNotFound(
+			environment,
+			environments.filter((e) => e.name !== environment)
+		);
 	}
 	if (err instanceof ApiError && err.code === 'PUBLISH_IN_PROGRESS') {
 		return new ApiError(
@@ -149,7 +158,7 @@ export async function executePublish(options: PublishOptions): Promise<PublishRe
 	try {
 		return await client.publish(session, orgId, project, body);
 	} catch (err) {
-		throw explainPublishError(err, project, environment);
+		throw explainPublishError(err, project, environment, environments);
 	}
 }
 
