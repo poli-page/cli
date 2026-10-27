@@ -44,7 +44,7 @@ function selectOrganization(
 		throw new Error('Your account has no organization yet. Create one in the dashboard.');
 	}
 	throw new UsageError(
-		`You belong to several organizations: ${orgs.map((o) => o.slug).join(', ')}. Pick one with --org <slug>.`
+		`You belong to several organizations: ${orgs.map((o) => oneLine(o.slug)).join(', ')}. Pick one with --org <slug>.`
 	);
 }
 
@@ -96,13 +96,13 @@ function formatLastPublish(entry: PublishLogEntry | null, chalk: ChalkLike): str
 		entry.status === 'succeeded'
 			? chalk.green(entry.status)
 			: entry.status === 'failed'
-				? chalk.red(`failed${entry.errorCode ? ` (${entry.errorCode})` : ''}`)
-				: chalk.yellow(entry.status);
+				? chalk.red(`failed${entry.errorCode ? ` (${oneLine(entry.errorCode)})` : ''}`)
+				: chalk.yellow(oneLine(entry.status));
 	return [
 		status,
 		formatTimestamp(entry.publishedAt ?? entry.startedAt),
 		oneLine(entry.author.displayName),
-		shortBundleHash(entry.bundleHash),
+		oneLine(shortBundleHash(entry.bundleHash)),
 		...(entry.message ? [oneLine(entry.message)] : []),
 	].join('  ');
 }
@@ -118,14 +118,14 @@ function formatTable(header: string[], rows: string[][], chalk: ChalkLike): stri
 function formatEnvList(result: EnvListResult, chalk: ChalkLike): string[] {
 	if (result.scope === 'project') {
 		const rows = result.environments.map((e) => [
-			e.environment,
+			oneLine(e.environment),
 			yesNo(e.protected),
 			yesNo(e.readOnly),
 			yesNo(e.published),
 			formatLastPublish(e.lastPublish, chalk),
 		]);
 		return [
-			`Environments of ${result.org}, project ${result.project}:`,
+			`Environments of ${oneLine(result.org)}, project ${oneLine(result.project)}:`,
 			'',
 			...formatTable(
 				['ENVIRONMENT', 'PROTECTED', 'READ-ONLY', 'PUBLISHED', 'LAST PUBLISH'],
@@ -135,13 +135,13 @@ function formatEnvList(result: EnvListResult, chalk: ChalkLike): string[] {
 		];
 	}
 	const rows = result.environments.map((e) => [
-		e.name,
+		oneLine(e.name),
 		yesNo(e.protected),
 		yesNo(e.readOnly),
 		String(e.projectCount),
 	]);
 	return [
-		`Environments of ${result.org}:`,
+		`Environments of ${oneLine(result.org)}:`,
 		'',
 		...formatTable(['ENVIRONMENT', 'PROTECTED', 'READ-ONLY', 'PROJECTS'], rows, chalk),
 	];

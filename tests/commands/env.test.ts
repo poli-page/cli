@@ -406,6 +406,72 @@ describe('poli env list', () => {
 		}
 	});
 
+	it('control characters in server names cannot break the human output; --json stays raw', async () => {
+		const evil = { id: 'org_1', name: 'Acme', slug: 'ac\nme' };
+		orgs = [evil];
+		await linkProject({
+			...LINKED_MANIFEST,
+			cloud: { ...LINKED_MANIFEST.cloud, orgSlug: 'ac\nme', projectSlug: 'in\rvoices' },
+		});
+		const states: ProjectEnvironmentState[] = [
+			{
+				...PROJECT_ENVIRONMENTS[2],
+				environment: 'stag\ning',
+				lastPublish: logEntry({
+					status: 'failed',
+					errorCode: 'ABORTED\n  live',
+					publishedAt: null,
+					message: null,
+				}),
+			},
+			{
+				...PROJECT_ENVIRONMENTS[3],
+				environment: 'pre\u0007view',
+				lastPublish: logEntry({
+					status: 'in-\nprogress' as PublishLogEntry['status'],
+					message: null,
+					bundleHash: `sha256:abcdef\n  live${'0'.repeat(52)}`,
+				}),
+			},
+		];
+		fetchMock.mockImplementation(async (url: string) => {
+			if (url.endsWith('/projects/proj_1/environments')) return jsonResponse(200, states);
+			if (url.endsWith('/org_1/environments')) {
+				return jsonResponse(200, [environment({ name: 'sand\r\nbox' })]);
+			}
+			return jsonResponse(200, orgs);
+		});
+
+		await poli();
+		expect(logs).toEqual([
+			'Environments of ac me, project in voices:',
+			'',
+			'  ENVIRONMENT  PROTECTED  READ-ONLY  PUBLISHED  LAST PUBLISH',
+			'  stag ing     no         yes        no         failed (ABORTED   live)  2026-10-26 09:59 UTC  Ada Lovelace  0123456789ab',
+			'  pre view     no         no         yes        in- progress  2026-10-26 10:00 UTC  Ada Lovelace  abcdef   liv',
+		]);
+
+		logs = [];
+		await poli('--json');
+		expect(JSON.parse(logs.join('\n'))).toEqual(states);
+
+		await linkProject({ project: { name: 'Invoices' }, templates: [] });
+		logs = [];
+		await poli();
+		expect(logs).toEqual([
+			'Environments of ac me:',
+			'',
+			'  ENVIRONMENT  PROTECTED  READ-ONLY  PROJECTS',
+			'  sand box     no         no         0',
+		]);
+
+		orgs = [evil, { ...GLOBEX, slug: 'glo\u001b[2Jbex' }];
+		await poli();
+		expect(errors).toEqual([
+			'You belong to several organizations: ac me, glo [2Jbex. Pick one with --org <slug>.',
+		]);
+	});
+
 	it('a poli-page.json that is not valid JSON is reported, not read as unlinked', async () => {
 		await writeFile(join(projectDir, MANIFEST_FILENAME), '{ not json');
 		await poli();
