@@ -116,7 +116,7 @@ export async function promptForStarterTemplate(
 	const ref: TemplateRef = { collection: collectionKey, name: templateName };
 
 	if (options.promptDestName) {
-		const inputFn = options.inputFn ?? defaultInput;
+		const inputFn = options.inputFn ?? inputPrompt;
 		const destName = await inputFn({
 			message: 'Template name in the project:',
 			default: templateName,
@@ -146,7 +146,7 @@ async function defaultSelect<T>(args: {
 	}) as Promise<T>;
 }
 
-async function defaultInput(args: {
+export async function inputPrompt(args: {
 	message: string;
 	default?: string;
 }): Promise<string> {

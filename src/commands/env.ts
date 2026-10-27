@@ -14,6 +14,7 @@ import { readManifest, type PoliPageManifest } from '../manifest.js';
 import { shouldEmitJson } from '../output.js';
 import { findOrganization, type Organization } from './link.js';
 import { shortBundleHash } from './publish.js';
+import { inputPrompt } from '../template-prompt.js';
 
 type EnvListResult =
 	| { scope: 'project'; org: string; project: string; environments: ProjectEnvironmentState[] }
@@ -162,9 +163,8 @@ async function executeEnvRemoveProject(
 	return { org: org.slug, project, environment };
 }
 
-async function typeProjectName(message: string): Promise<string> {
-	const { input } = await import('@inquirer/prompts');
-	return input({ message });
+function typeProjectName(message: string): Promise<string> {
+	return inputPrompt({ message });
 }
 
 // ─── Output ─────────────────────────────────────────────────────────────────────
