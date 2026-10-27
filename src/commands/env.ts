@@ -8,7 +8,7 @@ import {
 	type PublishLogEntry,
 } from '../api-client.js';
 import { getSessionToken } from '../credentials.js';
-import { isValidEnvironmentName } from '../environment-name.js';
+import { assertEnvironmentName } from '../environment-name.js';
 import { UsageError, errorToExitCode } from '../exit-codes.js';
 import { readManifest, type PoliPageManifest } from '../manifest.js';
 import { shouldEmitJson } from '../output.js';
@@ -81,19 +81,6 @@ interface RemoveProjectResult {
 	environment: string;
 }
 
-function validateEnvironmentName(name: string): void {
-	if (name === 'draft') {
-		throw new UsageError(
-			'`draft` is not an environment: a project cannot be removed from its draft.'
-		);
-	}
-	if (!isValidEnvironmentName(name)) {
-		throw new UsageError(
-			`Invalid environment name "${name}": use 1-20 characters, lowercase letters, digits and single inner hyphens, starting with a letter.`
-		);
-	}
-}
-
 /** The API's removal errors, reworded with the project and environment they are about. */
 function explainRemoveError(err: unknown, project: string, environment: string): unknown {
 	if (!(err instanceof ApiError)) return err;
@@ -138,7 +125,10 @@ async function executeEnvRemoveProject(
 	environment: string,
 	options: { yes?: boolean; typeProjectName?: (message: string) => Promise<string> }
 ): Promise<RemoveProjectResult> {
-	validateEnvironmentName(environment);
+	assertEnvironmentName(
+		environment,
+		'`draft` is not an environment: a project cannot be removed from its draft.'
+	);
 	const session = await getSessionToken();
 	const linked = await readLinkedProject(process.cwd());
 	if (!linked) {
