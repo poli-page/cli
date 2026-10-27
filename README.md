@@ -66,7 +66,7 @@ poli new invoice --from-template showcase/invoice
 # 4. Link the project to your organization (writes the cloud manifest)
 poli link
 
-# 5. Render a PDF using the local template against the cloud engine
+# 5. Render the draft (the files `poli link` uploaded) to a PDF
 poli render invoice -o invoice.pdf
 
 # 6. Publish the project to the sandbox environment
@@ -552,7 +552,6 @@ A manifest from before environments may still carry `project.version` or `cloud.
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POLI_PAGE_API_KEY`  | Single env var for any API key in CI/CD: `pp_<environment>_` followed by 32 lowercase hex characters, checked in full before any call. The key renders only its own environment; a service key also publishes to it. **Precedence**: when a credentials file is also present, the session wins. |
 | `POLI_API_URL`       | Override the API base URL (precedence: `--api-url` flag → `POLI_API_URL` → `poli-page.json` `cloud.apiUrl` → `~/.polipage/credentials.json` `apiUrl` → default `https://api.poli.page`).                                                          |
-| `POLI_PAGE_ENV`      | Default render env (`sandbox` or `live`) when commands accept an env hint.                                                                                                                                                                       |
 | `NO_COLOR`           | Disable ANSI colors (Unix standard).                                                                                                                                                                                                            |
 | `CI`                 | Auto-detected; equivalent to a global `--yes`, except for `poli env remove-project`.                                                                                                                                                            |
 
@@ -644,14 +643,14 @@ jobs:
         with:
           node-version: '22'
       - run: npm install -g @poli-page/cli
-      - run: poli render invoice@production -o ./artifacts/invoice.pdf
+      - run: poli render invoice@live -o ./artifacts/invoice.pdf
       - uses: actions/upload-artifact@v4
         with:
           name: invoice-pdf
           path: ./artifacts/invoice.pdf
 ```
 
-The key decides the environment: a `pp_production_…` key renders `invoice@production` and nothing else. A standard key is enough to render; a service key also works, and rotating either one does not log out any developer.
+The key decides the environment: a `pp_live_…` key renders `invoice@live` and nothing else. A standard key is enough to render; a service key also works, and rotating either one does not log out any developer.
 
 ### GitLab CI
 
@@ -662,7 +661,7 @@ render:
     POLI_PAGE_API_KEY: $POLI_PAGE_API_KEY
   script:
     - npm install -g @poli-page/cli
-    - poli render invoice@production -o invoice.pdf
+    - poli render invoice@live -o invoice.pdf
   artifacts:
     paths:
       - invoice.pdf
@@ -673,7 +672,7 @@ render:
 ```bash
 # In a build script
 npm install -g @poli-page/cli
-POLI_PAGE_API_KEY=pp_production_xxx poli render homepage-pdf@production -o ./public/welcome.pdf
+POLI_PAGE_API_KEY=pp_live_xxx poli render homepage-pdf@live -o ./public/welcome.pdf
 ```
 
 A service key has a **fixed role and environment** from its creation. The CLI does not try to switch them — the API enforces the permissions.
@@ -714,13 +713,27 @@ A key renders only the environment in its prefix. Render `name@<a>`, or use a ke
 
 Render specs name an environment, not a version: `poli render invoice@<environment>`, or `poli render invoice` for the draft. Exit code `2`.
 
+### `403 DRAFT_REQUIRES_SESSION`
+
+The API renders the draft for a `poli login` session only. The CLI refuses a draft render with an API key before any call (see above), so this code comes back only from a draft render sent outside the CLI with a key. Render `name@<environment>` with the key, or render the draft after `poli login`.
+
+### `Environment "<env>" is protected...` (`403 ENVIRONMENT_PROTECTED`)
+
+`poli publish --env <env>` to a protected environment (`live` by default) by someone who is not an owner or admin of the organization, or with a service key without the `admin` role. Ask an owner or admin to publish, or use an `admin` service key. Exit code `5`.
+
+Without a terminal, `Environment "<env>" is protected. Pass --yes to publish to it without a prompt.` means the confirmation could not be asked: pass `--yes` (`CI=true` counts as `--yes`). Exit code `2`.
+
+### `PUBLISH_IN_PROGRESS`
+
+A publish of the same project and environment is running. `poli render name@<env>` gets `503 PUBLISH_IN_PROGRESS`, waits `Retry-After` and retries once; if the publish is still running, it exits `3`: try again in a moment. `poli publish` and `poli env remove-project` get it while another publish or removal runs, and do not retry: run the command again once the other one is done. Exit code `3`.
+
 ### `403 THUMBNAILS_NOT_AVAILABLE`
 
 Thumbnails via `poli documents thumbnails` are a paid-tier feature. Upgrade to Starter from the dashboard. Exit code `5`.
 
 ### `429 OVERAGE_CAP_EXCEEDED`
 
-Your org has crossed the monthly cap on `live` PDF renders (counted across `poli render` in any environment other than `sandbox` and `poli documents thumbnails` on a LIVE document). Wait until the next billing period or raise the cap from your dashboard. Exit code `3`.
+Your org has crossed the monthly cap on `live` PDF renders (counted across `poli render` in any environment other than `sandbox` and `poli documents thumbnails` on a document of such an environment). Wait until the next billing period or raise the cap from your dashboard. Exit code `3`.
 
 ### `503 ORGANIZATION_MIGRATING`
 
