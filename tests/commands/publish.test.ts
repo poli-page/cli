@@ -13,10 +13,12 @@ import {
 	UnsupportedFileTypeError,
 	type ApiClient,
 	type EnvironmentInfo,
+	type MeResponse,
 	type PublishBody,
 	type PublishResult,
 } from '../../src/api-client.js';
 import { ExitCode, errorToExitCode } from '../../src/exit-codes.js';
+import { testApiKey } from '../helpers/api-key.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
 
@@ -67,17 +69,34 @@ function publishResult(over: Partial<PublishResult> = {}): PublishResult {
 }
 
 interface PublishCall {
-	session: string;
-	orgId: string;
+	authorization: string;
+	orgId: string | undefined;
 	project: string;
 	body: PublishBody;
+}
+
+const SERVICE_KEY = testApiKey('staging');
+
+function keyMe(auth: Partial<MeResponse['auth']> = {}): MeResponse {
+	return {
+		auth: {
+			mode: 'api-key',
+			keyType: 'service',
+			environment: 'staging',
+			role: 'developer',
+			...auth,
+		},
+		user: null,
+		key: null,
+		org: { id: 'org_1', slug: 'acme', name: 'Acme', tier: 'free', lifecycleStatus: 'active' },
+	};
 }
 
 function makeClient(calls: PublishCall[], overrides: Partial<ApiClient> = {}): ApiClient {
 	return createFakeApiClient({
 		listEnvironments: async () => ENVIRONMENTS,
-		publish: async (session, orgId, project, body) => {
-			calls.push({ session, orgId, project, body });
+		publish: async (authorization, orgId, project, body) => {
+			calls.push({ authorization, orgId, project, body });
 			return publishResult({ environment: body.environment });
 		},
 		...overrides,
@@ -90,6 +109,7 @@ describe('poli publish', () => {
 
 	beforeEach(async () => {
 		vi.stubEnv('CI', '');
+		vi.stubEnv('POLI_PAGE_API_KEY', '');
 		projectDir = await mkdtemp(join(tmpdir(), 'poli-publish-'));
 		fakeHome = await mkdtemp(join(tmpdir(), 'poli-publish-home-'));
 		await writeCredentials(
@@ -124,14 +144,21 @@ describe('poli publish', () => {
 	describe('success', () => {
 		it('publishes the bundle to the project slug with the session and the manifest org id', async () => {
 			const calls: PublishCall[] = [];
+			const listed: string[][] = [];
 			const result = await run(
 				{ env: 'sandbox', message: 'First release' },
-				makeClient(calls)
+				makeClient(calls, {
+					listEnvironments: async (authorization, orgId) => {
+						listed.push([authorization, orgId]);
+						return ENVIRONMENTS;
+					},
+				})
 			);
 
 			expect(result).toEqual(publishResult());
+			expect(listed).toEqual([['Bearer session-token', 'org_1']]);
 			expect(calls).toHaveLength(1);
-			expect(calls[0].session).toBe('session-token');
+			expect(calls[0].authorization).toBe('Bearer session-token');
 			expect(calls[0].orgId).toBe('org_1');
 			expect(calls[0].project).toBe('invoices');
 			expect(calls[0].body.environment).toBe('sandbox');
@@ -283,6 +310,17 @@ describe('poli publish', () => {
 			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_LOCAL_STATE);
 		});
 
+		it('refuses a linked manifest without cloud.orgId when logged in (exit 6)', async () => {
+			const { orgId: _omitted, ...cloud } = MANIFEST.cloud;
+			await writeFile(
+				join(projectDir, MANIFEST_FILENAME),
+				JSON.stringify({ ...MANIFEST, cloud })
+			);
+			const err = await run({ env: 'sandbox' }, noCall()).catch((e) => e);
+			expect(err.message).toMatch(/poli link/);
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_LOCAL_STATE);
+		});
+
 		it('refuses a folder without poli-page.json (exit 6)', async () => {
 			await rm(join(projectDir, MANIFEST_FILENAME));
 			const err = await run({ env: 'sandbox' }, noCall()).catch((e) => e);
@@ -294,6 +332,17 @@ describe('poli publish', () => {
 			await rm(fakeHome, { recursive: true, force: true });
 			const err = await run({ env: 'sandbox' }, noCall()).catch((e) => e);
 			expect(errorToExitCode(err)).toBe(ExitCode.NOT_AUTHENTICATED);
+		});
+
+		it('checks the link before auth: unlinked, logged out and no key exits 6', async () => {
+			await rm(fakeHome, { recursive: true, force: true });
+			await writeFile(
+				join(projectDir, MANIFEST_FILENAME),
+				JSON.stringify({ ...MANIFEST, cloud: undefined })
+			);
+			const err = await run({ env: 'sandbox' }, noCall()).catch((e) => e);
+			expect(err.message).toMatch(/poli link/);
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_LOCAL_STATE);
 		});
 	});
 
@@ -353,6 +402,7 @@ describe('poli publish', () => {
 		it('--yes skips the confirmation', async () => {
 			const calls: PublishCall[] = [];
 			const confirmFn = vi.fn(async () => false);
+			vi.stubEnv('POLI_PAGE_API_KEY', testApiKey('live'));
 			await run({ env: 'live', yes: true, confirmFn }, makeClient(calls));
 			expect(confirmFn).not.toHaveBeenCalled();
 			expect(calls).toHaveLength(1);
@@ -368,6 +418,7 @@ describe('poli publish', () => {
 		it('an unprotected environment never asks', async () => {
 			const calls: PublishCall[] = [];
 			const confirmFn = vi.fn(async () => false);
+			vi.stubEnv('POLI_PAGE_API_KEY', testApiKey('live'));
 			await run({ env: 'sandbox', confirmFn }, makeClient(calls));
 			expect(confirmFn).not.toHaveBeenCalled();
 			expect(calls).toHaveLength(1);
@@ -384,6 +435,163 @@ describe('poli publish', () => {
 			expect(err.message).toContain('"live"');
 			expect(err.message).toMatch(/owner or admin/);
 			expect(errorToExitCode(err)).toBe(ExitCode.NOT_AUTHORIZED);
+		});
+	});
+
+	describe('with a service key in POLI_PAGE_API_KEY and no session', () => {
+		let order: string[];
+
+		function keyClient(
+			calls: PublishCall[],
+			me: MeResponse,
+			overrides: Partial<ApiClient> = {}
+		): ApiClient {
+			// No getOrganizations or listEnvironments: the fake rejects any call to them.
+			return createFakeApiClient({
+				getMe: async (authorization, orgIdHeader) => {
+					order.push(`getMe ${authorization} ${orgIdHeader}`);
+					return me;
+				},
+				publish: async (authorization, orgId, project, body) => {
+					order.push('publish');
+					calls.push({ authorization, orgId, project, body });
+					return publishResult({ environment: body.environment });
+				},
+				...overrides,
+			});
+		}
+
+		beforeEach(async () => {
+			await rm(fakeHome, { recursive: true, force: true });
+			vi.stubEnv('POLI_PAGE_API_KEY', SERVICE_KEY);
+			order = [];
+		});
+
+		it('reads the key from GET /v1/me, then publishes to the project slug without X-Poli-Org-Id', async () => {
+			const calls: PublishCall[] = [];
+			const result = await run(
+				{ env: 'staging', message: 'From CI' },
+				keyClient(calls, keyMe())
+			);
+
+			expect(result).toEqual(publishResult({ environment: 'staging' }));
+			expect(order).toEqual([`getMe Bearer ${SERVICE_KEY} undefined`, 'publish']);
+			expect(calls).toHaveLength(1);
+			expect(calls[0].authorization).toBe(`Bearer ${SERVICE_KEY}`);
+			expect(calls[0].orgId).toBeUndefined();
+			expect(calls[0].project).toBe('invoices');
+			expect(calls[0].body.environment).toBe('staging');
+			expect(calls[0].body.message).toBe('From CI');
+			expect(calls[0].body.files.map((f) => f.path)).toContain(MANIFEST_FILENAME);
+		});
+
+		it("refuses an --env other than the key's environment before the publish call, naming it, exit 2", async () => {
+			const calls: PublishCall[] = [];
+			const err = await run({ env: 'live', yes: true }, keyClient(calls, keyMe())).catch(
+				(e) => e
+			);
+			expect(err.message).toContain('"staging"');
+			expect(err.message).toContain('"live"');
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
+			expect(calls).toHaveLength(0);
+		});
+
+		it("compares --env with the environment the key carries (K1), not /v1/me's", async () => {
+			const calls: PublishCall[] = [];
+			await run({ env: 'staging' }, keyClient(calls, keyMe({ environment: 'live' })));
+			expect(calls).toHaveLength(1);
+			expect(calls[0].body.environment).toBe('staging');
+		});
+
+		it('still requires --env', async () => {
+			const err = await run({}, keyClient([], keyMe())).catch((e) => e);
+			expect(err.message).toMatch(/--env is required/);
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
+			expect(order).toEqual([]);
+		});
+
+		it('refuses a standard key before the publish call, exit 5', async () => {
+			const calls: PublishCall[] = [];
+			const me = keyMe({ keyType: 'standard', role: null });
+			const err = await run({ env: 'staging' }, keyClient(calls, me)).catch((e) => e);
+			expect(err.message).toBe(
+				'Standard API keys can only render. Use a service key or `poli login`.'
+			);
+			expect(errorToExitCode(err)).toBe(ExitCode.NOT_AUTHORIZED);
+			expect(calls).toHaveLength(0);
+		});
+
+		it('never prompts: the API decides on a protected environment', async () => {
+			const calls: PublishCall[] = [];
+			const confirmFn = vi.fn(async () => false);
+			vi.stubEnv('POLI_PAGE_API_KEY', testApiKey('live'));
+			await run(
+				{ env: 'live', confirmFn },
+				keyClient(calls, keyMe({ environment: 'live', role: 'admin' }))
+			);
+			expect(confirmFn).not.toHaveBeenCalled();
+			expect(calls).toHaveLength(1);
+		});
+
+		it('ENVIRONMENT_PROTECTED from the API exits 5 and says the key needs the admin role', async () => {
+			vi.stubEnv('POLI_PAGE_API_KEY', testApiKey('live'));
+			const client = keyClient([], keyMe({ environment: 'live' }), {
+				publish: async () => {
+					throw new EnvironmentProtectedError('403 ENVIRONMENT_PROTECTED');
+				},
+			});
+			const err = await run({ env: 'live' }, client).catch((e) => e);
+			expect(err).toBeInstanceOf(EnvironmentProtectedError);
+			expect(err.message).toContain('"live"');
+			expect(err.message).toMatch(/`admin` role/);
+			expect(errorToExitCode(err)).toBe(ExitCode.NOT_AUTHORIZED);
+		});
+
+		it('names the environment when the API answers ENVIRONMENT_NOT_FOUND, exit 2', async () => {
+			const client = keyClient([], keyMe(), {
+				publish: async () => {
+					throw new EnvironmentNotFoundError('404 ENVIRONMENT_NOT_FOUND');
+				},
+			});
+			const err = await run({ env: 'staging' }, client).catch((e) => e);
+			expect(err.message).toBe('Environment "staging" does not exist in this organization.');
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
+		});
+
+		it('a session wins over the key', async () => {
+			await writeCredentials(
+				{
+					session: 'session-token',
+					user: { id: 'u1', name: 'X', email: 'x@x' },
+					orgs: { acme: {} },
+				},
+				fakeHome
+			);
+			const calls: PublishCall[] = [];
+			// makeClient stubs no getMe: the session path never asks who the key is.
+			await run({ env: 'sandbox' }, makeClient(calls));
+			expect(calls).toHaveLength(1);
+			expect(calls[0].authorization).toBe('Bearer session-token');
+			expect(calls[0].orgId).toBe('org_1');
+		});
+
+		it('refuses an unlinked folder (exit 6) without calling the API', async () => {
+			await writeFile(
+				join(projectDir, MANIFEST_FILENAME),
+				JSON.stringify({ ...MANIFEST, cloud: undefined })
+			);
+			const err = await run({ env: 'staging' }, keyClient([], keyMe())).catch((e) => e);
+			expect(err.message).toMatch(/poli link/);
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_LOCAL_STATE);
+			expect(order).toEqual([]);
+		});
+
+		it('refuses a POLI_PAGE_API_KEY that is not an API key (exit 4) without calling the API', async () => {
+			vi.stubEnv('POLI_PAGE_API_KEY', 'not_a_key');
+			const err = await run({ env: 'staging' }, keyClient([], keyMe())).catch((e) => e);
+			expect(err.message).toMatch(/POLI_PAGE_API_KEY/);
+			expect(errorToExitCode(err)).toBe(ExitCode.NOT_AUTHENTICATED);
+			expect(order).toEqual([]);
 		});
 	});
 
@@ -423,6 +631,7 @@ describe('poli publish', () => {
 		const RESULT = publishResult({ bundleHash: `sha256:0123456789abcdef${'0'.repeat(48)}` });
 		let fetchMock: ReturnType<typeof vi.fn>;
 		let publishAnswer: () => Response;
+		let meAnswer: () => Response;
 		let logs: string[];
 		let errors: string[];
 		let savedExitCode: typeof process.exitCode;
@@ -453,7 +662,9 @@ describe('poli publish', () => {
 			vi.stubEnv('POLI_API_URL', API_URL);
 			vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
 			publishAnswer = () => jsonResponse(200, RESULT);
+			meAnswer = () => new Response('unexpected', { status: 500 });
 			fetchMock = vi.fn(async (url: string) => {
+				if (url === `${API_URL}/v1/me`) return meAnswer();
 				if (url.endsWith('/organizations/org_1/environments')) {
 					return jsonResponse(200, ENVIRONMENTS);
 				}
@@ -542,6 +753,36 @@ describe('poli publish', () => {
 			expect(process.exitCode).toBe(ExitCode.INVALID_USAGE);
 			expect(errors.join('\n')).toContain('templates/invoice/x.svg');
 			expect(logs).toEqual([]);
+		});
+
+		it('publishes with a service key and no session: GET /v1/me, then the publish without X-Poli-Org-Id', async () => {
+			setTTY(true, true);
+			await rm(fakeHome, { recursive: true, force: true });
+			vi.stubEnv('POLI_PAGE_API_KEY', SERVICE_KEY);
+			meAnswer = () => jsonResponse(200, keyMe());
+			await poli('--env', 'staging');
+			expect(errors).toEqual([]);
+			expect(process.exitCode).toBeUndefined();
+			expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+				`${API_URL}/v1/me`,
+				`${API_URL}/v1/projects/invoices/publish`,
+			]);
+			const headers = (publishCalls()[0][1] as RequestInit).headers as Record<string, string>;
+			expect(headers.Authorization).toBe(`Bearer ${SERVICE_KEY}`);
+			expect('X-Poli-Org-Id' in headers).toBe(false);
+		});
+
+		it('a standard key: the reason on stderr, exit 5, no publish call', async () => {
+			setTTY(true, true);
+			await rm(fakeHome, { recursive: true, force: true });
+			vi.stubEnv('POLI_PAGE_API_KEY', SERVICE_KEY);
+			meAnswer = () => jsonResponse(200, keyMe({ keyType: 'standard', role: null }));
+			await poli('--env', 'staging');
+			expect(process.exitCode).toBe(ExitCode.NOT_AUTHORIZED);
+			expect(errors).toEqual([
+				'Standard API keys can only render. Use a service key or `poli login`.',
+			]);
+			expect(publishCalls()).toHaveLength(0);
 		});
 
 		it('asks before publishing to a protected environment when stdin and stdout are TTYs', async () => {

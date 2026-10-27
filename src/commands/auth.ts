@@ -279,10 +279,14 @@ export function registerAuthCommands(program: Command) {
 					return;
 				}
 
+				const role =
+					result.mode !== 'session-no-org' && result.payload.auth.role
+						? `, role=${result.payload.auth.role}`
+						: '';
 				if (result.mode === 'session') {
 					const email = result.payload.user?.email ?? '(unknown)';
 					const orgSlug = result.payload.org?.slug ?? '(no org)';
-					console.log(`${chalk.bold(email)} @ ${chalk.cyan(orgSlug)} (session)`);
+					console.log(`${chalk.bold(email)} @ ${chalk.cyan(orgSlug)} (session${role})`);
 				} else if (result.mode === 'session-no-org') {
 					const email = result.user.email;
 					const count = result.orgs.length;
@@ -307,7 +311,7 @@ export function registerAuthCommands(program: Command) {
 					const orgSlug = result.payload.org?.slug ?? '(no org)';
 					const env = result.payload.auth.environment ?? '(?)';
 					console.log(
-						`${chalk.bold(preview)} @ ${chalk.cyan(orgSlug)} (api-key, environment=${env})`
+						`${chalk.bold(preview)} @ ${chalk.cyan(orgSlug)} (api-key, environment=${env}${role})`
 					);
 				}
 			} catch (err) {

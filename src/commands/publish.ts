@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { readProjectManifest } from '../manifest.js';
-import { getSessionToken } from '../credentials.js';
+import { resolveAuth, type AuthContext } from '../auth.js';
 import {
 	ApiError,
 	createApiClient,
@@ -12,7 +12,7 @@ import {
 	type PublishResult,
 } from '../api-client.js';
 import { isValidEnvironmentName } from '../environment-name.js';
-import { UsageError, errorToExitCode } from '../exit-codes.js';
+import { ExitCode, UsageError, errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 import { toProjectFileEntries } from '../project-files.js';
 import { readAllProjectFiles } from '../project-sync.js';
@@ -31,6 +31,10 @@ export interface PublishOptions {
 
 const MESSAGE_MAX_LENGTH = 500;
 const BUNDLE_MAX_BYTES = 5 * 1024 * 1024;
+
+class PublishNotAuthorizedError extends Error {
+	readonly exitCode = ExitCode.NOT_AUTHORIZED;
+}
 
 function validateEnvironmentName(name: string | undefined): string {
 	if (name === undefined) {
@@ -131,19 +135,24 @@ export async function executePublish(options: PublishOptions): Promise<PublishRe
 		);
 	}
 
-	const session = await getSessionToken(options.homeDir);
-	const client = options.apiClient ?? createApiClient();
-
 	const manifest = await readProjectManifest(cwd);
-	const orgId = manifest.cloud?.orgId;
 	const project = manifest.cloud?.projectSlug;
-	if (!orgId || !project) {
+	if (!project) {
 		throw new Error('Project is not linked. Run `poli link` first.');
+	}
+
+	const auth = await resolveAuth({
+		manifestOrgId: manifest.cloud?.orgId,
+		homeDir: options.homeDir,
+	});
+	const client = options.apiClient ?? createApiClient();
+	if (auth.mode === 'api-key') {
+		return publishWithApiKey(cwd, environment, options, client, auth, project);
 	}
 
 	const body = await buildPublishBody(cwd, environment, options.message);
 
-	const environments = await client.listEnvironments(session, orgId);
+	const environments = await client.listEnvironments(auth.authorization, auth.orgIdHeader);
 	const target = environments.find((e) => e.name === environment);
 	if (!target) {
 		throw environmentNotFound(environment, environments);
@@ -151,9 +160,52 @@ export async function executePublish(options: PublishOptions): Promise<PublishRe
 	await confirmProtected(target, options);
 
 	try {
-		return await client.publish(session, orgId, project, body);
+		return await client.publish(auth.authorization, auth.orgIdHeader, project, body);
 	} catch (err) {
 		throw explainPublishError(err, project, environment, environments);
+	}
+}
+
+/**
+ * Publishes with `POLI_PAGE_API_KEY`: only a service key may, into its own
+ * environment, the one its `pp_{environment}_…` text names (K1). `GET /v1/me`
+ * tells a service key from a standard one, since both share that format. The
+ * key carries the organization, so no org header and no environment list;
+ * nothing prompts, and the API applies the protected-environment rule.
+ */
+async function publishWithApiKey(
+	cwd: string,
+	environment: string,
+	options: PublishOptions,
+	client: ApiClient,
+	key: Extract<AuthContext, { mode: 'api-key' }>,
+	project: string
+): Promise<PublishResult> {
+	const { authorization } = key;
+
+	const body = await buildPublishBody(cwd, environment, options.message);
+
+	const { auth } = await client.getMe(authorization);
+	if (auth.keyType !== 'service') {
+		throw new PublishNotAuthorizedError(
+			'Standard API keys can only render. Use a service key or `poli login`.'
+		);
+	}
+	if (key.environment !== environment) {
+		throw new UsageError(
+			`This service key publishes to "${key.environment}" only, not "${environment}". Run \`poli publish --env ${key.environment}\`, or use a key for "${environment}".`
+		);
+	}
+
+	try {
+		return await client.publish(authorization, undefined, project, body);
+	} catch (err) {
+		if (err instanceof EnvironmentProtectedError) {
+			throw new EnvironmentProtectedError(
+				`Environment "${environment}" is protected: this service key needs the \`admin\` role to publish to it.`
+			);
+		}
+		throw explainPublishError(err, project, environment, []);
 	}
 }
 

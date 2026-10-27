@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createApiClient, MissingOrgContextError } from '../src/api-client.js';
+import { testApiKey } from './helpers/api-key.js';
 
 interface FetchCall {
 	url: string;
@@ -30,7 +31,7 @@ describe('api-client getMe', () => {
 		const calls: FetchCall[] = [];
 		mockFetch(
 			{
-				auth: { mode: 'session', keyType: 'session', environment: null },
+				auth: { mode: 'session', keyType: null, environment: null, role: 'owner' },
 				user: { id: 'u1', email: 'x@test', name: 'Xavier', username: 'xavier' },
 				key: null,
 				org: { id: 'o1', slug: 'acme', name: 'Acme', tier: 'free', lifecycleStatus: 'active' },
@@ -49,6 +50,7 @@ describe('api-client getMe', () => {
 		expect(headers['X-Poli-Org-Id']).toBe('org-uuid-acme');
 
 		expect(me.auth.mode).toBe('session');
+		expect(me.auth.role).toBe('owner');
 		expect(me.user?.email).toBe('x@test');
 		expect(me.org?.slug).toBe('acme');
 	});
@@ -57,13 +59,18 @@ describe('api-client getMe', () => {
 		const calls: FetchCall[] = [];
 		mockFetch(
 			{
-				auth: { mode: 'api-key', keyType: 'live', environment: 'live' },
+				auth: {
+					mode: 'api-key',
+					keyType: 'service',
+					environment: 'staging',
+					role: 'admin',
+				},
 				user: null,
 				key: {
 					id: 'k1',
 					name: 'CI key',
-					prefix: 'pp_live_',
-					preview: 'pp_live_xxx…abcd',
+					prefix: 'pp_staging_',
+					preview: 'pp_staging_xxx…abcd',
 					createdAt: '2026-05-01T00:00:00.000Z',
 					lastUsedAt: null,
 				},
@@ -73,17 +80,19 @@ describe('api-client getMe', () => {
 			calls
 		);
 		const client = createApiClient('https://api.test');
-		const me = await client.getMe('Bearer pp_live_abc');
+		const me = await client.getMe(`Bearer ${testApiKey('staging')}`);
 
 		expect(calls).toHaveLength(1);
 		const headers = calls[0].init.headers as Record<string, string>;
-		expect(headers.Authorization).toBe('Bearer pp_live_abc');
+		expect(headers.Authorization).toBe(`Bearer ${testApiKey('staging')}`);
 		expect('X-Poli-Org-Id' in headers).toBe(false);
 
 		expect(me.auth.mode).toBe('api-key');
-		expect(me.auth.environment).toBe('live');
+		expect(me.auth.keyType).toBe('service');
+		expect(me.auth.environment).toBe('staging');
+		expect(me.auth.role).toBe('admin');
 		expect(me.user).toBeNull();
-		expect(me.key?.preview).toBe('pp_live_xxx…abcd');
+		expect(me.key?.preview).toBe('pp_staging_xxx…abcd');
 	});
 
 	it('propagates typed errors from /v1/me (MISSING_ORG_CONTEXT)', async () => {

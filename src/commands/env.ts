@@ -68,7 +68,7 @@ async function executeEnvList(orgFlag: string | undefined): Promise<EnvListResul
 	return {
 		scope: 'organization',
 		org: org.slug,
-		environments: await client.listEnvironments(session, org.id),
+		environments: await client.listEnvironments(`Bearer ${session}`, org.id),
 	};
 }
 
