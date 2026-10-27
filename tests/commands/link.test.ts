@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeInit } from '../../src/commands/init.js';
@@ -194,6 +194,34 @@ describe('poli link / unlink', () => {
 				await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
 			);
 			expect(manifest.cloud).toBeUndefined();
+		});
+
+		it('silently drops project.version and cloud.track from an old manifest', async () => {
+			await writeFile(
+				join(projectDir, MANIFEST_FILENAME),
+				JSON.stringify({
+					project: { name: 'test-project', version: '1.2.0' },
+					cloud: { orgSlug: 'acme-corp', projectId: 'proj_abc123', track: '1.2' },
+				})
+			);
+			const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+			const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+			const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+			try {
+				await executeUnlink({ cwd: projectDir });
+				expect(log).not.toHaveBeenCalled();
+				expect(warn).not.toHaveBeenCalled();
+				expect(error).not.toHaveBeenCalled();
+			} finally {
+				log.mockRestore();
+				warn.mockRestore();
+				error.mockRestore();
+			}
+
+			const manifest = JSON.parse(
+				await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
+			);
+			expect(manifest).toEqual({ project: { name: 'test-project' } });
 		});
 
 		it('should throw if not linked', async () => {

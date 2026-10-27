@@ -268,7 +268,7 @@ describe('auth commands', () => {
 
 		async function setupLinkedProject() {
 			await writeManifest(projectDir, {
-				project: { name: 'p', version: '1.0' },
+				project: { name: 'p' },
 				cloud: {
 					orgSlug: 'acme',
 					orgId: 'org_uuid_acme',
@@ -379,7 +379,7 @@ describe('auth commands', () => {
 			await setupSessionCreds();
 			await writeFile(
 				join(projectDir, 'poli-page.json'),
-				JSON.stringify({ project: { name: 'p', version: '1.0' } }),
+				JSON.stringify({ project: { name: 'p' } }),
 				'utf-8'
 			);
 

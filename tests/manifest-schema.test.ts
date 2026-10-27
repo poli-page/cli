@@ -27,7 +27,7 @@ describe('manifest schema validation', () => {
 	describe('valid manifests', () => {
 		it('parses a full well-formed manifest', async () => {
 			await writeRaw({
-				project: { name: 'p', version: '1.0', description: 'desc' },
+				project: { name: 'p', description: 'desc' },
 				engine: { paginationOptions: { orphanThreshold: 0.08 } },
 				fonts: [
 					{ family: 'Inter', src: 'fonts/inter-400.woff2', weight: 400, style: 'normal' },
@@ -55,23 +55,26 @@ describe('manifest schema validation', () => {
 		});
 
 		it('parses a minimal manifest (only project)', async () => {
-			await writeRaw({ project: { name: 'p', version: '1.0' } });
+			await writeRaw({ project: { name: 'p' } });
 			const m = await readManifest(dir);
 			expect(m.project.name).toBe('p');
 			expect(m.fonts).toBeUndefined();
 			expect(m.cloud).toBeUndefined();
 		});
 
-		it('parses a manifest without project.version (F3: starters carry none)', async () => {
-			await writeRaw({ project: { name: 'getting-started' } });
+		it('loads a manifest that still carries project.version and cloud.track, whatever their values', async () => {
+			await writeRaw({
+				project: { name: 'p', version: 1 },
+				cloud: { orgSlug: 'acme', projectId: 'proj_1', track: 'not-a-family' },
+			});
 			const m = await readManifest(dir);
-			expect(m.project.name).toBe('getting-started');
-			expect(m.project.version).toBeUndefined();
+			expect(m.project.name).toBe('p');
+			expect(m.cloud?.projectId).toBe('proj_1');
 		});
 
 		it('accepts a legacy cloud section with only orgSlug + projectId (compat)', async () => {
 			await writeRaw({
-				project: { name: 'p', version: '1.0' },
+				project: { name: 'p' },
 				cloud: { orgSlug: 'acme', projectId: 'proj_1' },
 			});
 			const m = await readManifest(dir);
@@ -87,13 +90,13 @@ describe('manifest schema validation', () => {
 		});
 
 		it('throws with the field path when project.name is missing', async () => {
-			await writeRaw({ project: { version: '1.0' } });
+			await writeRaw({ project: { description: 'no name' } });
 			await expect(readManifest(dir)).rejects.toThrow(/project\.name/);
 		});
 
 		it('throws with the field path when fonts[0].weight is the wrong type', async () => {
 			await writeRaw({
-				project: { name: 'p', version: '1.0' },
+				project: { name: 'p' },
 				fonts: [{ family: 'Inter', src: 'inter.woff2', weight: 'four-hundred' }],
 			});
 			await expect(readManifest(dir)).rejects.toThrow(/fonts\[0\]\.weight/);
@@ -101,7 +104,7 @@ describe('manifest schema validation', () => {
 
 		it('throws with the field path when templates[0].name is missing', async () => {
 			await writeRaw({
-				project: { name: 'p', version: '1.0' },
+				project: { name: 'p' },
 				templates: [{ template: 'x.html', mock: 'x.json' }],
 			});
 			await expect(readManifest(dir)).rejects.toThrow(/templates\[0\]\.name/);
@@ -109,7 +112,7 @@ describe('manifest schema validation', () => {
 
 		it('throws with the field path when cloud.orgSlug is the wrong type', async () => {
 			await writeRaw({
-				project: { name: 'p', version: '1.0' },
+				project: { name: 'p' },
 				cloud: { orgSlug: 42, projectId: 'proj_1' },
 			});
 			await expect(readManifest(dir)).rejects.toThrow(/cloud\.orgSlug/);
@@ -124,7 +127,7 @@ describe('manifest schema validation', () => {
 	describe('round-trip preservation', () => {
 		it('preserves an unknown top-level field across read → write → read', async () => {
 			await writeRaw({
-				project: { name: 'p', version: '1.0' },
+				project: { name: 'p' },
 				customSection: { foo: 'bar', n: 42 },
 			});
 			const m = await readManifest(dir);
@@ -135,7 +138,7 @@ describe('manifest schema validation', () => {
 
 		it('preserves an unknown field inside project', async () => {
 			await writeRaw({
-				project: { name: 'p', version: '1.0', author: 'Xavier' },
+				project: { name: 'p', author: 'Xavier' },
 			});
 			const m = await readManifest(dir);
 			await writeManifest(dir, m);
@@ -143,9 +146,30 @@ describe('manifest schema validation', () => {
 			expect(raw.project.author).toBe('Xavier');
 		});
 
+		it('drops project.version and cloud.track on write, and keeps everything else', async () => {
+			await writeRaw({
+				project: { name: 'p', version: '1.0.0', author: 'Xavier' },
+				templates: [],
+				cloud: {
+					orgSlug: 'a',
+					projectId: 'pp',
+					track: '1.0',
+					apiUrl: 'http://localhost:3000',
+				},
+			});
+			const m = await readManifest(dir);
+			await writeManifest(dir, m);
+			const raw = JSON.parse(await readFile(join(dir, MANIFEST_FILENAME), 'utf-8'));
+			expect(raw).toEqual({
+				project: { name: 'p', author: 'Xavier' },
+				templates: [],
+				cloud: { orgSlug: 'a', projectId: 'pp', apiUrl: 'http://localhost:3000' },
+			});
+		});
+
 		it('preserves field order on read → write', async () => {
 			await writeRaw({
-				project: { name: 'p', version: '1.0' },
+				project: { name: 'p' },
 				fonts: [],
 				templates: [],
 				cloud: {
