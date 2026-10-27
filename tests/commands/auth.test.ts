@@ -7,6 +7,7 @@ import { executeLogout, executeWhoami, executeDeviceLogin } from '../../src/comm
 import { readCredentials, writeCredentials } from '../../src/credentials.js';
 import { writeManifest } from '../../src/manifest.js';
 import { createProgram } from '../../src/program.js';
+import { ExitCode } from '../../src/exit-codes.js';
 import type { ApiClient, MeResponse } from '../../src/api-client.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
 import { testApiKey } from '../helpers/api-key.js';
@@ -435,11 +436,14 @@ describe('auth commands', () => {
 		let projectDir: string;
 		let me: MeResponse;
 		let logs: string[];
+		let errors: string[];
 		let savedStdoutTTY: boolean | undefined;
+		let savedExitCode: typeof process.exitCode;
 
 		beforeEach(async () => {
 			projectDir = await mkdtemp(join(tmpdir(), 'poli-whoami-cmd-'));
 			vi.stubEnv('HOME', fakeHome);
+			vi.stubEnv('USERPROFILE', fakeHome);
 			vi.stubEnv('POLI_API_URL', API_URL);
 			vi.stubEnv('POLI_PAGE_API_KEY', '');
 			vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
@@ -458,12 +462,19 @@ describe('auth commands', () => {
 			vi.spyOn(console, 'log').mockImplementation((msg: unknown = '') => {
 				logs.push(stripVTControlCharacters(String(msg)));
 			});
+			errors = [];
+			vi.spyOn(console, 'error').mockImplementation((msg: unknown = '') => {
+				errors.push(stripVTControlCharacters(String(msg)));
+			});
 			savedStdoutTTY = process.stdout.isTTY;
 			process.stdout.isTTY = true;
+			savedExitCode = process.exitCode;
+			process.exitCode = undefined;
 		});
 
 		afterEach(async () => {
 			process.stdout.isTTY = savedStdoutTTY as true;
+			process.exitCode = savedExitCode;
 			vi.unstubAllEnvs();
 			vi.unstubAllGlobals();
 			vi.restoreAllMocks();
@@ -520,6 +531,29 @@ describe('auth commands', () => {
 			me = apiKeyMe();
 			await whoami();
 			expect(logs).toEqual(['pp_live_xxx…abcd @ acme (api-key, environment=live)']);
+			expect(process.exitCode).toBeUndefined();
+		});
+
+		it('without a session or a key: exit 4 with "Not logged in" on stderr, and no API call', async () => {
+			await whoami();
+			expect(process.exitCode).toBe(ExitCode.NOT_AUTHENTICATED);
+			expect(errors.join('\n')).toMatch(/^Not logged in/);
+			expect(logs).toEqual([]);
+			expect(fetch).not.toHaveBeenCalled();
+		});
+
+		it('an API error on /v1/me: exit 3 with its detail on stderr, nothing on stdout', async () => {
+			vi.stubEnv('POLI_PAGE_API_KEY', testApiKey('live'));
+			vi.mocked(fetch).mockResolvedValue(
+				new Response(
+					JSON.stringify({ error: 'INTERNAL_ERROR', detail: 'Database unavailable' }),
+					{ status: 500, headers: { 'Content-Type': 'application/json' } }
+				)
+			);
+			await whoami();
+			expect(process.exitCode).toBe(ExitCode.NETWORK_OR_API_ERROR);
+			expect(errors).toEqual(['Database unavailable']);
+			expect(logs).toEqual([]);
 		});
 	});
 });
