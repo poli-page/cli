@@ -14,13 +14,13 @@ Command-line tool for [Poli Page](https://poli.page) — scaffold projects, mana
 - [Quickstart](#quickstart)
 - [Authentication](#authentication)
 - [Commands](#commands)
-  - [Project lifecycle](#project-lifecycle)
-  - [Authentication commands](#authentication-commands)
-  - [Cloud sync](#cloud-sync)
-  - [Live development](#live-development)
-  - [Environments](#environments)
-  - [Render](#render)
-  - [Documents](#documents)
+    - [Project lifecycle](#project-lifecycle)
+    - [Authentication commands](#authentication-commands)
+    - [Cloud sync](#cloud-sync)
+    - [Live development](#live-development)
+    - [Environments](#environments)
+    - [Render](#render)
+    - [Documents](#documents)
 - [Manifest format](#manifest-format)
 - [Configuration](#configuration)
 - [Exit codes](#exit-codes)
@@ -66,7 +66,7 @@ poli new invoice --from-template showcase/invoice
 # 4. Link the project to your organization (writes the cloud manifest)
 poli link
 
-# 5. Render a PDF using the local template against the cloud engine
+# 5. Render the draft (the files `poli link` uploaded) to a PDF
 poli render invoice -o invoice.pdf
 
 # 6. Publish the project to the sandbox environment
@@ -107,11 +107,11 @@ After `poli login`, the session token is stored at `~/.polipage/credentials.json
 
 Set the `POLI_PAGE_API_KEY` environment variable. Every key is bound to one environment and carries its name: `pp_<environment>_` followed by 32 lowercase hex characters. The CLI checks the whole key before any call.
 
-| Key                     | Renders                                                          |
-| ----------------------- | ---------------------------------------------------------------- |
-| `pp_sandbox_…`          | `name@sandbox` — free, watermarked, not counted                  |
-| `pp_live_…`             | `name@live` — counted in the monthly quota                       |
-| `pp_<environment>_…`    | `name@<environment>` — counted in the monthly quota              |
+| Key                  | Renders                                             |
+| -------------------- | --------------------------------------------------- |
+| `pp_sandbox_…`       | `name@sandbox` — free, watermarked, not counted     |
+| `pp_live_…`          | `name@live` — counted in the monthly quota          |
+| `pp_<environment>_…` | `name@<environment>` — counted in the monthly quota |
 
 A key renders only its own environment, and never the draft: the draft (`poli render name`) needs `poli login`.
 
@@ -288,22 +288,22 @@ poli dev --no-open       # don't launch a browser
 poli dev -d ./big.json   # render every template against your own data
 ```
 
-| Flag                 | Default            | Meaning                                                    |
-| -------------------- | ------------------ | ---------------------------------------------------------- |
-| `-p, --port <n>`     | `7654`             | Port to bind on `127.0.0.1`. Walks upwards when it is busy. |
-| `-d, --data <path>`  | the template mock  | JSON data file, same shape as `poli render -d`.             |
-| `--no-open`          | opens the browser  | Skip launching a browser on start.                          |
-| `[template]`         | first in manifest  | Which template to show first.                               |
+| Flag                | Default           | Meaning                                                     |
+| ------------------- | ----------------- | ----------------------------------------------------------- |
+| `-p, --port <n>`    | `7654`            | Port to bind on `127.0.0.1`. Walks upwards when it is busy. |
+| `-d, --data <path>` | the template mock | JSON data file, same shape as `poli render -d`.             |
+| `--no-open`         | opens the browser | Skip launching a browser on start.                          |
+| `[template]`        | first in manifest | Which template to show first.                               |
 
 The served page gives you:
 
-- **A template switcher.** By default the view *follows the most recently
-  changed template*: a save under `templates/<name>/` makes `<name>` the active
+- **A template switcher.** By default the view _follows the most recently
+  changed template_: a save under `templates/<name>/` makes `<name>` the active
   one. When a batch touches several templates, the one with the newest mtime
   wins. A change to a file that no single template owns — a shared partial,
   `tailwind.css`, an asset, or `poli-page.json` — belongs to all of them and so
   moves nothing: the current template stays on screen and is re-rendered.
-- **A pin.** Click *Pin* to freeze the view on the current template so an
+- **A pin.** Click _Pin_ to freeze the view on the current template so an
   unrelated save cannot yank you away. Unpin to follow again.
 - **The real PDF.** Every render is the actual PDF of the draft — pagination,
   page breaks, fonts — shown in the browser's PDF viewer and reloaded after each
@@ -319,9 +319,9 @@ Notes:
 - **No TTY required.** Unlike `poli watch`, `poli dev` is a server and runs
   happily with its stdout piped, so you can compose it into your own dev script:
 
-  ```json
-  { "scripts": { "dev": "concurrently \"poli dev --no-open\" \"vite\"" } }
-  ```
+    ```json
+    { "scripts": { "dev": "concurrently \"poli dev --no-open\" \"vite\"" } }
+    ```
 
 - It binds to `127.0.0.1` only — the rendered draft is never exposed to the
   local network.
@@ -348,9 +348,9 @@ poli publish --env live --yes      # protected environment, no prompt (scripts)
 | Flag                   | Meaning                                                                                   |
 | ---------------------- | ----------------------------------------------------------------------------------------- |
 | `--env <name>`         | Required. The target environment; there is no default, and `draft` is not an environment. |
-| `-m, --message <text>` | Kept in the publish log with the date, author and bundle hash. 500 characters at most.     |
+| `-m, --message <text>` | Kept in the publish log with the date, author and bundle hash. 500 characters at most.    |
 | `-y, --yes`            | Publish to a protected environment without the confirmation prompt.                       |
-| `--json`               | Print the API response as JSON (also the default when stdout is not a TTY).                |
+| `--json`               | Print the API response as JSON (also the default when stdout is not a TTY).               |
 
 - **Environment names** are 1-20 characters: lowercase letters, digits and single inner hyphens, starting with a letter. A name that breaks this rule is refused before any call (exit `2`). An environment that does not exist in the organization is refused with the list of the ones that do (exit `2`).
 - **The bundle** is the project file set: `poli-page.json`, `tailwind.css`, the `.html`, `.json` and `.css` files under `templates/<slug>/`, the `.html` files under `partials/`, everything under `assets/images/` and `assets/icons/`, and the `.woff2`, `.woff`, `.ttf` and `.otf` files under `assets/fonts/`. Anything else (`.gitignore`, `README.md`, `output/`, `node_modules/`) is left out. Assets are sent base64-encoded, every other file as UTF-8. A bundle over 5 MiB, or a message over 500 characters, is refused before any call (exit `2`).
@@ -370,10 +370,10 @@ poli env list --org acme     # elsewhere, or for another organization
 poli env list --json
 ```
 
-| Flag           | Meaning                                                                                     |
-| -------------- | ------------------------------------------------------------------------------------------- |
-| `--org <slug>` | The organization to list. Default: the linked project's organization, else your only one.   |
-| `--json`       | Print the API response as JSON (also the default when stdout is not a TTY).                  |
+| Flag           | Meaning                                                                                   |
+| -------------- | ----------------------------------------------------------------------------------------- |
+| `--org <slug>` | The organization to list. Default: the linked project's organization, else your only one. |
+| `--json`       | Print the API response as JSON (also the default when stdout is not a TTY).               |
 
 In a linked folder, each environment shows whether it is protected and read-only, whether the project is published there, and the project's last publish in it: its status (`succeeded`, `in-progress`, or `failed` with the API's error code), its date (UTC), its author, its short bundle hash and its message, or `not published`. The last publish is the latest attempt, so a failed one shows even when an earlier publish is still the one served.
 
@@ -457,6 +457,7 @@ The success line (TTY) names what was rendered, and says `billed` when the rende
 ```
 
 Counter:
+
 - the draft → never counted
 - `sandbox` → free, never counted (and the only watermarked environment)
 - every other environment → counts in the monthly quota
@@ -510,31 +511,31 @@ poli documents preview doc_abc123 -o ./preview.html
 
 ```jsonc
 {
-  "project": {
-    "name": "my-invoices"
-  },
-  "fonts": [
-    {
-      "family": "Inter",
-      "src": "assets/fonts/Inter.woff2",
-      "weight": 400
-    }
-  ],
-  "templates": [
-    {
-      "name": "invoice",
-      "template": "templates/invoice/invoice.html",
-      "mock": "templates/invoice/invoice.json",
-      "format": "A4",
-      "orientation": "portrait"
-    }
-  ],
-  "cloud": {
-    "orgSlug": "acme",
-    "orgId": "0e89d99e-1516-4b48-baa1-f49e660ad1c1",
-    "projectSlug": "invoices",
-    "projectId": "8274f64d-4ea2-4f96-b596-5727a7b17268"
-  }
+	"project": {
+		"name": "my-invoices",
+	},
+	"fonts": [
+		{
+			"family": "Inter",
+			"src": "assets/fonts/Inter.woff2",
+			"weight": 400,
+		},
+	],
+	"templates": [
+		{
+			"name": "invoice",
+			"template": "templates/invoice/invoice.html",
+			"mock": "templates/invoice/invoice.json",
+			"format": "A4",
+			"orientation": "portrait",
+		},
+	],
+	"cloud": {
+		"orgSlug": "acme",
+		"orgId": "0e89d99e-1516-4b48-baa1-f49e660ad1c1",
+		"projectSlug": "invoices",
+		"projectId": "8274f64d-4ea2-4f96-b596-5727a7b17268",
+	},
 }
 ```
 
@@ -548,13 +549,12 @@ A manifest from before environments may still carry `project.version` or `cloud.
 
 ### Environment variables
 
-| Variable             | Effect                                                                                                                                                                                                                                          |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POLI_PAGE_API_KEY`  | Single env var for any API key in CI/CD: `pp_<environment>_` followed by 32 lowercase hex characters, checked in full before any call. The key renders only its own environment; a service key also publishes to it. **Precedence**: when a credentials file is also present, the session wins. |
-| `POLI_API_URL`       | Override the API base URL (precedence: `--api-url` flag → `POLI_API_URL` → `poli-page.json` `cloud.apiUrl` → `~/.polipage/credentials.json` `apiUrl` → default `https://api.poli.page`).                                                          |
-| `POLI_PAGE_ENV`      | Default render env (`sandbox` or `live`) when commands accept an env hint.                                                                                                                                                                       |
-| `NO_COLOR`           | Disable ANSI colors (Unix standard).                                                                                                                                                                                                            |
-| `CI`                 | Auto-detected; equivalent to a global `--yes`, except for `poli env remove-project`.                                                                                                                                                            |
+| Variable            | Effect                                                                                                                                                                                                                                                                                          |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POLI_PAGE_API_KEY` | Single env var for any API key in CI/CD: `pp_<environment>_` followed by 32 lowercase hex characters, checked in full before any call. The key renders only its own environment; a service key also publishes to it. **Precedence**: when a credentials file is also present, the session wins. |
+| `POLI_API_URL`      | Override the API base URL (precedence: `--api-url` flag → `POLI_API_URL` → `poli-page.json` `cloud.apiUrl` → `~/.polipage/credentials.json` `apiUrl` → default `https://api.poli.page`).                                                                                                        |
+| `NO_COLOR`          | Disable ANSI colors (Unix standard).                                                                                                                                                                                                                                                            |
+| `CI`                | Auto-detected; equivalent to a global `--yes`, except for `poli env remove-project`.                                                                                                                                                                                                            |
 
 ### Common flags
 
@@ -567,11 +567,11 @@ A manifest from before environments may still carry `project.version` or `cloud.
 
 Every command that returns a payload (renders, descriptors, publishes) follows the same output rule:
 
-| Context | Stdout |
-| ------- | ------ |
+| Context                                 | Stdout                 |
+| --------------------------------------- | ---------------------- |
 | TTY (interactive terminal), no `--json` | Human-readable summary |
-| Pipe / redirect / CI (stdout not a TTY) | JSON |
-| `--json` flag (any context) | JSON |
+| Pipe / redirect / CI (stdout not a TTY) | JSON                   |
+| `--json` flag (any context)             | JSON                   |
 
 Either the summary **or** the JSON — never both at once. Errors always go to stderr with a clear message.
 
@@ -583,15 +583,15 @@ Imperative commands (`init` without `--starter`, `new`, `link`, `unlink`, `logou
 
 ## Exit codes
 
-| Code | Meaning                                                                                                |
-| ---- | ------------------------------------------------------------------------------------------------------ |
-| `0`  | Success                                                                                                |
-| `1`  | Recoverable inconsistency (already logged in, already linked)                                          |
+| Code | Meaning                                                                                                                        |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `0`  | Success                                                                                                                        |
+| `1`  | Recoverable inconsistency (already logged in, already linked)                                                                  |
 | `2`  | Invalid usage (bad args, template not found, project not published in that environment, non-TTY context where TTY is required) |
-| `3`  | Network / API error (timeout, 5xx, unspecified 4xx)                                                    |
-| `4`  | Not authenticated — run `poli login` or set `POLI_PAGE_API_KEY`                                        |
-| `5`  | Not authorized (insufficient role, protected environment, `THUMBNAILS_NOT_AVAILABLE`)                  |
-| `6`  | Invalid local state (no project, project not linked, empty folder where required)                      |
+| `3`  | Network / API error (timeout, 5xx, unspecified 4xx)                                                                            |
+| `4`  | Not authenticated — run `poli login` or set `POLI_PAGE_API_KEY`                                                                |
+| `5`  | Not authorized (insufficient role, protected environment, `THUMBNAILS_NOT_AVAILABLE`)                                          |
+| `6`  | Invalid local state (no project, project not linked, empty folder where required)                                              |
 
 These map to the centralised `ExitCode` constants in `src/exit-codes.ts`. Every handler routes errors through `errorToExitCode(err)`.
 
@@ -606,21 +606,21 @@ These map to the centralised `ExitCode` constants in `src/exit-codes.ts`. Every 
 name: Publish templates
 
 on:
-  push:
-    branches: [main]
+    push:
+        branches: [main]
 
 jobs:
-  publish:
-    runs-on: ubuntu-latest
-    env:
-      POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_SERVICE_KEY }}   # a service key for `live`
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - run: npm install -g @poli-page/cli
-      - run: poli publish --env live -m "Deploy ${{ github.sha }}"
+    publish:
+        runs-on: ubuntu-latest
+        env:
+            POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_SERVICE_KEY }} # a service key for `live`
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: '22'
+            - run: npm install -g @poli-page/cli
+            - run: poli publish --env live -m "Deploy ${{ github.sha }}"
 ```
 
 The workflow runs in the linked project folder (the one with `poli-page.json` and its `cloud` block). The key decides the environment: `--env` must name it. `live` is protected, so the service key needs the `admin` role.
@@ -634,38 +634,38 @@ name: Render PDFs
 on: workflow_dispatch
 
 jobs:
-  render:
-    runs-on: ubuntu-latest
-    env:
-      POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_API_KEY }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - run: npm install -g @poli-page/cli
-      - run: poli render invoice@production -o ./artifacts/invoice.pdf
-      - uses: actions/upload-artifact@v4
-        with:
-          name: invoice-pdf
-          path: ./artifacts/invoice.pdf
+    render:
+        runs-on: ubuntu-latest
+        env:
+            POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_API_KEY }}
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: '22'
+            - run: npm install -g @poli-page/cli
+            - run: poli render invoice@live -o ./artifacts/invoice.pdf
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: invoice-pdf
+                  path: ./artifacts/invoice.pdf
 ```
 
-The key decides the environment: a `pp_production_…` key renders `invoice@production` and nothing else. A standard key is enough to render; a service key also works, and rotating either one does not log out any developer.
+The key decides the environment: a `pp_live_…` key renders `invoice@live` and nothing else. A standard key is enough to render; a service key also works, and rotating either one does not log out any developer.
 
 ### GitLab CI
 
 ```yaml
 render:
-  image: node:22-alpine
-  variables:
-    POLI_PAGE_API_KEY: $POLI_PAGE_API_KEY
-  script:
-    - npm install -g @poli-page/cli
-    - poli render invoice@production -o invoice.pdf
-  artifacts:
-    paths:
-      - invoice.pdf
+    image: node:22-alpine
+    variables:
+        POLI_PAGE_API_KEY: $POLI_PAGE_API_KEY
+    script:
+        - npm install -g @poli-page/cli
+        - poli render invoice@live -o invoice.pdf
+    artifacts:
+        paths:
+            - invoice.pdf
 ```
 
 ### Vercel / Netlify build hook
@@ -673,7 +673,7 @@ render:
 ```bash
 # In a build script
 npm install -g @poli-page/cli
-POLI_PAGE_API_KEY=pp_production_xxx poli render homepage-pdf@production -o ./public/welcome.pdf
+POLI_PAGE_API_KEY=pp_live_xxx poli render homepage-pdf@live -o ./public/welcome.pdf
 ```
 
 A service key has a **fixed role and environment** from its creation. The CLI does not try to switch them — the API enforces the permissions.
@@ -714,13 +714,27 @@ A key renders only the environment in its prefix. Render `name@<a>`, or use a ke
 
 Render specs name an environment, not a version: `poli render invoice@<environment>`, or `poli render invoice` for the draft. Exit code `2`.
 
+### `403 DRAFT_REQUIRES_SESSION`
+
+The API renders the draft for a `poli login` session only. The CLI refuses a draft render with an API key before any call (see above), so this code comes back only from a draft render sent outside the CLI with a key. Render `name@<environment>` with the key, or render the draft after `poli login`.
+
+### `Environment "<env>" is protected...` (`403 ENVIRONMENT_PROTECTED`)
+
+`poli publish --env <env>` to a protected environment (`live` by default) by someone who is not an owner or admin of the organization, or with a service key without the `admin` role. Ask an owner or admin to publish, or use an `admin` service key. Exit code `5`.
+
+Without a terminal, `Environment "<env>" is protected. Pass --yes to publish to it without a prompt.` means the confirmation could not be asked: pass `--yes` (`CI=true` counts as `--yes`). Exit code `2`.
+
+### `PUBLISH_IN_PROGRESS`
+
+A publish of the same project and environment is running. `poli render name@<env>` gets `503 PUBLISH_IN_PROGRESS`, waits `Retry-After` and retries once; if the publish is still running, it exits `3`: try again in a moment. `poli publish` and `poli env remove-project` get it while another publish or removal runs, and do not retry: run the command again once the other one is done. Exit code `3`.
+
 ### `403 THUMBNAILS_NOT_AVAILABLE`
 
 Thumbnails via `poli documents thumbnails` are a paid-tier feature. Upgrade to Starter from the dashboard. Exit code `5`.
 
 ### `429 OVERAGE_CAP_EXCEEDED`
 
-Your org has crossed the monthly cap on `live` PDF renders (counted across `poli render` in any environment other than `sandbox` and `poli documents thumbnails` on a LIVE document). Wait until the next billing period or raise the cap from your dashboard. Exit code `3`.
+Your org has crossed the monthly cap on `live` PDF renders (counted across `poli render` in any environment other than `sandbox` and `poli documents thumbnails` on a document of such an environment). Wait until the next billing period or raise the cap from your dashboard. Exit code `3`.
 
 ### `503 ORGANIZATION_MIGRATING`
 
