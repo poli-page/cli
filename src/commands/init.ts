@@ -116,14 +116,7 @@ export async function executeInit(name: string, options: InitOptions = {}): Prom
 	}
 
 	const manifest: PoliPageManifest = {
-		project: {
-			name: projectName,
-			// `0.0.0` lets bump-driven first push pick the version family:
-			// `poli push --patch` → `0.0.1`, `--minor` → `0.1.0`,
-			// `--major` → `1.0.0`. Anything other than an exact semver
-			// would fall back to 0.0.0 anyway in the API (api 0.7.1+).
-			version: '0.0.0',
-		},
+		project: { name: projectName },
 		fonts: [],
 		templates: [],
 	};
@@ -221,9 +214,7 @@ export async function executeInitStarter(
 	});
 	const manifestFile = files.find((f) => f.path === MANIFEST_FILENAME)!;
 	const manifest = parseManifest(JSON.parse(manifestFile.content.toString('utf-8')));
-	// F3: a starter carries no version, and no cloud block but the one
-	// the link step writes.
-	delete manifest.project.version;
+	// F3: no cloud block but the one the link step writes.
 	delete manifest.cloud;
 
 	const { link, cloud } = await linkStarter(starter, options);

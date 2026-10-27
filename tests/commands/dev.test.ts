@@ -151,7 +151,7 @@ async function setupLinkedProject(projectDir: string, fakeHome: string): Promise
 	await writeFile(
 		join(projectDir, MANIFEST_FILENAME),
 		JSON.stringify({
-			project: { name: 'demo', version: '0.1.0' },
+			project: { name: 'demo' },
 			cloud: {
 				orgSlug: 'acme',
 				orgId: 'org_1',
@@ -399,7 +399,7 @@ describe('poli dev', () => {
 		it('rejects when the project is not linked', async () => {
 			await writeFile(
 				join(projectDir, MANIFEST_FILENAME),
-				JSON.stringify({ project: { name: 'demo', version: '0.1.0' }, templates: [] })
+				JSON.stringify({ project: { name: 'demo' }, templates: [] })
 			);
 			await expect(
 				startDevSession(undefined, {

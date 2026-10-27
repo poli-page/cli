@@ -112,11 +112,6 @@ const TYPED_ERROR_REGISTRY: Record<string, TypedErrorCtor> = {
 	INSUFFICIENT_ROLE: InsufficientRoleError,
 };
 
-export interface ApiKeyInfo {
-	key: string;
-	info: { id: string; name: string; environment: string };
-}
-
 export interface DeviceRequestResult {
 	deviceCode: string;
 	userCode: string;
@@ -263,8 +258,12 @@ export type RenderResult = DocumentDescriptor & { diagnostics: RenderDiagnostic[
 export interface MeResponse {
 	auth: {
 		mode: 'session' | 'api-key';
-		keyType: 'test' | 'live' | 'service' | 'session';
-		environment: 'sandbox' | 'live' | null;
+		/** `null` for a session. Only a `service` key can publish. */
+		keyType: 'standard' | 'service' | null;
+		/** The name of the key's environment; `null` for a session. */
+		environment: string | null;
+		/** The member's role (session), the service key's role, `null` for a standard key. */
+		role: 'owner' | 'admin' | 'developer' | null;
 	};
 	user: {
 		id: string;
@@ -314,7 +313,7 @@ export interface ApiClient {
 		projectId: string,
 		body: PatchFilesBody
 	): Promise<PatchFilesResult>;
-	listEnvironments(session: string, orgId: string): Promise<EnvironmentInfo[]>;
+	listEnvironments(authorization: string, orgId: string): Promise<EnvironmentInfo[]>;
 	getProjectEnvironments(
 		session: string,
 		orgId: string,
@@ -330,18 +329,13 @@ export interface ApiClient {
 		projectId: string,
 		environment: string
 	): Promise<void>;
+	/** `orgIdHeader` is the session's organization; an API key carries its own. */
 	publish(
-		session: string,
-		orgId: string,
+		authorization: string,
+		orgIdHeader: string | undefined,
 		project: string,
 		body: PublishBody
 	): Promise<PublishResult>;
-	createApiKey(
-		session: string,
-		orgId: string,
-		name: string,
-		environment: 'test' | 'live'
-	): Promise<ApiKeyInfo>;
 	render(
 		authorization: string,
 		orgIdHeader: string | undefined,
@@ -492,18 +486,6 @@ export function createApiClient(baseUrl?: string): ApiClient {
 			return response.json() as Promise<{ id: string }>;
 		},
 
-		async createApiKey(session, orgId, name, environment) {
-			const response = await request(`/api/organizations/${orgId}/api-keys`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${session}`,
-				},
-				body: JSON.stringify({ name, environment }),
-			});
-			return response.json() as Promise<ApiKeyInfo>;
-		},
-
 		async getMe(authorization, orgIdHeader) {
 			const headers: Record<string, string> = {
 				'Content-Type': 'application/json',
@@ -640,13 +622,13 @@ export function createApiClient(baseUrl?: string): ApiClient {
 			return response.json() as Promise<PatchFilesResult>;
 		},
 
-		async listEnvironments(session, orgId) {
+		async listEnvironments(authorization, orgId) {
 			const response = await request(
 				`/api/organizations/${idSegment(orgId, 'organization')}/environments`,
 				{
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: `Bearer ${session}`,
+						Authorization: authorization,
 					},
 				}
 			);
@@ -679,16 +661,19 @@ export function createApiClient(baseUrl?: string): ApiClient {
 			);
 		},
 
-		async publish(session, orgId, project, body) {
+		async publish(authorization, orgIdHeader, project, body) {
+			const headers: Record<string, string> = {
+				'Content-Type': 'application/json',
+				Authorization: authorization,
+			};
+			if (orgIdHeader) {
+				headers['X-Poli-Org-Id'] = orgIdHeader;
+			}
 			const response = await request(
 				`/v1/projects/${encodeURIComponent(project)}/publish`,
 				{
 					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						Authorization: `Bearer ${session}`,
-						'X-Poli-Org-Id': orgId,
-					},
+					headers,
 					body: JSON.stringify(body),
 				}
 			);

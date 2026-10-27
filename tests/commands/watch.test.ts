@@ -53,7 +53,7 @@ async function setupLinkedProject(tempDir: string, fakeHome: string): Promise<vo
 	await writeFile(
 		join(tempDir, MANIFEST_FILENAME),
 		JSON.stringify({
-			project: { name: 'demo', version: '0.1.0' },
+			project: { name: 'demo' },
 			cloud: {
 				orgSlug: 'acme',
 				orgId: 'org_1',
@@ -106,7 +106,7 @@ describe('executeWatch', () => {
 		await writeFile(
 			join(tempDir, MANIFEST_FILENAME),
 			JSON.stringify({
-				project: { name: 'demo', version: '0.1.0' },
+				project: { name: 'demo' },
 				templates: [],
 			})
 		);

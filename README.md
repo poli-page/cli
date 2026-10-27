@@ -118,7 +118,15 @@ A key renders only its own environment, and never the draft: the draft (`poli re
 ```bash
 export POLI_PAGE_API_KEY=pp_live_xxx
 poli render invoice@live -o invoice.pdf
+poli publish --env live -m "Release from CI"   # service key only
 ```
+
+Standard keys and service keys share the `pp_<environment>_…` format; the CLI asks `GET /v1/me` which one it holds:
+
+- a **standard key** renders only. `poli publish` refuses it before any upload (exit `5`).
+- a **service key** (recommended for CI) also publishes, into its own environment only: `--env` is still required and must name the environment in the key (exit `2` otherwise). Its role decides on a protected environment: an `admin` service key can publish to one, a `developer` one gets `ENVIRONMENT_PROTECTED` (exit `5`). Nothing prompts.
+
+The other workspace commands (`link`, `watch`, `dev`) need `poli login`.
 
 ### Precedence
 
@@ -161,7 +169,7 @@ poli init --starter getting-started            # writes ./getting-started
 poli init --starter getting-started my-start   # writes ./my-start
 ```
 
-Writes the whole `getting-started/` project of [`poli-page/templates`](https://github.com/poli-page/templates) (templates, mocks, `poli-page.json`, `tailwind.css`, fonts and images) into `dir` (default: `./getting-started`). The files come from the public templates repo — the same source your org's `getting-started` project was created from — nothing is downloaded from the cloud. The written `poli-page.json` has no `project.version`.
+Writes the whole `getting-started/` project of [`poli-page/templates`](https://github.com/poli-page/templates) (templates, mocks, `poli-page.json`, `tailwind.css`, fonts and images) into `dir` (default: `./getting-started`). The files come from the public templates repo — the same source your org's `getting-started` project was created from — nothing is downloaded from the cloud.
 
 When you are logged in, the folder is linked to the **existing** `getting-started` project of your organization (it never creates a cloud project). If you belong to several organizations, pass `--org <slug>` (or pick one at the prompt). Logged out, or when the organization has no `getting-started` project, the starter is written unlinked and the command tells you how to link it (`poli login`, then `poli link`).
 
@@ -214,7 +222,7 @@ Displays the active identity and organization. Calls `GET /v1/me` over hybrid au
 ```bash
 # Inside a linked project (session)
 $ poli whoami
-xavier@example.com @ acme (session)
+xavier@example.com @ acme (session, role=owner)
 
 # Anywhere — fallback when no project is linked, lists the orgs the session can see
 $ poli whoami
@@ -224,6 +232,10 @@ xavier@example.com (session, 2 organizations: acme, demo-corp)
 # Programmatic (API key)
 $ POLI_PAGE_API_KEY=pp_live_xxx poli whoami
 pp_live_xxx…abcd @ acme (api-key, environment=live)
+
+# A service key also shows its role (a session shows the member's role)
+$ POLI_PAGE_API_KEY=pp_staging_xxx poli whoami
+pp_staging_xxx…abcd @ acme (api-key, environment=staging, role=admin)
 ```
 
 Flag: `--json` to dump the raw `/v1/me` payload (or, in `session-no-org` mode, `{ mode, user, orgs }`).
@@ -325,7 +337,7 @@ Notes:
 
 #### `poli publish`
 
-Publishes the local project, the files on disk, to an environment of your organization: `POST /v1/projects/<projectSlug>/publish`, with your `poli login` session and the manifest's `cloud.orgId`. The environment's copy of the project is replaced in place. There is no rollback: to go back, check out the earlier state from your own version control and publish again.
+Publishes the local project, the files on disk, to an environment of your organization: `POST /v1/projects/<projectSlug>/publish`, with your `poli login` session and the manifest's `cloud.orgId`, or, without a session, with a service key in `POLI_PAGE_API_KEY` (see below). The environment's copy of the project is replaced in place. There is no rollback: to go back, check out the earlier state from your own version control and publish again.
 
 ```bash
 poli publish --env sandbox
@@ -343,6 +355,7 @@ poli publish --env live --yes      # protected environment, no prompt (scripts)
 - **Environment names** are 1-20 characters: lowercase letters, digits and single inner hyphens, starting with a letter. A name that breaks this rule is refused before any call (exit `2`). An environment that does not exist in the organization is refused with the list of the ones that do (exit `2`).
 - **The bundle** is the project file set: `poli-page.json`, `tailwind.css`, the `.html`, `.json` and `.css` files under `templates/<slug>/`, the `.html` files under `partials/`, everything under `assets/images/` and `assets/icons/`, and the `.woff2`, `.woff`, `.ttf` and `.otf` files under `assets/fonts/`. Anything else (`.gitignore`, `README.md`, `output/`, `node_modules/`) is left out. Assets are sent base64-encoded, every other file as UTF-8. A bundle over 5 MiB, or a message over 500 characters, is refused before any call (exit `2`).
 - **Protected environments** (`live` by default) accept a publish from an owner or an admin only. In a terminal, `poli publish` asks for confirmation first; without a TTY it needs `--yes`, and `CI=true` counts as `--yes`. Without the role, the API refuses with `ENVIRONMENT_PROTECTED` (exit `5`).
+- **With a service key** (`POLI_PAGE_API_KEY` and no `poli login` session; a session wins when both are there): the CLI calls `GET /v1/me`, then publishes to the manifest's `cloud.projectSlug` with no organization header, since the key carries its organization. `--env` must name the key's own environment, or the publish is refused before any upload, naming it (exit `2`). A standard key is refused with "Standard API keys can only render. Use a service key or `poli login`." (exit `5`). There is no prompt and no environment check on the CLI side: the API applies the protected-environment rule, and a service key without the `admin` role gets `ENVIRONMENT_PROTECTED` (exit `5`).
 - **One publish at a time** per project and environment: while one runs, a second gets `PUBLISH_IN_PROGRESS` (exit `3`). It is not retried; run it again once the first one is done.
 
 On success it prints the environment, the project, the short bundle hash, the file count and the publish log id.
@@ -498,8 +511,7 @@ poli documents preview doc_abc123 -o ./preview.html
 ```jsonc
 {
   "project": {
-    "name": "my-invoices",
-    "version": "1.0.0"
+    "name": "my-invoices"
   },
   "fonts": [
     {
@@ -528,6 +540,8 @@ poli documents preview doc_abc123 -o ./preview.html
 
 The `cloud:` block is written by `poli link`, removed by `poli unlink`. **No API keys here** — the credentials file (or `POLI_PAGE_API_KEY`) carries the secret.
 
+A manifest from before environments may still carry `project.version` or `cloud.track`. Both are ignored, and dropped the next time the CLI writes the file (`poli link`, `poli unlink`, `poli new`).
+
 ---
 
 ## Configuration
@@ -536,7 +550,7 @@ The `cloud:` block is written by `poli link`, removed by `poli unlink`. **No API
 
 | Variable             | Effect                                                                                                                                                                                                                                          |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POLI_PAGE_API_KEY`  | Single env var for any API key in CI/CD: `pp_<environment>_` followed by 32 lowercase hex characters, checked in full before any call. The key renders only its own environment. **Precedence**: when a credentials file is also present, the session wins. |
+| `POLI_PAGE_API_KEY`  | Single env var for any API key in CI/CD: `pp_<environment>_` followed by 32 lowercase hex characters, checked in full before any call. The key renders only its own environment; a service key also publishes to it. **Precedence**: when a credentials file is also present, the session wins. |
 | `POLI_API_URL`       | Override the API base URL (precedence: `--api-url` flag → `POLI_API_URL` → `poli-page.json` `cloud.apiUrl` → `~/.polipage/credentials.json` `apiUrl` → default `https://api.poli.page`).                                                          |
 | `POLI_PAGE_ENV`      | Default render env (`sandbox` or `live`) when commands accept an env hint.                                                                                                                                                                       |
 | `NO_COLOR`           | Disable ANSI colors (Unix standard).                                                                                                                                                                                                            |
@@ -585,6 +599,32 @@ These map to the centralised `ExitCode` constants in `src/exit-codes.ts`. Every 
 
 ## CI / CD
 
+### Publish from CI with a service key
+
+```yaml
+# .github/workflows/publish.yml
+name: Publish templates
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_SERVICE_KEY }}   # a service key for `live`
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install -g @poli-page/cli
+      - run: poli publish --env live -m "Deploy ${{ github.sha }}"
+```
+
+The workflow runs in the linked project folder (the one with `poli-page.json` and its `cloud` block). The key decides the environment: `--env` must name it. `live` is protected, so the service key needs the `admin` role.
+
 ### GitHub Actions
 
 ```yaml
@@ -611,7 +651,7 @@ jobs:
           path: ./artifacts/invoice.pdf
 ```
 
-The key decides the environment: a `pp_production_…` key renders `invoice@production` and nothing else. Recommended: use a **service account key** so rotating it does not log out any developer.
+The key decides the environment: a `pp_production_…` key renders `invoice@production` and nothing else. A standard key is enough to render; a service key also works, and rotating either one does not log out any developer.
 
 ### GitLab CI
 
@@ -636,7 +676,7 @@ npm install -g @poli-page/cli
 POLI_PAGE_API_KEY=pp_production_xxx poli render homepage-pdf@production -o ./public/welcome.pdf
 ```
 
-Service accounts have a **fixed role and environment** at creation. The CLI does not try to switch them — the API enforces the permissions.
+A service key has a **fixed role and environment** from its creation. The CLI does not try to switch them — the API enforces the permissions.
 
 ---
 
@@ -649,6 +689,14 @@ Either run `poli login` interactively, or export `POLI_PAGE_API_KEY` for CI use.
 ### `POLI_PAGE_API_KEY must be a Poli Page API key: \`pp_<environment>_…\`...`
 
 You set the variable but its value is not a whole key: `pp_`, the environment name, `_`, then 32 lowercase hex characters. Copy the key again, or create one from the dashboard's API keys page. Exit code `4`.
+
+### `Standard API keys can only render. Use a service key or \`poli login\`.`
+
+`poli publish` with `POLI_PAGE_API_KEY` set to a standard key. Only a service key, or a `poli login` session, can publish. Exit code `5`.
+
+### `This service key publishes to "<a>" only, not "<b>"...`
+
+A service key publishes into its own environment only. Pass `--env <a>`, or use a service key for `<b>`. Exit code `2`.
 
 ### `This folder isn't linked to a cloud project. Run \`poli link\` first.`
 

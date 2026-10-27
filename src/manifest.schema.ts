@@ -19,20 +19,12 @@ const templateEntrySchema = z
 	})
 	.passthrough();
 
-// `track` is the version family the project is currently working on
-// (api-spec §9.1). Written and read by `poli push` to anchor --patch /
-// --minor on the right family.
-// Optional: a fresh project from `poli init` has no track until the
-// first push.
-const TRACK_RE = /^\d+\.\d+$/;
-
 const cloudSchema = z
 	.object({
 		orgSlug: z.string(),
 		orgId: z.string().optional(),
 		projectSlug: z.string().optional(),
 		projectId: z.string(),
-		track: z.string().regex(TRACK_RE, 'Track must be `major.minor` (e.g. "1.0")').optional(),
 		apiUrl: z.string().optional(),
 	})
 	.passthrough();
@@ -40,8 +32,6 @@ const cloudSchema = z
 const projectSchema = z
 	.object({
 		name: z.string(),
-		// Optional: a starter (`poli init --starter`) carries no version (F3).
-		version: z.string().optional(),
 		description: z.string().optional(),
 	})
 	.passthrough();

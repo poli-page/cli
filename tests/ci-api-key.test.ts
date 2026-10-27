@@ -79,7 +79,7 @@ describe('CI integration with POLI_PAGE_API_KEY', () => {
 	it('end-to-end: resolveAuth works in CI with an API key in a linked project (no login)', async () => {
 		process.env.POLI_PAGE_API_KEY = testApiKey('live');
 		await writeManifest(tempDir, {
-			project: { name: 'demo', version: '0.1.0' },
+			project: { name: 'demo' },
 			cloud: {
 				orgSlug: 'acme',
 				orgId: 'org_1',

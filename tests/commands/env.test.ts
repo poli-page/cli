@@ -315,6 +315,12 @@ describe('poli env list', () => {
 			]);
 		});
 
+		it('sends the session as a Bearer token', async () => {
+			await poli();
+			const [, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+			expect(new Headers(init.headers).get('Authorization')).toBe('Bearer session-token');
+		});
+
 		it('treats a poli-page.json without cloud as not linked', async () => {
 			await linkProject({ project: { name: 'Invoices' }, templates: [] });
 			await poli();
