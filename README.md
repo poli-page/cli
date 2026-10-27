@@ -169,7 +169,7 @@ poli init --starter getting-started            # writes ./getting-started
 poli init --starter getting-started my-start   # writes ./my-start
 ```
 
-Writes the whole `getting-started/` project of [`poli-page/templates`](https://github.com/poli-page/templates) (templates, mocks, `poli-page.json`, `tailwind.css`, fonts and images) into `dir` (default: `./getting-started`). The files come from the public templates repo — the same source your org's `getting-started` project was created from — nothing is downloaded from the cloud. The written `poli-page.json` has no `project.version`.
+Writes the whole `getting-started/` project of [`poli-page/templates`](https://github.com/poli-page/templates) (templates, mocks, `poli-page.json`, `tailwind.css`, fonts and images) into `dir` (default: `./getting-started`). The files come from the public templates repo — the same source your org's `getting-started` project was created from — nothing is downloaded from the cloud.
 
 When you are logged in, the folder is linked to the **existing** `getting-started` project of your organization (it never creates a cloud project). If you belong to several organizations, pass `--org <slug>` (or pick one at the prompt). Logged out, or when the organization has no `getting-started` project, the starter is written unlinked and the command tells you how to link it (`poli login`, then `poli link`).
 
@@ -494,8 +494,7 @@ poli documents preview doc_abc123 -o ./preview.html
 ```jsonc
 {
   "project": {
-    "name": "my-invoices",
-    "version": "1.0.0"
+    "name": "my-invoices"
   },
   "fonts": [
     {
@@ -523,6 +522,8 @@ poli documents preview doc_abc123 -o ./preview.html
 ```
 
 The `cloud:` block is written by `poli link`, removed by `poli unlink`. **No API keys here** — the credentials file (or `POLI_PAGE_API_KEY`) carries the secret.
+
+A manifest from before environments may still carry `project.version` or `cloud.track`. Both are ignored, and dropped the next time the CLI writes the file (`poli link`, `poli unlink`, `poli new`).
 
 ---
 
