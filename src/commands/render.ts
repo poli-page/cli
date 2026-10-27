@@ -11,7 +11,7 @@ import {
 } from '../api-client.js';
 import { resolveAuth } from '../auth.js';
 import { isValidEnvironmentName } from '../environment-name.js';
-import { ExitCode, errorToExitCode } from '../exit-codes.js';
+import { UsageError, errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 import { formatOrientationSlug } from '../format-resolver.js';
 
@@ -40,10 +40,6 @@ export type RenderResult =
 
 const DRAFT = 'draft';
 
-class RenderUsageError extends Error {
-	readonly exitCode = ExitCode.INVALID_USAGE;
-}
-
 /**
  * Parses a template spec of the form `name`, `name@draft`, or `name@<environment>`.
  *
@@ -52,7 +48,7 @@ class RenderUsageError extends Error {
  */
 export function parseTemplateSpec(spec: string): { name: string; target: string } {
 	if (spec === '') {
-		throw new RenderUsageError('Template name is required.');
+		throw new UsageError('Template name is required.');
 	}
 	const atIdx = spec.indexOf('@');
 	if (atIdx === -1) {
@@ -61,17 +57,15 @@ export function parseTemplateSpec(spec: string): { name: string; target: string 
 	const name = spec.slice(0, atIdx);
 	const rest = spec.slice(atIdx + 1);
 	if (name === '') {
-		throw new RenderUsageError(
-			'Template name is required (got empty name in `@environment` spec).'
-		);
+		throw new UsageError('Template name is required (got empty name in `@environment` spec).');
 	}
 	if (rest === '') {
-		throw new RenderUsageError(
+		throw new UsageError(
 			'Environment is required after `@` (e.g. `invoice@sandbox` or `invoice@draft`).'
 		);
 	}
 	if (rest.includes('@')) {
-		throw new RenderUsageError('Invalid template spec: only one `@` is allowed.');
+		throw new UsageError('Invalid template spec: only one `@` is allowed.');
 	}
 	return { name, target: rest };
 }
@@ -79,12 +73,12 @@ export function parseTemplateSpec(spec: string): { name: string; target: string 
 function validateTarget(name: string, target: string): void {
 	if (target === DRAFT) return;
 	if (target === 'latest' || /^\d/.test(target)) {
-		throw new RenderUsageError(
+		throw new UsageError(
 			`\`${name}@${target}\`: templates no longer have versions. Render a published environment with \`${name}@<environment>\` (e.g. \`${name}@sandbox\`), or the draft with \`${name}\`.`
 		);
 	}
 	if (!isValidEnvironmentName(target)) {
-		throw new RenderUsageError(
+		throw new UsageError(
 			`Invalid environment name \`${target}\`: 1-20 lowercase letters, digits and single inner hyphens, starting with a letter. Use \`${name}@<environment>\`.`
 		);
 	}
@@ -105,7 +99,7 @@ export async function executeRender(
 		throw new Error('Use either `-o, --output` or `--no-download`, not both.');
 	}
 	if (options.noDownload && target === DRAFT) {
-		throw new RenderUsageError(
+		throw new UsageError(
 			`\`--no-download\` needs a stored document, and the draft is never stored. Drop \`--no-download\`, or render \`${templateName}@<environment>\`.`
 		);
 	}
@@ -165,7 +159,7 @@ export async function executeRender(
 	// environment it is bound to. Both are refused before any API call.
 	if (target === DRAFT) {
 		if (auth.mode === 'api-key') {
-			throw new RenderUsageError(
+			throw new UsageError(
 				`API keys render a published environment: use \`${templateName}@<environment>\`. This key renders \`${auth.environment}\`: \`${templateName}@${auth.environment}\`.`
 			);
 		}
@@ -175,7 +169,7 @@ export async function executeRender(
 	}
 
 	if (auth.mode === 'api-key' && target !== auth.environment) {
-		throw new RenderUsageError(
+		throw new UsageError(
 			`This API key renders the \`${auth.environment}\` environment, not \`${target}\`. Use \`${templateName}@${auth.environment}\`, or a key for \`${target}\`.`
 		);
 	}
@@ -232,13 +226,13 @@ function describeEnvironmentError(
 	if (!(err instanceof ApiError)) return err;
 	switch (err.code) {
 		case 'PROJECT_NOT_IN_ENVIRONMENT':
-			return new RenderUsageError(
+			return new UsageError(
 				`Project \`${project}\` is not published in \`${environment}\`. Publish it with \`poli publish --env ${environment}\`.`
 			);
 		case 'ENVIRONMENT_NOT_FOUND':
-			return new RenderUsageError(`This organization has no environment \`${environment}\`.`);
+			return new UsageError(`This organization has no environment \`${environment}\`.`);
 		case 'TEMPLATE_NOT_FOUND':
-			return new RenderUsageError(
+			return new UsageError(
 				`Template \`${template}\` is not in the copy of \`${project}\` published in \`${environment}\`. Publish it with \`poli publish --env ${environment}\`.`
 			);
 		case 'PUBLISH_IN_PROGRESS':
