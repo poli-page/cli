@@ -6,6 +6,7 @@ import { registerRenderCommand } from './commands/render.js';
 import { registerAuthCommands } from './commands/auth.js';
 import { registerLinkCommands } from './commands/link.js';
 import { registerPublishCommand } from './commands/publish.js';
+import { registerEnvCommands } from './commands/env.js';
 import { registerDocumentsCommands } from './commands/documents/index.js';
 import { registerWatchCommand } from './commands/watch.js';
 import { registerDevCommand } from './commands/dev.js';
@@ -59,6 +60,7 @@ export function createProgram() {
 	registerAuthCommands(program);
 	registerLinkCommands(program);
 	registerPublishCommand(program);
+	registerEnvCommands(program);
 	registerDocumentsCommands(program);
 	registerWatchCommand(program);
 	registerDevCommand(program);
