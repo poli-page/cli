@@ -138,7 +138,7 @@ This means a developer can keep `POLI_PAGE_API_KEY` set in `.zshrc` for occasion
 
 ## Commands
 
-16 commands grouped by category.
+17 commands grouped by category.
 
 ### Project lifecycle
 
@@ -387,6 +387,23 @@ Environments of acme, project invoices:
 
 Outside a linked folder, or with `--org` naming another organization, it lists the organization's environments with their protected and read-only flags and how many projects are published in each (`PROJECTS`). When you belong to several organizations and no project is linked, `--org` is required: without it the command exits `2` and lists your organizations' slugs. An environment is read-only when the organization's plan no longer covers it.
 
+#### `poli env remove-project <environment>`
+
+Removes the linked project from an environment: the environment's copy of the project is deleted, and the documents rendered from it are kept. The draft and the other environments are untouched, nothing is written to the publish log, and renders of the project in that environment then get `PROJECT_NOT_IN_ENVIRONMENT` until a later `poli publish --env <environment>` adds it back. Only an owner or an admin of the organization can do it, in every environment.
+
+```bash
+poli env remove-project staging          # asks you to type the project slug
+poli env remove-project staging --yes    # scripts: no prompt
+```
+
+| Flag        | Meaning                                                                            |
+| ----------- | ---------------------------------------------------------------------------------- |
+| `-y, --yes` | Remove without typing the project slug to confirm.                                 |
+| `--json`    | Print `{ org, project, environment }` (also the default when stdout is not a TTY). |
+
+- **Confirmation.** In a terminal, you type the project slug (`cloud.projectSlug` in `poli-page.json`); anything else aborts and nothing is sent. Without a TTY the command needs `--yes` and otherwise exits `2`; `CI=true` does not stand in for `--yes` here.
+- **Errors.** A developer gets `INSUFFICIENT_ROLE` (exit `5`, owner or admin required). A project that is not published in the environment (`PROJECT_NOT_IN_ENVIRONMENT`) or an environment the organization does not have (`ENVIRONMENT_NOT_FOUND`) exits `2`. While a publish or another removal of the same project and environment runs (`PUBLISH_IN_PROGRESS`), while the project is being transferred (`TRANSFER_IN_PROGRESS`), or when the environment is read-only (`ENVIRONMENT_READ_ONLY`), it exits `3`.
+
 ### Render
 
 #### `poli render <spec>`
@@ -537,7 +554,7 @@ A manifest from before environments may still carry `project.version` or `cloud.
 | `POLI_API_URL`       | Override the API base URL (precedence: `--api-url` flag → `POLI_API_URL` → `poli-page.json` `cloud.apiUrl` → `~/.polipage/credentials.json` `apiUrl` → default `https://api.poli.page`).                                                          |
 | `POLI_PAGE_ENV`      | Default render env (`sandbox` or `live`) when commands accept an env hint.                                                                                                                                                                       |
 | `NO_COLOR`           | Disable ANSI colors (Unix standard).                                                                                                                                                                                                            |
-| `CI`                 | Auto-detected; equivalent to a global `--yes`.                                                                                                                                                                                                  |
+| `CI`                 | Auto-detected; equivalent to a global `--yes`, except for `poli env remove-project`.                                                                                                                                                            |
 
 ### Common flags
 
@@ -558,7 +575,7 @@ Every command that returns a payload (renders, descriptors, publishes) follows t
 
 Either the summary **or** the JSON — never both at once. Errors always go to stderr with a clear message.
 
-Commands that take this contract: `render`, `documents get`, `documents preview`, `documents thumbnails`, `whoami`, `publish`, `env list`, `init --starter`.
+Commands that take this contract: `render`, `documents get`, `documents preview`, `documents thumbnails`, `whoami`, `publish`, `env list`, `env remove-project`, `init --starter`.
 
 Imperative commands (`init` without `--starter`, `new`, `link`, `unlink`, `logout`, `documents delete`, `watch`, `login`) don't have a JSON payload to forward — they just acknowledge with a `✓` line on success.
 

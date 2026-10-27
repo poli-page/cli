@@ -16,6 +16,7 @@ import {
 	EnvironmentProtectedError,
 	EnvironmentNotFoundError,
 	UnsupportedFileTypeError,
+	InsufficientRoleError,
 } from '../src/api-client.js';
 import { ExitCode, errorToExitCode } from '../src/exit-codes.js';
 import realResponses from './fixtures/api-error-responses.json';
@@ -90,6 +91,7 @@ describe('api-client error mapping', () => {
 			['ENVIRONMENT_PROTECTED', 403, EnvironmentProtectedError],
 			['ENVIRONMENT_NOT_FOUND', 404, EnvironmentNotFoundError],
 			['UNSUPPORTED_FILE_TYPE', 400, UnsupportedFileTypeError],
+			['INSUFFICIENT_ROLE', 403, InsufficientRoleError],
 		];
 
 		it.each(typedCases)(

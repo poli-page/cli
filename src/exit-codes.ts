@@ -42,6 +42,7 @@ import {
 	EnvironmentProtectedError,
 	EnvironmentNotFoundError,
 	UnsupportedFileTypeError,
+	InsufficientRoleError,
 } from './api-client.js';
 
 /**
@@ -61,6 +62,7 @@ export function errorToExitCode(err: unknown): ExitCodeValue {
 		// Auth-domain typed errors map to "not authorised" (insufficient role,
 		// org in payment grace/cancelled/purged, protected environment).
 		if (
+			err instanceof InsufficientRoleError ||
 			err instanceof EnvironmentProtectedError ||
 			err instanceof NotAMemberError ||
 			err instanceof OrgPaymentGraceError ||

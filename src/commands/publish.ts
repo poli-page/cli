@@ -11,7 +11,7 @@ import {
 	type PublishBody,
 	type PublishResult,
 } from '../api-client.js';
-import { isValidEnvironmentName } from '../environment-name.js';
+import { assertEnvironmentName } from '../environment-name.js';
 import { ExitCode, UsageError, errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 import { toProjectFileEntries } from '../project-files.js';
@@ -42,16 +42,10 @@ function validateEnvironmentName(name: string | undefined): string {
 			'--env is required: name the environment to publish to (for example `--env sandbox`).'
 		);
 	}
-	if (name === 'draft') {
-		throw new UsageError(
-			'`draft` is not an environment: `poli watch` and `poli dev` sync the draft. Publish to an environment such as `sandbox` or `live`.'
-		);
-	}
-	if (!isValidEnvironmentName(name)) {
-		throw new UsageError(
-			`Invalid environment name "${name}": use 1-20 characters, lowercase letters, digits and single inner hyphens, starting with a letter.`
-		);
-	}
+	assertEnvironmentName(
+		name,
+		'`draft` is not an environment: `poli watch` and `poli dev` sync the draft. Publish to an environment such as `sandbox` or `live`.'
+	);
 	return name;
 }
 
