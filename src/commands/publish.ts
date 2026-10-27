@@ -12,7 +12,7 @@ import {
 	type PublishResult,
 } from '../api-client.js';
 import { isValidEnvironmentName } from '../environment-name.js';
-import { ExitCode, errorToExitCode } from '../exit-codes.js';
+import { ExitCode, UsageError, errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 import { toProjectFileEntries } from '../project-files.js';
 import { readAllProjectFiles } from '../project-sync.js';
@@ -32,27 +32,23 @@ export interface PublishOptions {
 const MESSAGE_MAX_LENGTH = 500;
 const BUNDLE_MAX_BYTES = 5 * 1024 * 1024;
 
-class PublishUsageError extends Error {
-	readonly exitCode = ExitCode.INVALID_USAGE;
-}
-
 class PublishNotAuthorizedError extends Error {
 	readonly exitCode = ExitCode.NOT_AUTHORIZED;
 }
 
 function validateEnvironmentName(name: string | undefined): string {
 	if (name === undefined) {
-		throw new PublishUsageError(
+		throw new UsageError(
 			'--env is required: name the environment to publish to (for example `--env sandbox`).'
 		);
 	}
 	if (name === 'draft') {
-		throw new PublishUsageError(
+		throw new UsageError(
 			'`draft` is not an environment: `poli watch` and `poli dev` sync the draft. Publish to an environment such as `sandbox` or `live`.'
 		);
 	}
 	if (!isValidEnvironmentName(name)) {
-		throw new PublishUsageError(
+		throw new UsageError(
 			`Invalid environment name "${name}": use 1-20 characters, lowercase letters, digits and single inner hyphens, starting with a letter.`
 		);
 	}
@@ -81,7 +77,7 @@ async function buildPublishBody(
 	};
 	const bodyBytes = Buffer.byteLength(JSON.stringify(body));
 	if (bodyBytes > BUNDLE_MAX_BYTES) {
-		throw new PublishUsageError(
+		throw new UsageError(
 			`The publish bundle is ${(bodyBytes / (1024 * 1024)).toFixed(1)} MiB; the limit is 5 MiB. Shrink or remove large assets.`
 		);
 	}
@@ -91,7 +87,7 @@ async function buildPublishBody(
 async function confirmProtected(target: EnvironmentInfo, options: PublishOptions): Promise<void> {
 	if (!target.protected || options.yes === true || process.env.CI === 'true') return;
 	if (!options.confirmFn) {
-		throw new PublishUsageError(
+		throw new UsageError(
 			`Environment "${target.name}" is protected. Pass --yes to publish to it without a prompt.`
 		);
 	}
@@ -134,7 +130,7 @@ export async function executePublish(options: PublishOptions): Promise<PublishRe
 	const cwd = options.cwd ?? process.cwd();
 	const environment = validateEnvironmentName(options.env);
 	if (options.message !== undefined && options.message.length > MESSAGE_MAX_LENGTH) {
-		throw new PublishUsageError(
+		throw new UsageError(
 			`Publish message is too long (${options.message.length} characters). The maximum is ${MESSAGE_MAX_LENGTH}.`
 		);
 	}
@@ -196,7 +192,7 @@ async function publishWithApiKey(
 		);
 	}
 	if (key.environment !== environment) {
-		throw new PublishUsageError(
+		throw new UsageError(
 			`This service key publishes to "${key.environment}" only, not "${environment}". Run \`poli publish --env ${key.environment}\`, or use a key for "${environment}".`
 		);
 	}
@@ -211,6 +207,11 @@ async function publishWithApiKey(
 		}
 		throw explainPublishError(err, project, environment, []);
 	}
+}
+
+/** The first 12 hex digits of a `sha256:<64 hex>` bundle hash. */
+export function shortBundleHash(bundleHash: string): string {
+	return bundleHash.replace(/^sha256:/, '').slice(0, 12);
 }
 
 function confirmProtectedPublish(environment: string): Promise<boolean> {
@@ -242,9 +243,10 @@ export function registerPublishCommand(program: Command) {
 					console.log(JSON.stringify(result, null, 2));
 					return;
 				}
-				const shortHash = result.bundleHash.replace(/^sha256:/, '').slice(0, 12);
 				console.log(chalk.green(`✓ Published ${result.project} to ${result.environment}`));
-				console.log(`  ${chalk.dim('Bundle:')}  ${shortHash} (${result.fileCount} files)`);
+				console.log(
+					`  ${chalk.dim('Bundle:')}  ${shortBundleHash(result.bundleHash)} (${result.fileCount} files)`
+				);
 				console.log(`  ${chalk.dim('Log id:')}  ${result.logId}`);
 			} catch (err) {
 				console.error(chalk.red(err instanceof Error ? err.message : 'Publish failed'));
