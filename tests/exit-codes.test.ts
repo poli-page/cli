@@ -11,6 +11,7 @@ import {
 	EnvironmentProtectedError,
 	EnvironmentNotFoundError,
 	UnsupportedFileTypeError,
+	InsufficientRoleError,
 } from '../src/api-client.js';
 
 describe('ExitCode constants (cli-spec §1.2)', () => {
@@ -83,6 +84,12 @@ describe('errorToExitCode', () => {
 
 	it('returns NOT_AUTHORIZED (5) for EnvironmentProtectedError', () => {
 		expect(errorToExitCode(new EnvironmentProtectedError('protected'))).toBe(
+			ExitCode.NOT_AUTHORIZED
+		);
+	});
+
+	it('returns NOT_AUTHORIZED (5) for InsufficientRoleError', () => {
+		expect(errorToExitCode(new InsufficientRoleError('403 INSUFFICIENT_ROLE'))).toBe(
 			ExitCode.NOT_AUTHORIZED
 		);
 	});

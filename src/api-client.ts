@@ -84,6 +84,11 @@ export class UnsupportedFileTypeError extends ApiError {
 		super('UNSUPPORTED_FILE_TYPE', 400, message, retryAfter);
 	}
 }
+export class InsufficientRoleError extends ApiError {
+	constructor(message: string, retryAfter?: number) {
+		super('INSUFFICIENT_ROLE', 403, message, retryAfter);
+	}
+}
 // No class for PUBLISH_IN_PROGRESS: the API sends it as 409 on a publish and
 // 503 on a render, and a registry class carries one fixed status.
 
@@ -104,6 +109,7 @@ const TYPED_ERROR_REGISTRY: Record<string, TypedErrorCtor> = {
 	ENVIRONMENT_PROTECTED: EnvironmentProtectedError,
 	ENVIRONMENT_NOT_FOUND: EnvironmentNotFoundError,
 	UNSUPPORTED_FILE_TYPE: UnsupportedFileTypeError,
+	INSUFFICIENT_ROLE: InsufficientRoleError,
 };
 
 export interface ApiKeyInfo {
@@ -314,6 +320,16 @@ export interface ApiClient {
 		orgId: string,
 		projectId: string
 	): Promise<ProjectEnvironmentState[]>;
+	/**
+	 * Deletes the environment's copy of the project (its documents are kept);
+	 * session only, owner or admin. Answers `204`.
+	 */
+	removeProjectFromEnvironment(
+		session: string,
+		orgId: string,
+		projectId: string,
+		environment: string
+	): Promise<void>;
 	publish(
 		session: string,
 		orgId: string,
@@ -648,6 +664,19 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				}
 			);
 			return response.json() as Promise<ProjectEnvironmentState[]>;
+		},
+
+		async removeProjectFromEnvironment(session, orgId, projectId, environment) {
+			await request(
+				`/api/organizations/${idSegment(orgId, 'organization')}/projects/${idSegment(projectId, 'project')}/environments/${idSegment(environment, 'environment')}`,
+				{
+					method: 'DELETE',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${session}`,
+					},
+				}
+			);
 		},
 
 		async publish(session, orgId, project, body) {

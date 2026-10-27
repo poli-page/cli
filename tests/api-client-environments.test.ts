@@ -87,3 +87,56 @@ describe('api-client getProjectEnvironments', () => {
 		}
 	);
 });
+
+describe('api-client removeProjectFromEnvironment', () => {
+	function mockNoContent(): ReturnType<typeof vi.fn> {
+		const fn = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+		vi.stubGlobal('fetch', fn);
+		return fn;
+	}
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('DELETEs the project from the environment with the session and reads no body', async () => {
+		const fetchMock = mockNoContent();
+		const client = createApiClient('https://api.test');
+		await expect(
+			client.removeProjectFromEnvironment('sess-tok', 'org_1', 'proj_1', 'live')
+		).resolves.toBeUndefined();
+
+		const [url, init] = fetchMock.mock.calls[0];
+		expect(url).toBe(
+			'https://api.test/api/organizations/org_1/projects/proj_1/environments/live'
+		);
+		expect((init as RequestInit).method).toBe('DELETE');
+		const headers = (init as RequestInit).headers as Record<string, string>;
+		expect(headers.Authorization).toBe('Bearer sess-tok');
+	});
+
+	it('encodes every path segment', async () => {
+		const fetchMock = mockNoContent();
+		const client = createApiClient('https://api.test');
+		await client.removeProjectFromEnvironment('sess-tok', 'x/..', 'p/..', 'l/..');
+		expect(fetchMock.mock.calls[0][0]).toBe(
+			'https://api.test/api/organizations/x%2F../projects/p%2F../environments/l%2F..'
+		);
+	});
+
+	it.each([
+		['..', 'proj_1', 'live', 'Invalid organization ID.'],
+		['org_1', '..', 'live', 'Invalid project ID.'],
+		['org_1', 'proj_1', '..', 'Invalid environment ID.'],
+	])(
+		'refuses the dot segment in (%s, %s, %s) without a request',
+		async (orgId, projectId, environment, message) => {
+			const fetchMock = mockNoContent();
+			const client = createApiClient('https://api.test');
+			await expect(
+				client.removeProjectFromEnvironment('sess-tok', orgId, projectId, environment)
+			).rejects.toThrow(message);
+			expect(fetchMock).not.toHaveBeenCalled();
+		}
+	);
+});

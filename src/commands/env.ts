@@ -1,11 +1,14 @@
 import { Command } from 'commander';
 import {
+	ApiError,
 	createApiClient,
+	InsufficientRoleError,
 	type EnvironmentInfo,
 	type ProjectEnvironmentState,
 	type PublishLogEntry,
 } from '../api-client.js';
 import { getSessionToken } from '../credentials.js';
+import { isValidEnvironmentName } from '../environment-name.js';
 import { UsageError, errorToExitCode } from '../exit-codes.js';
 import { readManifest, type PoliPageManifest } from '../manifest.js';
 import { shouldEmitJson } from '../output.js';
@@ -70,6 +73,108 @@ async function executeEnvList(orgFlag: string | undefined): Promise<EnvListResul
 		org: org.slug,
 		environments: await client.listEnvironments(session, org.id),
 	};
+}
+
+interface RemoveProjectResult {
+	org: string;
+	project: string;
+	environment: string;
+}
+
+function validateEnvironmentName(name: string): void {
+	if (name === 'draft') {
+		throw new UsageError(
+			'`draft` is not an environment: a project cannot be removed from its draft.'
+		);
+	}
+	if (!isValidEnvironmentName(name)) {
+		throw new UsageError(
+			`Invalid environment name "${name}": use 1-20 characters, lowercase letters, digits and single inner hyphens, starting with a letter.`
+		);
+	}
+}
+
+/** The API's removal errors, reworded with the project and environment they are about. */
+function explainRemoveError(err: unknown, project: string, environment: string): unknown {
+	if (!(err instanceof ApiError)) return err;
+	const reworded = (message: string) =>
+		new ApiError(err.code, err.httpStatus, message, err.retryAfter);
+	switch (err.code) {
+		case 'INSUFFICIENT_ROLE':
+			return new InsufficientRoleError(
+				'Owner or admin required: only an owner or admin of the organization can remove a project from an environment.'
+			);
+		case 'PROJECT_NOT_IN_ENVIRONMENT':
+			return new UsageError(
+				`Project ${project} is not published in "${environment}": there is nothing to remove.`
+			);
+		case 'ENVIRONMENT_NOT_FOUND':
+			return new UsageError(
+				`This organization has no environment "${environment}", so ${project} cannot be removed from it.`
+			);
+		case 'PUBLISH_IN_PROGRESS':
+			return reworded(
+				`A publish or removal of ${project} in "${environment}" is running. Wait for it to finish, then try again.`
+			);
+		case 'TRANSFER_IN_PROGRESS':
+			return reworded(
+				`${project} is being transferred to another organization. Try again once the transfer is done.`
+			);
+		case 'ENVIRONMENT_READ_ONLY':
+			return reworded(
+				`Environment "${environment}" is read-only: the organization's plan no longer covers it.`
+			);
+		default:
+			return err;
+	}
+}
+
+/**
+ * Removes the linked project from `environment` once the user has typed its
+ * slug at `typeProjectName` (absent without a TTY) or passed `--yes`;
+ * nothing is sent before that.
+ */
+async function executeEnvRemoveProject(
+	environment: string,
+	options: { yes?: boolean; typeProjectName?: (message: string) => Promise<string> }
+): Promise<RemoveProjectResult> {
+	validateEnvironmentName(environment);
+	const session = await getSessionToken();
+	const linked = await readLinkedProject(process.cwd());
+	if (!linked) {
+		throw new Error('This folder is not linked to a project. Run `poli link` first.');
+	}
+	const project = linked.projectSlug ?? linked.projectId;
+	const shown = oneLine(project);
+
+	if (!options.yes) {
+		if (!options.typeProjectName) {
+			throw new UsageError(
+				`Removing ${shown} from "${environment}" asks you to type the project slug. Without a terminal, pass --yes.`
+			);
+		}
+		const typed = await options.typeProjectName(
+			`This deletes the copy of ${shown} published in "${environment}"; its documents are kept. Type the project slug (${shown}) to confirm:`
+		);
+		if (typed.trim() !== project) {
+			throw new Error(`What you typed is not "${shown}". Nothing was removed.`);
+		}
+	}
+
+	const client = createApiClient();
+	const orgs = await client.getOrganizations(session);
+	const org = selectOrganization(orgs, undefined, linked.orgSlug);
+	try {
+		await client.removeProjectFromEnvironment(session, org.id, linked.projectId, environment);
+	} catch (err) {
+		throw explainRemoveError(err, shown, environment);
+	}
+	return { org: org.slug, project, environment };
+}
+
+async function typeProjectName(message: string): Promise<string> {
+	const { input } = await import('@inquirer/prompts');
+	return input({ message });
 }
 
 // ─── Output ─────────────────────────────────────────────────────────────────────
@@ -150,7 +255,9 @@ function formatEnvList(result: EnvListResult, chalk: ChalkLike): string[] {
 // ─── CLI registration ───────────────────────────────────────────────────────────
 
 export function registerEnvCommands(program: Command) {
-	const env = program.command('env').description("Inspect the organization's environments");
+	const env = program
+		.command('env')
+		.description("Inspect the organization's environments, and remove a project from one");
 
 	env.command('list')
 		.description(
@@ -170,6 +277,35 @@ export function registerEnvCommands(program: Command) {
 					return;
 				}
 				for (const line of formatEnvList(result, chalk)) console.log(line);
+			} catch (err) {
+				console.error(chalk.red(err instanceof Error ? err.message : 'Failed'));
+				process.exitCode = errorToExitCode(err);
+			}
+		});
+
+	env.command('remove-project <environment>')
+		.description(
+			'Remove the linked project from an environment (owner or admin); its documents are kept'
+		)
+		.option('-y, --yes', 'Remove without typing the project slug to confirm')
+		.option('--json', 'Force JSON output even in a TTY')
+		.action(async (environment: string, opts: { yes?: boolean; json?: boolean }) => {
+			const { default: chalk } = await import('chalk');
+			const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+			try {
+				const result = await executeEnvRemoveProject(environment, {
+					yes: opts.yes,
+					typeProjectName: interactive ? typeProjectName : undefined,
+				});
+				if (shouldEmitJson(opts)) {
+					console.log(JSON.stringify(result, null, 2));
+					return;
+				}
+				console.log(
+					chalk.green(
+						`✓ Removed ${oneLine(result.project)} from "${environment}". Its documents are kept; \`poli publish --env ${environment}\` adds it back.`
+					)
+				);
 			} catch (err) {
 				console.error(chalk.red(err instanceof Error ? err.message : 'Failed'));
 				process.exitCode = errorToExitCode(err);

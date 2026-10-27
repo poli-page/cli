@@ -13,6 +13,9 @@ import type {
 import { ExitCode } from '../../src/exit-codes.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 
+const { inputMock } = vi.hoisted(() => ({ inputMock: vi.fn() }));
+vi.mock('@inquirer/prompts', () => ({ input: inputMock }));
+
 const API_URL = 'https://api.test';
 
 const LINKED_MANIFEST = {
@@ -108,87 +111,87 @@ const PROJECT_ENVIRONMENTS: ProjectEnvironmentState[] = [
 	},
 ];
 
+let projectDir: string;
+let fakeHome: string;
+let orgs: Array<{ id: string; name: string; slug: string }>;
+let fetchMock: ReturnType<typeof vi.fn>;
+let logs: string[];
+let errors: string[];
+let savedExitCode: typeof process.exitCode;
+let savedTTY: boolean | undefined;
+
+function jsonResponse(status: number, body: unknown) {
+	return new Response(JSON.stringify(body), {
+		status,
+		headers: { 'Content-Type': 'application/json' },
+	});
+}
+
+function requestedUrls(): string[] {
+	return fetchMock.mock.calls.map(([url]) => String(url));
+}
+
+function linkProject(manifest: unknown = LINKED_MANIFEST) {
+	return writeFile(join(projectDir, MANIFEST_FILENAME), JSON.stringify(manifest));
+}
+
+beforeEach(async () => {
+	projectDir = await mkdtemp(join(tmpdir(), 'poli-env-'));
+	fakeHome = await mkdtemp(join(tmpdir(), 'poli-env-home-'));
+	await writeCredentials(
+		{
+			session: 'session-token',
+			user: { id: 'u1', name: 'X', email: 'x@x' },
+			orgs: {},
+		},
+		fakeHome
+	);
+	vi.stubEnv('HOME', fakeHome);
+	vi.stubEnv('POLI_API_URL', API_URL);
+	vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
+	orgs = [ACME];
+	fetchMock = vi.fn(async (url: string) => {
+		if (url === `${API_URL}/api/organizations`) return jsonResponse(200, orgs);
+		if (url === `${API_URL}/api/organizations/org_1/environments`) {
+			return jsonResponse(200, ORG_ENVIRONMENTS);
+		}
+		if (url === `${API_URL}/api/organizations/org_2/environments`) {
+			return jsonResponse(200, [environment({ name: 'sandbox', kind: 'sandbox' })]);
+		}
+		if (url === `${API_URL}/api/organizations/org_1/projects/proj_1/environments`) {
+			return jsonResponse(200, PROJECT_ENVIRONMENTS);
+		}
+		return new Response('unexpected', { status: 500 });
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	logs = [];
+	errors = [];
+	vi.spyOn(console, 'log').mockImplementation((msg: unknown = '') => {
+		logs.push(stripVTControlCharacters(String(msg)));
+	});
+	vi.spyOn(console, 'error').mockImplementation((msg: unknown = '') => {
+		errors.push(stripVTControlCharacters(String(msg)));
+	});
+	savedExitCode = process.exitCode;
+	process.exitCode = undefined;
+	savedTTY = process.stdout.isTTY;
+	process.stdout.isTTY = true;
+});
+
+afterEach(async () => {
+	process.stdout.isTTY = savedTTY as true;
+	process.exitCode = savedExitCode;
+	vi.unstubAllGlobals();
+	vi.unstubAllEnvs();
+	vi.restoreAllMocks();
+	await rm(projectDir, { recursive: true, force: true });
+	await rm(fakeHome, { recursive: true, force: true });
+});
+
 describe('poli env list', () => {
-	let projectDir: string;
-	let fakeHome: string;
-	let orgs: Array<{ id: string; name: string; slug: string }>;
-	let fetchMock: ReturnType<typeof vi.fn>;
-	let logs: string[];
-	let errors: string[];
-	let savedExitCode: typeof process.exitCode;
-	let savedTTY: boolean | undefined;
-
-	function jsonResponse(status: number, body: unknown) {
-		return new Response(JSON.stringify(body), {
-			status,
-			headers: { 'Content-Type': 'application/json' },
-		});
-	}
-
-	function requestedUrls(): string[] {
-		return fetchMock.mock.calls.map(([url]) => String(url));
-	}
-
 	function poli(...args: string[]) {
 		return createProgram().parseAsync(['env', 'list', ...args], { from: 'user' });
 	}
-
-	function linkProject(manifest: unknown = LINKED_MANIFEST) {
-		return writeFile(join(projectDir, MANIFEST_FILENAME), JSON.stringify(manifest));
-	}
-
-	beforeEach(async () => {
-		projectDir = await mkdtemp(join(tmpdir(), 'poli-env-'));
-		fakeHome = await mkdtemp(join(tmpdir(), 'poli-env-home-'));
-		await writeCredentials(
-			{
-				session: 'session-token',
-				user: { id: 'u1', name: 'X', email: 'x@x' },
-				orgs: {},
-			},
-			fakeHome
-		);
-		vi.stubEnv('HOME', fakeHome);
-		vi.stubEnv('POLI_API_URL', API_URL);
-		vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
-		orgs = [ACME];
-		fetchMock = vi.fn(async (url: string) => {
-			if (url === `${API_URL}/api/organizations`) return jsonResponse(200, orgs);
-			if (url === `${API_URL}/api/organizations/org_1/environments`) {
-				return jsonResponse(200, ORG_ENVIRONMENTS);
-			}
-			if (url === `${API_URL}/api/organizations/org_2/environments`) {
-				return jsonResponse(200, [environment({ name: 'sandbox', kind: 'sandbox' })]);
-			}
-			if (url === `${API_URL}/api/organizations/org_1/projects/proj_1/environments`) {
-				return jsonResponse(200, PROJECT_ENVIRONMENTS);
-			}
-			return new Response('unexpected', { status: 500 });
-		});
-		vi.stubGlobal('fetch', fetchMock);
-		logs = [];
-		errors = [];
-		vi.spyOn(console, 'log').mockImplementation((msg: unknown = '') => {
-			logs.push(stripVTControlCharacters(String(msg)));
-		});
-		vi.spyOn(console, 'error').mockImplementation((msg: unknown = '') => {
-			errors.push(stripVTControlCharacters(String(msg)));
-		});
-		savedExitCode = process.exitCode;
-		process.exitCode = undefined;
-		savedTTY = process.stdout.isTTY;
-		process.stdout.isTTY = true;
-	});
-
-	afterEach(async () => {
-		process.stdout.isTTY = savedTTY as true;
-		process.exitCode = savedExitCode;
-		vi.unstubAllGlobals();
-		vi.unstubAllEnvs();
-		vi.restoreAllMocks();
-		await rm(projectDir, { recursive: true, force: true });
-		await rm(fakeHome, { recursive: true, force: true });
-	});
 
 	describe('in a linked folder', () => {
 		beforeEach(() => linkProject());
@@ -487,5 +490,253 @@ describe('poli env list', () => {
 		expect(process.exitCode).toBe(ExitCode.NOT_AUTHENTICATED);
 		expect(errors.join('\n')).toBe('Not logged in. Run "poli login" first.');
 		expect(fetchMock).not.toHaveBeenCalled();
+	});
+});
+
+describe('poli env remove-project', () => {
+	const REMOVE_URL = `${API_URL}/api/organizations/org_1/projects/proj_1/environments/live`;
+	let savedStdinTTY: boolean | undefined;
+	let removeAnswer: () => Response;
+
+	function poli(...args: string[]) {
+		return createProgram().parseAsync(['env', 'remove-project', ...args], { from: 'user' });
+	}
+
+	function removeRequests() {
+		return fetchMock.mock.calls.filter(
+			([, init]) => (init as RequestInit)?.method === 'DELETE'
+		);
+	}
+
+	function refuse(status: number, code: string) {
+		removeAnswer = () => jsonResponse(status, { error: code, requestId: 'req_1' });
+	}
+
+	beforeEach(async () => {
+		await linkProject();
+		savedStdinTTY = process.stdin.isTTY;
+		process.stdin.isTTY = true;
+		inputMock.mockReset();
+		removeAnswer = () => new Response(null, { status: 204 });
+		const answer = fetchMock.getMockImplementation()!;
+		fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
+			init?.method === 'DELETE' ? removeAnswer() : answer(url)
+		);
+	});
+
+	afterEach(() => {
+		process.stdin.isTTY = savedStdinTTY as true;
+	});
+
+	it('removes the project once the slug is typed, and says its documents are kept', async () => {
+		inputMock.mockResolvedValue('invoices');
+		await poli('live');
+
+		expect(inputMock).toHaveBeenCalledTimes(1);
+		expect(inputMock.mock.calls[0][0].message).toBe(
+			'This deletes the copy of invoices published in "live"; its documents are kept. Type the project slug (invoices) to confirm:'
+		);
+		expect(errors).toEqual([]);
+		expect(process.exitCode).toBeUndefined();
+		expect(requestedUrls()).toEqual([`${API_URL}/api/organizations`, REMOVE_URL]);
+		const [, init] = removeRequests()[0];
+		expect((init as RequestInit).headers).toMatchObject({
+			Authorization: 'Bearer session-token',
+		});
+		expect(logs).toEqual([
+			'✓ Removed invoices from "live". Its documents are kept; `poli publish --env live` adds it back.',
+		]);
+	});
+
+	it('a typed name that does not match aborts with nothing sent', async () => {
+		inputMock.mockResolvedValue('invoice');
+		await poli('live');
+
+		expect(process.exitCode).toBe(ExitCode.INCONSISTENT);
+		expect(errors).toEqual(['What you typed is not "invoices". Nothing was removed.']);
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(logs).toEqual([]);
+	});
+
+	it('accepts the slug typed with surrounding spaces', async () => {
+		inputMock.mockResolvedValue('  invoices ');
+		await poli('live');
+		expect(removeRequests()).toHaveLength(1);
+	});
+
+	it('--yes removes without the prompt', async () => {
+		await poli('live', '--yes');
+		expect(inputMock).not.toHaveBeenCalled();
+		expect(removeRequests()).toHaveLength(1);
+		expect(process.exitCode).toBeUndefined();
+	});
+
+	it.each([
+		['stdin', () => (process.stdin.isTTY = false as true)],
+		['stdout', () => (process.stdout.isTTY = false)],
+	])('without a TTY (%s): requires --yes, exit 2, nothing sent', async (_, noTTY) => {
+		noTTY();
+		await poli('live');
+
+		expect(process.exitCode).toBe(ExitCode.INVALID_USAGE);
+		expect(errors).toEqual([
+			'Removing invoices from "live" asks you to type the project slug. Without a terminal, pass --yes.',
+		]);
+		expect(inputMock).not.toHaveBeenCalled();
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('without a TTY, --yes removes and prints JSON', async () => {
+		process.stdin.isTTY = false as true;
+		process.stdout.isTTY = false;
+		await poli('live', '--yes');
+
+		expect(removeRequests()).toHaveLength(1);
+		expect(JSON.parse(logs.join('\n'))).toEqual({
+			org: 'acme',
+			project: 'invoices',
+			environment: 'live',
+		});
+	});
+
+	it('--json prints the JSON result in a TTY', async () => {
+		await poli('live', '--yes', '--json');
+		expect(JSON.parse(logs.join('\n'))).toEqual({
+			org: 'acme',
+			project: 'invoices',
+			environment: 'live',
+		});
+	});
+
+	it('asks for the project id when the manifest has no projectSlug', async () => {
+		const { projectSlug: _, ...cloud } = LINKED_MANIFEST.cloud;
+		await linkProject({ ...LINKED_MANIFEST, cloud });
+		inputMock.mockResolvedValue('proj_1');
+		await poli('live');
+
+		expect(inputMock.mock.calls[0][0].message).toContain('Type the project slug (proj_1)');
+		expect(removeRequests()).toHaveLength(1);
+	});
+
+	it('control characters in the project slug cannot forge output lines', async () => {
+		await linkProject({
+			...LINKED_MANIFEST,
+			cloud: { ...LINKED_MANIFEST.cloud, projectSlug: 'in\nvoices' },
+		});
+		inputMock.mockResolvedValue('in\nvoices');
+		await poli('live');
+
+		expect(inputMock.mock.calls[0][0].message).toBe(
+			'This deletes the copy of in voices published in "live"; its documents are kept. Type the project slug (in voices) to confirm:'
+		);
+		expect(logs).toEqual([
+			'✓ Removed in voices from "live". Its documents are kept; `poli publish --env live` adds it back.',
+		]);
+	});
+
+	describe('API refusals', () => {
+		beforeEach(() => {
+			inputMock.mockResolvedValue('invoices');
+		});
+
+		it.each([
+			[
+				403,
+				'INSUFFICIENT_ROLE',
+				ExitCode.NOT_AUTHORIZED,
+				'Owner or admin required: only an owner or admin of the organization can remove a project from an environment.',
+			],
+			[
+				404,
+				'PROJECT_NOT_IN_ENVIRONMENT',
+				ExitCode.INVALID_USAGE,
+				'Project invoices is not published in "live": there is nothing to remove.',
+			],
+			[
+				404,
+				'ENVIRONMENT_NOT_FOUND',
+				ExitCode.INVALID_USAGE,
+				'This organization has no environment "live", so invoices cannot be removed from it.',
+			],
+			[
+				409,
+				'PUBLISH_IN_PROGRESS',
+				ExitCode.NETWORK_OR_API_ERROR,
+				'A publish or removal of invoices in "live" is running. Wait for it to finish, then try again.',
+			],
+			[
+				409,
+				'TRANSFER_IN_PROGRESS',
+				ExitCode.NETWORK_OR_API_ERROR,
+				'invoices is being transferred to another organization. Try again once the transfer is done.',
+			],
+			[
+				409,
+				'ENVIRONMENT_READ_ONLY',
+				ExitCode.NETWORK_OR_API_ERROR,
+				'Environment "live" is read-only: the organization\'s plan no longer covers it.',
+			],
+			[500, 'INTERNAL_ERROR', ExitCode.NETWORK_OR_API_ERROR, '500 INTERNAL_ERROR'],
+		])('%i %s: exit %i with a message', async (status, code, exitCode, message) => {
+			refuse(status, code);
+			await poli('live');
+
+			expect(removeRequests()).toHaveLength(1);
+			expect(process.exitCode).toBe(exitCode);
+			expect(errors).toEqual([message]);
+			expect(logs).toEqual([]);
+		});
+	});
+
+	it.each([
+		[
+			'Live',
+			'Invalid environment name "Live": use 1-20 characters, lowercase letters, digits and single inner hyphens, starting with a letter.',
+		],
+		[
+			'../x',
+			'Invalid environment name "../x": use 1-20 characters, lowercase letters, digits and single inner hyphens, starting with a letter.',
+		],
+		['draft', '`draft` is not an environment: a project cannot be removed from its draft.'],
+	])('refuses the environment name %j: exit 2, nothing sent', async (name, message) => {
+		await poli(name, '--yes');
+
+		expect(process.exitCode).toBe(ExitCode.INVALID_USAGE);
+		expect(errors).toEqual([message]);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['no poli-page.json', () => rm(join(projectDir, MANIFEST_FILENAME))],
+		[
+			'a poli-page.json without cloud',
+			() => linkProject({ project: { name: 'Invoices' }, templates: [] }),
+		],
+	])('%s: exit 6, nothing sent', async (_, unlink) => {
+		await unlink();
+		await poli('live', '--yes');
+
+		expect(process.exitCode).toBe(ExitCode.INVALID_LOCAL_STATE);
+		expect(errors).toEqual(['This folder is not linked to a project. Run `poli link` first.']);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('without a session: exit 4, no prompt and nothing sent', async () => {
+		await rm(join(fakeHome, '.polipage'), { recursive: true, force: true });
+		await poli('live');
+
+		expect(process.exitCode).toBe(ExitCode.NOT_AUTHENTICATED);
+		expect(errors).toEqual(['Not logged in. Run "poli login" first.']);
+		expect(inputMock).not.toHaveBeenCalled();
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('the linked organization missing from the account: exit 1, nothing removed', async () => {
+		orgs = [GLOBEX];
+		await poli('live', '--yes');
+
+		expect(process.exitCode).toBe(ExitCode.INCONSISTENT);
+		expect(errors).toEqual(['Organization "acme" not found. Available: globex']);
+		expect(removeRequests()).toEqual([]);
 	});
 });
