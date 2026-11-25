@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeInit } from '../src/commands/init.js';
 import { setupTemplate } from './helpers/setup-template.js';
-import { loadProject, findTemplate, loadTemplate, loadTailwindCss } from '../src/project-loader.js';
+import {
+	loadProject,
+	findTemplate,
+	loadTemplate,
+	loadTailwindCss,
+	collectProjectPayload,
+} from '../src/project-loader.js';
 
 describe('project-loader', () => {
 	let tempDir: string;
@@ -108,6 +114,32 @@ describe('project-loader', () => {
 			await expect(loadTemplate(projectDir, findTemplate(manifest, 'invoice'))).rejects.toThrow(
 				/resolves outside/
 			);
+		});
+	});
+
+	describe('collectProjectPayload', () => {
+		it.each(['template', 'mock'] as const)(
+			'refuses a %s file symlinked outside the project',
+			async (field) => {
+				const outside = join(tempDir, 'secret.json');
+				await writeFile(outside, '{"token":"s3cret"}', 'utf-8');
+				const { manifest } = await loadProject(projectDir);
+				const linked = join(projectDir, 'templates', 'invoice', findTemplate(manifest, 'invoice')[field]);
+				await rm(linked);
+				await symlink(outside, linked);
+
+				await expect(collectProjectPayload(projectDir, manifest)).rejects.toThrow(/resolves outside/);
+			}
+		);
+
+		it('refuses a template folder symlinked outside the project', async () => {
+			const outside = join(tempDir, 'elsewhere');
+			await cp(join(projectDir, 'templates', 'invoice'), outside, { recursive: true });
+			await rm(join(projectDir, 'templates', 'invoice'), { recursive: true });
+			await symlink(outside, join(projectDir, 'templates', 'invoice'));
+			const { manifest } = await loadProject(projectDir);
+
+			await expect(collectProjectPayload(projectDir, manifest)).rejects.toThrow(/resolves outside/);
 		});
 	});
 

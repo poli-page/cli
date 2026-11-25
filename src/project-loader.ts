@@ -134,13 +134,13 @@ export async function collectProjectPayload(
 	// Collect template files
 	const templateFiles: Array<{ path: string; content: string }> = [];
 	for (const tpl of manifest.templates ?? []) {
-		const templateDir = join(projectDir, 'templates', tpl.name);
-		const htmlPath = join(templateDir, tpl.template);
+		const templateDir = join('templates', tpl.name);
+		const htmlPath = await resolveInside(projectDir, join(templateDir, tpl.template));
 		const htmlContent = await readFile(htmlPath, 'utf-8');
 		templateFiles.push({ path: tpl.template, content: htmlContent });
 
 		if (tpl.mock) {
-			const mockPath = join(templateDir, tpl.mock);
+			const mockPath = await resolveInside(projectDir, join(templateDir, tpl.mock));
 			const mockContent = await readFile(mockPath, 'utf-8');
 			templateFiles.push({ path: tpl.mock, content: mockContent });
 		}
