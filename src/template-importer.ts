@@ -129,7 +129,9 @@ function parseTemplateIndex(data: unknown): TemplateIndex {
 	const index = data as TemplateIndex;
 	for (const [key, coll] of Object.entries(index.collections ?? {})) {
 		if (!isSafeSegment(key)) {
-			throw new Error(`Unsafe collection name ${JSON.stringify(key)} in the source index.json.`);
+			throw new Error(
+				`Unsafe collection name ${JSON.stringify(key)} in the source index.json.`
+			);
 		}
 		for (const t of coll.templates ?? []) {
 			if (!isSafeSegment(t.name)) {
@@ -251,6 +253,10 @@ export async function importTemplate(
 
 	// 2. Check destination doesn't already exist in the project
 	const destDir = await resolveInside(options.projectDir, join('templates', destName));
+	// The import rewrites these two root files: refuse a symlink out of the
+	// project before anything is written.
+	const tailwindPath = await resolveInside(options.projectDir, 'tailwind.css');
+	await resolveInside(options.projectDir, MANIFEST_FILENAME);
 	if (existsSync(destDir)) {
 		throw new Error(
 			`Template "${destName}" already exists in this project. Pick a different --template-name or remove the existing folder.`
@@ -267,7 +273,7 @@ export async function importTemplate(
 	);
 	// Resolve every asset destination before the first write, so a symlink
 	// out of the project refuses the import with nothing written.
-	const assetsDir = join(options.projectDir, 'assets');
+	const assetsDir = await resolveInside(options.projectDir, 'assets');
 	const destFontPaths: string[] = [];
 	for (const font of tplManifest.fonts ?? []) {
 		destFontPaths.push(await resolveInside(assetsDir, font.src));
@@ -341,7 +347,6 @@ export async function importTemplate(
 	const markerKey = `${ref.collection}/${ref.name}`;
 	const startMarker = `/* === poli-page-additions: ${markerKey} — start === */`;
 	const endMarker = `/* === poli-page-additions: ${markerKey} — end === */`;
-	const tailwindPath = join(options.projectDir, 'tailwind.css');
 	const existingTailwind = await readFile(tailwindPath, 'utf-8');
 	let appendedTailwind = false;
 	if (!existingTailwind.includes(startMarker)) {

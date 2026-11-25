@@ -575,6 +575,45 @@ describe('importTemplate — paths from the source', () => {
 		await expect(stat(join(projectDir, 'templates', 'invoice'))).rejects.toThrow();
 	});
 
+	it('refuses an assets root symlinked out of the project before writing any asset', async () => {
+		await rm(join(projectDir, 'assets'), { recursive: true });
+		await mkdir(join(outsideDir, 'fonts'));
+		await mkdir(join(outsideDir, 'images'));
+		await symlink(outsideDir, join(projectDir, 'assets'));
+		await expect(
+			importTemplate({
+				templateRef: { collection: 'showcase', name: 'invoice' },
+				projectDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher(fullSource()),
+			})
+		).rejects.toThrow(/outside/);
+		expect(await listFiles(outsideDir)).toEqual([]);
+		await expect(stat(join(projectDir, 'templates', 'invoice'))).rejects.toThrow();
+	});
+
+	it.each(['tailwind.css', 'poli-page.json'])(
+		'refuses a %s symlinked out of the project before the first write',
+		async (name) => {
+			const outsideFile = join(outsideDir, name);
+			await writeFile(outsideFile, await readFile(join(projectDir, name)));
+			await rm(join(projectDir, name));
+			await symlink(outsideFile, join(projectDir, name));
+			const before = await readFile(outsideFile, 'utf-8');
+			await expect(
+				importTemplate({
+					templateRef: { collection: 'showcase', name: 'invoice' },
+					projectDir,
+					homeDir: fakeHome,
+					fetcher: makeFetcher(fullSource()),
+				})
+			).rejects.toThrow(/outside/);
+			expect(await readFile(outsideFile, 'utf-8')).toBe(before);
+			expect(await listFiles(join(projectDir, 'assets', 'fonts'))).toEqual([]);
+			await expect(stat(join(projectDir, 'templates', 'invoice'))).rejects.toThrow();
+		}
+	);
+
 	it('refuses a templates folder symlinked out of the project', async () => {
 		await rm(join(projectDir, 'templates'), { recursive: true });
 		await symlink(outsideDir, join(projectDir, 'templates'));

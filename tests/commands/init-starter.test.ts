@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describeUnlinked, executeInitStarter } from '../../src/commands/init.js';
@@ -356,6 +356,25 @@ describe('poli init --starter', () => {
 		).rejects.toThrow(/outside/);
 		await expect(stat(join(tempDir, 'escaped.txt'))).rejects.toThrow();
 		await expect(stat(target)).rejects.toThrow();
+	});
+
+	it('refuses, with --force, a poli-page.json symlinked out of the project, writing nothing', async () => {
+		const target = join(tempDir, 'out');
+		const outsideFile = join(tempDir, 'outside.json');
+		await writeFile(outsideFile, 'OUTSIDE');
+		await mkdir(target);
+		await symlink(outsideFile, join(target, MANIFEST_FILENAME));
+		await expect(
+			executeInitStarter('getting-started', target, {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				force: true,
+				fetcher: makeFetcher([]),
+				apiClient: makeClient([]),
+			})
+		).rejects.toThrow(/outside/);
+		expect(await readFile(outsideFile, 'utf-8')).toBe('OUTSIDE');
+		expect(await readdir(target)).toEqual([MANIFEST_FILENAME]);
 	});
 
 	it.each(['../getting-started', 'getting-started/templates', '.', ''])(

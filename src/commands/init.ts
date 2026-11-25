@@ -227,6 +227,8 @@ export async function executeInitStarter(
 		if (file.path === MANIFEST_FILENAME) continue;
 		writes.push({ dest: await resolveInside(projectDir, file.path), content: file.content });
 	}
+	// --force may write over an existing poli-page.json: refuse a symlink out.
+	await resolveInside(projectDir, MANIFEST_FILENAME);
 	await mkdir(projectDir, { recursive: true });
 	for (const { dest, content } of writes) {
 		await mkdir(dirname(dest), { recursive: true });
