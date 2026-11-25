@@ -10,7 +10,7 @@ import {
 } from '../../api-client.js';
 import { errorToExitCode } from '../../exit-codes.js';
 import { shouldEmitJson } from '../../output.js';
-import { safeWriteFile } from '../../security/paths.js';
+import { resolveInside, safeWriteFile } from '../../security/paths.js';
 import { assertDocumentId } from './document-id.js';
 
 export interface DocumentsThumbnailsOptions {
@@ -66,6 +66,10 @@ export async function executeDocumentsThumbnails(
 	if (options.format !== undefined) apiOptions.format = options.format;
 	if (options.quality !== undefined) apiOptions.quality = options.quality;
 	if (options.pages !== undefined) apiOptions.pages = options.pages;
+
+	// The file names come with the response; their folder can be refused
+	// before the request, which is billed on live keys.
+	if (!options.output) await resolveInside(cwd, join('output', 'thumbnails', id));
 
 	const thumbnails = await client.documentThumbnails(
 		auth.authorization,
@@ -149,9 +153,7 @@ export function registerDocumentsThumbnailsCommand(documents: Command): void {
 				const { default: ora } = await import('ora');
 
 				const emitJson = shouldEmitJson(opts);
-				const spinner = emitJson
-					? null
-					: ora(`Generating thumbnails for ${id}…`).start();
+				const spinner = emitJson ? null : ora(`Generating thumbnails for ${id}…`).start();
 				try {
 					const results = await executeDocumentsThumbnails(id, {
 						width: opts.width,
@@ -170,9 +172,7 @@ export function registerDocumentsThumbnailsCommand(documents: Command): void {
 						.map((r) => `  ${r.width}×${r.height} → ${r.path}`)
 						.join('\n');
 					spinner!.succeed(
-						chalk.green(
-							`${results.length} thumbnail(s) generated:\n${summary}`
-						)
+						chalk.green(`${results.length} thumbnail(s) generated:\n${summary}`)
 					);
 				} catch (err) {
 					if (spinner) {

@@ -14,7 +14,7 @@ import { isValidEnvironmentName } from '../environment-name.js';
 import { UsageError, errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 import { formatOrientationSlug } from '../format-resolver.js';
-import { safeWriteFile } from '../security/paths.js';
+import { resolveWritable, safeWriteFile } from '../security/paths.js';
 
 export interface RenderOptions {
 	cwd?: string;
@@ -145,9 +145,7 @@ export async function executeRender(
 		formatOrientationSlug(entry.format, entry.orientation),
 		`${entry.name}.pdf`
 	);
-	const outputPath = options.output
-		? resolve(cwd, options.output)
-		: join(projectDir, defaultRel);
+	const outputPath = options.output ? resolve(cwd, options.output) : join(projectDir, defaultRel);
 	const writePdf = async (pdf: Buffer): Promise<void> => {
 		if (options.output) {
 			await mkdir(dirname(outputPath), { recursive: true });
@@ -156,6 +154,8 @@ export async function executeRender(
 			await safeWriteFile(projectDir, defaultRel, pdf);
 		}
 	};
+	// Refuse before the API call: an environment render is billed.
+	if (!options.output && !options.noDownload) await resolveWritable(projectDir, defaultRel);
 
 	const client = options.apiClient ?? createApiClient();
 	const payload = {

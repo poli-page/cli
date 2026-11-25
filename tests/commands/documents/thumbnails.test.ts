@@ -1,14 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import {
-	mkdir,
-	mkdtemp,
-	readdir,
-	readFile,
-	rm,
-	stat,
-	symlink,
-	writeFile,
-} from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeDocumentsThumbnails } from '../../../src/commands/documents/thumbnails.js';
@@ -97,9 +88,10 @@ describe('executeDocumentsThumbnails', () => {
 		expect(await readFile(victim, 'utf-8')).toBe('original');
 	});
 
-	it('refuses a symlinked output folder that leaves the working directory', async () => {
+	it('refuses a symlinked output folder that leaves the working directory before any request', async () => {
 		await symlink(fakeHome, join(tempDir, 'output'));
-		const client = createFakeApiClient({ documentThumbnails: async () => [fakeThumb(1)] });
+		const documentThumbnails = vi.fn(async () => [fakeThumb(1)]);
+		const client = createFakeApiClient({ documentThumbnails });
 
 		await expect(
 			executeDocumentsThumbnails('doc_abc', {
@@ -109,6 +101,7 @@ describe('executeDocumentsThumbnails', () => {
 			})
 		).rejects.toThrow(/Refusing/);
 		expect(await readdir(fakeHome)).toEqual([]);
+		expect(documentThumbnails).not.toHaveBeenCalled();
 	});
 
 	it.each([0, -1, 1.5, Number.NaN, '1/../../x'])(

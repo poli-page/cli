@@ -17,6 +17,7 @@ import {
 	isSafeDottedSegment,
 	isSafeSegment,
 	resolveInside,
+	resolveWritable,
 	safeWriteFile,
 } from '../src/security/paths.js';
 
@@ -151,6 +152,34 @@ describe('resolveInside', () => {
 		await mkdir(join(root, 'real'));
 		await symlink(join(root, 'real'), join(root, 'alias'));
 		expect(await resolveInside(root, 'alias/x')).toBe(join(root, 'alias', 'x'));
+	});
+});
+
+describe('resolveWritable', () => {
+	let root: string;
+
+	beforeEach(async () => {
+		root = await realpath(await mkdtemp(join(tmpdir(), 'poli-writable-')));
+	});
+
+	afterEach(async () => {
+		await rm(root, { recursive: true, force: true });
+	});
+
+	it('returns the path of a missing or regular file', async () => {
+		await writeFile(join(root, 'a.txt'), 'x');
+		expect(await resolveWritable(root, 'a.txt')).toBe(join(root, 'a.txt'));
+		expect(await resolveWritable(root, 'out/b.pdf')).toBe(join(root, 'out', 'b.pdf'));
+	});
+
+	it('refuses a symlink leaf that stays inside the root', async () => {
+		await writeFile(join(root, 'a.txt'), 'x');
+		await symlink(join(root, 'a.txt'), join(root, 'b.txt'));
+		await expect(resolveWritable(root, 'b.txt')).rejects.toThrow(/symlink/);
+	});
+
+	it('refuses a path that leaves the root', async () => {
+		await expect(resolveWritable(root, '../x')).rejects.toThrow(/outside/);
 	});
 });
 

@@ -82,9 +82,21 @@ async function realpathOfDeepestExisting(p: string): Promise<string | null> {
 }
 
 /**
- * Write `data` to `rel` under `root` without following a symlink: the path
- * must stay inside `root` (see `resolveInside`) and the file itself must not
- * be a symlink. The bytes land in a fresh temp file in the same directory
+ * `resolveInside`, and the file itself must not be a symlink, even one that
+ * stays inside `root`: the pre-flight of a write made by `safeWriteFile`.
+ */
+export async function resolveWritable(root: string, rel: string): Promise<string> {
+	const target = await resolveInside(root, rel);
+	const leaf = await lstat(target).catch(() => null);
+	if (leaf?.isSymbolicLink()) {
+		throw new Error(`Refusing path "${rel}": it is a symlink.`);
+	}
+	return target;
+}
+
+/**
+ * Write `data` to `rel` under `root` without following a symlink (see
+ * `resolveWritable`). The bytes land in a fresh temp file in the same directory
  * that is then renamed over the target, so a symlink planted after the check
  * is replaced, never written through. Returns the absolute path written.
  */
@@ -93,11 +105,7 @@ export async function safeWriteFile(
 	rel: string,
 	data: string | Uint8Array
 ): Promise<string> {
-	const target = await resolveInside(root, rel);
-	const leaf = await lstat(target).catch(() => null);
-	if (leaf?.isSymbolicLink()) {
-		throw new Error(`Refusing path "${rel}": it is a symlink.`);
-	}
+	const target = await resolveWritable(root, rel);
 	await mkdir(dirname(target), { recursive: true });
 	const temp = join(dirname(target), `.${basename(target)}.${randomUUID()}.tmp`);
 	try {

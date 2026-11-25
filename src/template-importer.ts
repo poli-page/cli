@@ -10,6 +10,7 @@ import {
 	isSafeDottedSegment,
 	isSafeSegment,
 	resolveInside,
+	resolveWritable,
 	safeWriteFile,
 } from './security/paths.js';
 
@@ -268,8 +269,8 @@ export async function importTemplate(
 	// 2. Check destination doesn't already exist in the project
 	const destDir = await resolveInside(options.projectDir, join('templates', destName));
 	// The import rewrites these two root files: refuse a symlink out of the
-	// project before anything is written.
-	const tailwindPath = await resolveInside(options.projectDir, 'tailwind.css');
+	// project (and, for tailwind.css, any symlink) before anything is written.
+	const tailwindPath = await resolveWritable(options.projectDir, 'tailwind.css');
 	await resolveInside(options.projectDir, MANIFEST_FILENAME);
 	if (existsSync(destDir)) {
 		throw new Error(
@@ -333,6 +334,11 @@ export async function importTemplate(
 		imgPlans.push(
 			await planAsset(pending, 'image', imgFile, destImgPaths[i], imgBuf, options.onConflict)
 		);
+	}
+
+	for (const plan of [...fontPlans, ...imgPlans]) {
+		if (plan.content)
+			await resolveWritable(options.projectDir, relative(options.projectDir, plan.path));
 	}
 
 	// 5. Copy fonts and images

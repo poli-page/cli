@@ -612,35 +612,38 @@ describe('poli render', () => {
 	});
 
 	describe('output and download', () => {
-		it('refuses a symlink planted at the default path and leaves its target untouched', async () => {
+		it('refuses a symlink planted at the default path before rendering, leaving its target untouched', async () => {
 			const victim = join(tempDir, 'victim');
 			await writeFile(victim, 'original');
 			const dir = join(projectDir, 'output', 'invoice', 'a4-portrait');
 			await mkdir(dir, { recursive: true });
 			await symlink(victim, join(dir, 'invoice.pdf'));
+			const calls: RenderCall[] = [];
 
 			await expect(
 				executeRender('invoice', {
 					cwd: projectDir,
-					apiClient: createMockApiClient(),
+					apiClient: createMockApiClient({ calls }),
 					homeDir: fakeHome,
 				})
 			).rejects.toThrow(/Refusing/);
 			expect(await readFile(victim, 'utf-8')).toBe('original');
+			expect(calls).toEqual([]);
 		});
 
-		it('refuses a symlinked ancestor of the default path that leaves the project', async () => {
+		it('refuses a symlinked ancestor of the default path that leaves the project before rendering', async () => {
 			const outside = join(tempDir, 'outside');
 			await mkdir(join(outside, 'a4-portrait'), { recursive: true });
 			await writeFile(join(outside, 'a4-portrait', 'invoice.pdf'), 'original');
 			await mkdir(join(projectDir, 'output'));
 			await symlink(outside, join(projectDir, 'output', 'invoice'));
+			const calls: RenderCall[] = [];
 
 			await expect(
 				executeRender('invoice', {
 					cwd: projectDir,
 					target: 'sandbox',
-					apiClient: createMockApiClient(),
+					apiClient: createMockApiClient({ calls }),
 					homeDir: fakeHome,
 					fetchPdf: fakeFetchPdf,
 				})
@@ -648,6 +651,7 @@ describe('poli render', () => {
 			expect(await readFile(join(outside, 'a4-portrait', 'invoice.pdf'), 'utf-8')).toBe(
 				'original'
 			);
+			expect(calls).toEqual([]);
 		});
 
 		it('uses the manifest format/orientation in the path slug', async () => {
@@ -697,6 +701,20 @@ describe('poli render', () => {
 			expect(fetchCalled).toBe(0);
 			expect(result.outputPath).toBeUndefined();
 			expect(result.kind === 'environment' && result.descriptor.documentId).toBe('doc_abc');
+		});
+
+		it('--no-download writes nothing, so a symlink at the default path does not refuse it', async () => {
+			const dir = join(projectDir, 'output', 'invoice', 'a4-portrait');
+			await mkdir(dir, { recursive: true });
+			await symlink(join(tempDir, 'victim'), join(dir, 'invoice.pdf'));
+			const result = await executeRender('invoice', {
+				cwd: projectDir,
+				target: 'sandbox',
+				noDownload: true,
+				apiClient: createMockApiClient(),
+				homeDir: fakeHome,
+			});
+			expect(result.outputPath).toBeUndefined();
 		});
 
 		it('rejects -o + --no-download (incompatible flags) locally', async () => {

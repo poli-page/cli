@@ -19,7 +19,7 @@ import {
 import { promptForStarterTemplate, type TemplatePromptResult } from '../template-prompt.js';
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
-import { resolveInside, safeWriteFile } from '../security/paths.js';
+import { resolveInside, resolveWritable, safeWriteFile } from '../security/paths.js';
 
 function toKebabCase(name: string): string {
 	return name
@@ -223,7 +223,7 @@ export async function executeInitStarter(
 
 	// Paths come from the source's git tree: confine them all before writing.
 	const writes = files.filter((f) => f.path !== MANIFEST_FILENAME);
-	for (const file of writes) await resolveInside(projectDir, file.path);
+	for (const file of writes) await resolveWritable(projectDir, file.path);
 	// --force may write over an existing poli-page.json: refuse a symlink out.
 	await resolveInside(projectDir, MANIFEST_FILENAME);
 	await mkdir(projectDir, { recursive: true });

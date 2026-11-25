@@ -6,7 +6,7 @@ import { isSafeSegment } from '../../security/paths.js';
 export function assertDocumentId(id: string): void {
 	if (!isSafeSegment(id) || id.includes('..')) {
 		throw new UsageError(
-			`Invalid document ID ${JSON.stringify(id)}: expected letters, digits, ".", "_" and "-".`
+			`Invalid document ID ${JSON.stringify(id)}: expected letters, digits, ".", "_" and "-", starting with a letter or digit, without "..".`
 		);
 	}
 }
