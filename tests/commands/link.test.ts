@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeInit } from '../../src/commands/init.js';
 import { executeLink, executeUnlink } from '../../src/commands/link.js';
 import { writeCredentials } from '../../src/credentials.js';
+import { isLinkConfirmed } from '../../src/cloud-link.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import type { ApiClient } from '../../src/api-client.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
@@ -66,6 +67,19 @@ describe('poli link / unlink', () => {
 				projectSlug: 'test-project',
 				projectId: 'proj_abc123',
 			});
+		});
+
+		it('records the link as confirmed, so dev and watch sync with no prompt', async () => {
+			await executeLink({
+				cwd: projectDir,
+				orgSlug: 'acme-corp',
+				apiClient: createMockApiClient(),
+				homeDir: fakeHome,
+			});
+
+			expect(await isLinkConfirmed(projectDir, 'proj_abc123', fakeHome)).toBe(true);
+			const linksPath = join(fakeHome, '.polipage', 'links.json');
+			expect((await stat(linksPath)).mode & 0o777).toBe(0o600);
 		});
 
 		it('does not cache an API key in credentials (CLI uses session auth)', async () => {

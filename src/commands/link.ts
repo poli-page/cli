@@ -3,6 +3,7 @@ import { readProjectManifest, writeManifest } from '../manifest.js';
 import { getSessionToken, readCredentials, sessionFor } from '../credentials.js';
 import { createApiClient, type ApiClient } from '../api-client.js';
 import { collectProjectPayload } from '../project-loader.js';
+import { recordLink } from '../cloud-link.js';
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
 
 export interface LinkOptions {
@@ -90,6 +91,8 @@ export async function executeLink(options: LinkOptions): Promise<void> {
 	};
 
 	await writeManifest(cwd, manifest);
+	// The user chose this link: `poli dev` / `poli watch` sync it without asking.
+	await recordLink(cwd, projectId, options.homeDir);
 }
 
 export interface UnlinkOptions {

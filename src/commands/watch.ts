@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import type { ApiClient } from '../api-client.js';
 import { resolveCloudContext } from '../cloud-context.js';
+import { confirmLinkPrompt, type LinkTarget } from '../cloud-link.js';
 import { createFileWatcher, type FileWatcher, type FileWatcherOptions } from '../file-watcher.js';
 import { createProjectSyncer } from '../project-sync.js';
 import { errorToExitCode } from '../exit-codes.js';
@@ -22,6 +23,8 @@ export interface WatchOptions {
 	watcherFactory?: (options: FileWatcherOptions) => FileWatcher;
 	debounceMs?: number;
 	onEvent?: (event: WatchEvent) => void;
+	/** Asks before the first sync of an unconfirmed folder; absent, such a folder is refused. */
+	confirmLink?: (target: LinkTarget) => Promise<boolean>;
 }
 
 export class TtyRequiredError extends Error {
@@ -43,6 +46,7 @@ export async function executeWatch(options: WatchOptions): Promise<void> {
 		cwd,
 		apiClient: options.apiClient,
 		homeDir: options.homeDir,
+		confirmLink: options.confirmLink,
 	});
 
 	const syncer = createProjectSyncer({ cwd, client, ctx, signal: options.signal });
@@ -100,6 +104,8 @@ export function registerWatchCommand(program: Command): void {
 			try {
 				await executeWatch({
 					signal: controller.signal,
+					// stdout is a TTY (checked above); the answer needs stdin too.
+					confirmLink: process.stdin.isTTY ? confirmLinkPrompt : undefined,
 					onEvent: (e) => {
 						const ts = new Date().toLocaleTimeString();
 						switch (e.type) {

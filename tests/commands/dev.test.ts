@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { mkdtemp, rm, writeFile, mkdir, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -15,6 +15,7 @@ import {
 } from '../../src/commands/dev.js';
 import { createProgram } from '../../src/program.js';
 import { writeCredentials } from '../../src/credentials.js';
+import { recordLink } from '../../src/cloud-link.js';
 import { readManifest, writeManifest } from '../../src/manifest.js';
 import { setupTemplate } from '../helpers/setup-template.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
@@ -51,6 +52,7 @@ function fakePdf(label: string): Buffer {
 function makeStubClient(options: StubOptions = {}): ApiClient {
 	return createFakeApiClient({
 		getOrganizations: async () => [{ id: 'org_1', name: 'Acme', slug: 'acme' }],
+		listProjects: async () => [{ id: 'proj_1', name: 'Demo', slug: 'demo' }],
 		patchFiles: async (_session, _orgId, _projectId, body) => {
 			options.patchBodies?.push(body);
 			if (options.patchImpl) return options.patchImpl(body);
@@ -177,6 +179,7 @@ async function setupLinkedProject(projectDir: string, fakeHome: string): Promise
 		},
 		fakeHome
 	);
+	await recordLink(projectDir, 'proj_1', fakeHome);
 }
 
 describe('poli dev', () => {
@@ -456,6 +459,50 @@ describe('poli dev', () => {
 					apiClient: makeStubClient(),
 				})
 			).rejects.toThrow(/not linked|poli link/i);
+		});
+
+		it('refuses a folder whose link is not confirmed on this machine (exit 2)', async () => {
+			await rm(join(fakeHome, '.polipage', 'links.json'));
+			const patchBodies: PatchFilesBody[] = [];
+
+			const err = await startDevSession(undefined, {
+				cwd: projectDir,
+				homeDir: fakeHome,
+				port: 0,
+				open: false,
+				apiClient: makeStubClient({ patchBodies }),
+			}).catch((e) => e);
+
+			expect(err.exitCode).toBe(2);
+			expect(err.message).toMatch(/"Demo" \(demo\) of organization "Acme" \(acme\)/);
+			expect(patchBodies).toEqual([]);
+		});
+
+		it('syncs a folder once its link is confirmed at the prompt', async () => {
+			await rm(join(fakeHome, '.polipage', 'links.json'));
+			await setupTemplate(projectDir, 'invoice');
+			const confirmLink = vi.fn(async () => true);
+
+			await start(undefined, { apiClient: makeStubClient(), confirmLink });
+
+			expect(confirmLink).toHaveBeenCalledTimes(1);
+		});
+
+		it('refuses a manifest whose orgId is not its orgSlug organization (exit 6)', async () => {
+			const manifest = await readManifest(projectDir);
+			manifest.cloud!.orgId = 'org_other';
+			await writeManifest(projectDir, manifest);
+
+			const err = await startDevSession(undefined, {
+				cwd: projectDir,
+				homeDir: fakeHome,
+				port: 0,
+				open: false,
+				apiClient: makeStubClient(),
+			}).catch((e) => e);
+
+			expect(err.exitCode).toBe(6);
+			expect(err.message).toMatch(/orgId "org_other"/);
 		});
 
 		it('rejects a legacy-linked manifest that has no projectSlug', async () => {

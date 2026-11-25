@@ -245,7 +245,13 @@ Flag: `--json` to dump the raw `/v1/me` payload (or, in `session-no-org` mode, `
 
 #### `poli link`
 
-Interactively select an organization, create the cloud project, and write the `cloud:` section into `poli-page.json` with the four fields the API needs (`orgSlug`, `orgId`, `projectSlug`, `projectId`). No API key is stored in the manifest — the file is safe to commit.
+Interactively select an organization, create the cloud project, and write the `cloud:` section into `poli-page.json` with the four fields the API needs (`orgSlug`, `orgId`, `projectSlug`, `projectId`). No API key is stored in the manifest — the file is safe to commit. It also records the folder as a [confirmed link](#confirmed-links) on this machine, so `poli watch` and `poli dev` sync it without asking.
+
+#### Confirmed links
+
+A `cloud:` block can come with a cloned repository, and every sync overwrites the cloud draft of the project it names. So `poli watch` and `poli dev` sync only a folder whose link you confirmed on this machine. The confirmed links are kept per user in `~/.polipage/links.json` (mode `0600`), keyed by the folder's real path and the project id; `poli link` and `poli init --starter` (when it links) write them. The first time you run `poli watch` or `poli dev` in a folder that is not there, or whose `projectId` changed, the command names the organization and project and asks once; a yes is recorded, a no stops the command before any sync. Without a terminal to ask in (stdin or stdout not a TTY), it refuses with exit `2`.
+
+Before syncing, `poli watch` and `poli dev` also check with the API that the manifest's `orgSlug`, `orgId`, `projectId` and `projectSlug` all name the same project (sync writes to `projectId` in the `orgSlug` organization; render and publish address `projectSlug` with `orgId`). A manifest whose ids disagree is refused before any write (exit `6`); `poli publish` with a session refuses it too.
 
 #### `poli unlink`
 
@@ -265,7 +271,7 @@ Resilience built in:
 - `503 ORGANIZATION_MIGRATING` → 5-second retry
 - Other API errors → logged, watch continues, next save retries
 
-Requires a TTY. Refused with exit `2` when run in a non-interactive context. If
+Requires a TTY. Refused with exit `2` when run in a non-interactive context. Syncs only a [confirmed link](#confirmed-links): the first run in a cloned folder asks first. If
 you need the same sync inside a script or alongside a browser preview, use
 [`poli dev`](#poli-dev-template), which has no TTY requirement.
 
@@ -324,6 +330,9 @@ Notes:
   { "scripts": { "dev": "concurrently \"poli dev --no-open\" \"vite\"" } }
   ```
 
+- It syncs only a [confirmed link](#confirmed-links). In a terminal the first
+  run in a cloned folder asks first; piped, an unconfirmed folder is refused
+  with exit `2`: run `poli dev` once in a terminal, or `poli link`.
 - It binds to `127.0.0.1` only — the rendered draft is never exposed to the
   local network.
 - Only its own page can change the view: a `POST` from another site (or from
@@ -341,7 +350,7 @@ Notes:
 
 #### `poli publish`
 
-Publishes the local project, the files on disk, to an environment of your organization: `POST /v1/projects/<projectSlug>/publish`, with a service key in `POLI_PAGE_API_KEY` when one is set (see below), or else with your `poli login` session and the manifest's `cloud.orgId`. The environment's copy of the project is replaced in place. There is no rollback: to go back, check out the earlier state from your own version control and publish again.
+Publishes the local project, the files on disk, to an environment of your organization: `POST /v1/projects/<projectSlug>/publish`, with a service key in `POLI_PAGE_API_KEY` when one is set (see below), or else with your `poli login` session and the manifest's `cloud.orgId`; with a session, a manifest whose `cloud` ids do not all name the same project is refused before the upload (exit `6`, see [confirmed links](#confirmed-links)). The environment's copy of the project is replaced in place. There is no rollback: to go back, check out the earlier state from your own version control and publish again.
 
 ```bash
 poli publish --env sandbox
@@ -708,6 +717,14 @@ A service key publishes into its own environment only. Pass `--env <a>`, or use 
 ### `This folder isn't linked to a cloud project. Run \`poli link\` first.`
 
 You're in session mode and the local manifest has no `cloud:` block. Either run `poli link`, or switch to api-key mode with `POLI_PAGE_API_KEY=pp_<environment>_…` (which carries the org context implicitly). Exit code `6`.
+
+### `This folder is linked to project "<name>" (<slug>) of organization "<name>" (<slug>), a link you have not confirmed on this machine...`
+
+`poli watch` or `poli dev` found a `cloud:` block (from a clone, say) that is not in your `~/.polipage/links.json`, and had no terminal to ask in. Run the command once in a terminal and answer yes, or run `poli unlink`, then `poli link`. Exit code `2`. See [confirmed links](#confirmed-links).
+
+### `The cloud block of poli-page.json names more than one project: ...`
+
+The manifest's `orgSlug`, `orgId`, `projectId` and `projectSlug` do not all name the same project, so sync and publish would write to different ones. The message names the id that disagrees. Run `poli unlink`, then `poli link`. Exit code `6`.
 
 ### `API keys render a published environment: use \`name@<environment>\``
 

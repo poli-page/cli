@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import type { ServerResponse } from 'node:http';
 import type { ApiClient } from '../api-client.js';
 import { resolveCloudContext } from '../cloud-context.js';
+import { confirmLinkPrompt, type LinkTarget } from '../cloud-link.js';
 import { createFileWatcher, type FileWatcher, type FileWatcherOptions } from '../file-watcher.js';
 import { createProjectSyncer } from '../project-sync.js';
 import {
@@ -85,6 +86,8 @@ export interface DevOptions {
 	onEvent?: (event: DevEvent) => void;
 	/** Injectable for tests — defaults to the `open` package. */
 	openFn?: (url: string) => Promise<unknown>;
+	/** Asks before the first sync of an unconfirmed folder; absent, such a folder is refused. */
+	confirmLink?: (target: LinkTarget) => Promise<boolean>;
 }
 
 export interface DevSession {
@@ -209,14 +212,15 @@ export async function startDevSession(
 	const cwd = options.cwd ?? process.cwd();
 	const emit = (event: DevEvent) => options.onEvent?.(event);
 
-	// Resolves the manifest, the session token and the org — throws the
-	// familiar "not linked" / "not logged in" errors before anything is
-	// served, so a misconfigured project fails fast instead of booting a
-	// server that can never work.
+	// Resolves the manifest, the session token, the org and the confirmed
+	// link — throws the familiar "not linked" / "not logged in" errors
+	// before anything is served, so a misconfigured project fails fast
+	// instead of booting a server that can never work.
 	const { client, ctx } = await resolveCloudContext({
 		cwd,
 		apiClient: options.apiClient,
 		homeDir: options.homeDir,
+		confirmLink: options.confirmLink,
 	});
 
 	const initial = await loadProject(cwd);
@@ -652,6 +656,9 @@ export function registerDevCommand(program: Command): void {
 			try {
 				await executeDev(template, {
 					signal: controller.signal,
+					// Piped (concurrently, a Procfile) nobody can answer: refuse instead.
+					confirmLink:
+						process.stdin.isTTY && process.stdout.isTTY ? confirmLinkPrompt : undefined,
 					port: opts.port ? parsePort(opts.port) : undefined,
 					data: opts.data,
 					open: opts.open !== false,

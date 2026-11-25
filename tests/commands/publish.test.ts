@@ -94,6 +94,8 @@ function keyMe(auth: Partial<MeResponse['auth']> = {}): MeResponse {
 
 function makeClient(calls: PublishCall[], overrides: Partial<ApiClient> = {}): ApiClient {
 	return createFakeApiClient({
+		getOrganizations: async () => [{ id: 'org_1', name: 'Acme', slug: 'acme' }],
+		listProjects: async () => [{ id: 'proj_1', name: 'Invoices', slug: 'invoices' }],
 		listEnvironments: async () => ENVIRONMENTS,
 		publish: async (authorization, orgId, project, body) => {
 			calls.push({ authorization, orgId, project, body });
@@ -343,6 +345,40 @@ describe('poli publish', () => {
 			const err = await run({ env: 'sandbox' }, noCall()).catch((e) => e);
 			expect(err.message).toMatch(/poli link/);
 			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_LOCAL_STATE);
+		});
+	});
+
+	describe('a manifest whose ids name different projects', () => {
+		it('refuses a projectSlug that is not the projectId, exit 6, without publishing', async () => {
+			const calls: PublishCall[] = [];
+			const client = makeClient(calls, {
+				listProjects: async () => [
+					{ id: 'proj_1', name: 'Payroll', slug: 'payroll' },
+					{ id: 'proj_2', name: 'Invoices', slug: 'invoices' },
+				],
+			});
+			const err = await run({ env: 'sandbox', yes: true }, client).catch((e) => e);
+			expect(err.message).toMatch(/projectSlug "invoices" is not project "proj_1"/);
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_LOCAL_STATE);
+			expect(calls).toHaveLength(0);
+		});
+
+		it('refuses an orgId that is not the orgSlug organization, without publishing', async () => {
+			const calls: PublishCall[] = [];
+			const client = makeClient(calls, {
+				getOrganizations: async () => [{ id: 'org_9', name: 'Acme', slug: 'acme' }],
+			});
+			const err = await run({ env: 'sandbox', yes: true }, client).catch((e) => e);
+			expect(err.message).toMatch(/orgId "org_1" is not organization "acme" \(org_9\)/);
+			expect(calls).toHaveLength(0);
+		});
+
+		it('refuses a projectId that is not in the organization, without publishing', async () => {
+			const calls: PublishCall[] = [];
+			const client = makeClient(calls, { listProjects: async () => [] });
+			const err = await run({ env: 'sandbox', yes: true }, client).catch((e) => e);
+			expect(err.message).toMatch(/projectId "proj_1" is not a project of "acme"/);
+			expect(calls).toHaveLength(0);
 		});
 	});
 
@@ -719,6 +755,12 @@ describe('poli publish', () => {
 				if (url === `${API_URL}/v1/me`) return meAnswer();
 				if (url.endsWith('/organizations/org_1/environments')) {
 					return jsonResponse(200, ENVIRONMENTS);
+				}
+				if (url === `${API_URL}/api/organizations`) {
+					return jsonResponse(200, [{ id: 'org_1', name: 'Acme', slug: 'acme' }]);
+				}
+				if (url === `${API_URL}/api/organizations/org_1/projects`) {
+					return jsonResponse(200, [{ id: 'proj_1', name: 'Invoices', slug: 'invoices' }]);
 				}
 				if (url === `${API_URL}/v1/projects/invoices/publish`) return publishAnswer();
 				return new Response('unexpected', { status: 500 });
