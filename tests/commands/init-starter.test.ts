@@ -395,6 +395,51 @@ describe('poli init --starter', () => {
 		}
 	);
 
+	it('refuses, with --force, a starter file planted as a symlink inside the project, writing nothing', async () => {
+		const target = join(tempDir, 'out');
+		await mkdir(target);
+		await writeFile(join(target, 'keep.txt'), 'KEEP');
+		await mkdir(join(target, 'templates', 'welcome'), { recursive: true });
+		await symlink(
+			join(target, 'keep.txt'),
+			join(target, 'templates', 'welcome', 'welcome.html')
+		);
+		await expect(
+			executeInitStarter('getting-started', target, {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				force: true,
+				fetcher: makeFetcher([]),
+				apiClient: makeClient([]),
+			})
+		).rejects.toThrow(/symlink/);
+		expect(await readFile(join(target, 'keep.txt'), 'utf-8')).toBe('KEEP');
+		expect((await readdir(target, { recursive: true })).sort()).toEqual([
+			'keep.txt',
+			'templates',
+			'templates/welcome',
+			'templates/welcome/welcome.html',
+		]);
+	});
+
+	it('refuses, with --force, a poli-page.json symlinked inside the project, writing nothing', async () => {
+		const target = join(tempDir, 'out');
+		await mkdir(target);
+		await writeFile(join(target, 'keep.txt'), 'KEEP');
+		await symlink(join(target, 'keep.txt'), join(target, MANIFEST_FILENAME));
+		await expect(
+			executeInitStarter('getting-started', target, {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				force: true,
+				fetcher: makeFetcher([]),
+				apiClient: makeClient([]),
+			})
+		).rejects.toThrow(/symlink/);
+		expect(await readFile(join(target, 'keep.txt'), 'utf-8')).toBe('KEEP');
+		expect((await readdir(target)).sort()).toEqual(['keep.txt', MANIFEST_FILENAME]);
+	});
+
 	it('refuses, with --force, a poli-page.json symlinked out of the project, writing nothing', async () => {
 		const target = join(tempDir, 'out');
 		const outsideFile = join(tempDir, 'outside.json');
