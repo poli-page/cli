@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeInit } from '../../src/commands/init.js';
@@ -256,6 +256,26 @@ describe('poli link / unlink', () => {
 			} finally {
 				await rm(other, { recursive: true, force: true });
 			}
+		});
+
+		it('keeps the cloud block when the confirmed link cannot be forgotten, so unlink can be retried', async () => {
+			await executeLink({
+				cwd: projectDir,
+				orgSlug: 'acme-corp',
+				apiClient: createMockApiClient(),
+				homeDir: fakeHome,
+			});
+			const linksPath = join(fakeHome, '.polipage', 'links.json');
+			// A directory in place of links.json makes forgetLink fail.
+			await rm(linksPath);
+			await mkdir(linksPath);
+
+			await expect(executeUnlink({ cwd: projectDir, homeDir: fakeHome })).rejects.toThrow();
+
+			const manifest = JSON.parse(
+				await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
+			);
+			expect(manifest.cloud).toBeDefined();
 		});
 
 		it('should throw if not linked', async () => {

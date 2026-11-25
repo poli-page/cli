@@ -45,7 +45,7 @@ export async function verifyCloudLink(
 	const orgs = await client.getOrganizations(session);
 	const org = orgs.find((o) => o.slug === cloud.orgSlug);
 	if (!org) {
-		throw new Error(`Organization "${cloud.orgSlug}" not found.`);
+		throw new CloudLinkMismatchError(`Organization "${cloud.orgSlug}" not found.`);
 	}
 	if (cloud.orgId !== undefined && cloud.orgId !== org.id) {
 		throw mismatch(`orgId "${cloud.orgId}" is not organization "${org.slug}" (${org.id})`);

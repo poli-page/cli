@@ -2,7 +2,14 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { forgetLink, isLinkConfirmed, recordLink, verifyCloudLink } from '../src/cloud-link.js';
+import {
+	CloudLinkMismatchError,
+	forgetLink,
+	isLinkConfirmed,
+	recordLink,
+	verifyCloudLink,
+} from '../src/cloud-link.js';
+import { ExitCode, errorToExitCode } from '../src/exit-codes.js';
 import { createFakeApiClient } from './helpers/fake-api-client.js';
 
 describe('confirmed links (~/.polipage/links.json)', () => {
@@ -111,9 +118,13 @@ describe('verifyCloudLink', () => {
 		});
 	});
 
-	it('refuses an orgSlug the user has no organization for', async () => {
-		await expect(
-			verifyCloudLink(client, 'sess', { orgSlug: 'other', projectId: 'proj_1' })
-		).rejects.toThrow('Organization "other" not found.');
+	it('refuses an orgSlug the user has no organization for, as invalid local state', async () => {
+		const err = await verifyCloudLink(client, 'sess', {
+			orgSlug: 'other',
+			projectId: 'proj_1',
+		}).catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(CloudLinkMismatchError);
+		expect((err as Error).message).toBe('Organization "other" not found.');
+		expect(errorToExitCode(err)).toBe(ExitCode.INVALID_LOCAL_STATE);
 	});
 });

@@ -109,9 +109,10 @@ export async function executeUnlink(options: UnlinkOptions = {}): Promise<void> 
 		throw new Error('Project is not linked to any organization.');
 	}
 
+	// Forget first: once the cloud block is gone, `poli unlink` cannot be retried.
+	await forgetLink(cwd, options.homeDir);
 	delete manifest.cloud;
 	await writeManifest(cwd, manifest);
-	await forgetLink(cwd, options.homeDir);
 }
 
 export function registerLinkCommands(program: Command) {
