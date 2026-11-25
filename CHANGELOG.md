@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- **`poli watch` and `poli dev` walked and watched whatever a symlink in the project pointed to.** A link to `~` or `/` made the watcher traverse it, since it followed symlinks and ignored less than the sync reads. The watcher no longer follows symlinks, and only files of the project file set trigger a sync. `.poli/` joins the ignored directories.
+- **`poli watch` and `poli dev` walked and watched whatever a symlink in the project pointed to.** A link to `~` or `/` made the watcher traverse it, since it followed symlinks and ignored less than the sync reads. The watcher no longer follows symlinks, and only files of the project file set trigger a sync. `.poli/` joins the ignored directories, at any depth, so it is also left out of the draft sync and the `poli publish` bundle, like `dist/`. A `poli dev --data` file inside the project still re-renders the preview when it is saved.
 
 ### Security
 - **The CLI only sends credentials to a Poli Page API origin.** `poli-page.json` `cloud.apiUrl` no longer picks the API: it is ignored, with a warning, unless it equals the `apiUrl` stored by `poli login` or the default `https://api.poli.page`, so a cloned folder or a pull request can no longer send your session or `POLI_PAGE_API_KEY` to a host it chose. `--api-url` and `POLI_API_URL` must be an origin only (no user, path, query or hash) on `https://poli.page` or `https://*.poli.page`; `http://localhost` and `http://127.0.0.1` need the new `--allow-insecure-api` flag or `POLI_ALLOW_INSECURE_API=1`. Any other URL exits `2` before any request. Request URLs are built from the checked origin, never by appending to the configured string.

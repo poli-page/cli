@@ -54,8 +54,12 @@ export function createDebouncedBatcher<T>(
 // them on some paths (before its own stat, on unlink), so a path without
 // stats is treated as a directory: the file check runs again once the
 // stats are in.
-function projectIgnoredFn(cwd: string): (path: string, stats?: Stats) => boolean {
+function projectIgnoredFn(
+	cwd: string,
+	extraPaths: ReadonlySet<string>
+): (path: string, stats?: Stats) => boolean {
 	return (path, stats) => {
+		if (extraPaths.has(path)) return false;
 		const relPath = relative(cwd, path);
 		if (!stats || stats.isDirectory()) return isInIgnoredProjectDirectory(relPath);
 		return shouldIgnoreProjectPath(relPath);
@@ -65,6 +69,8 @@ function projectIgnoredFn(cwd: string): (path: string, stats?: Stats) => boolean
 export interface FileWatcherOptions {
 	cwd: string;
 	debounceMs?: number;
+	/** Absolute paths under `cwd` that trigger a batch outside the file set. */
+	extraPaths?: string[];
 	onBatch: (paths: Set<string>) => void;
 }
 
@@ -78,7 +84,7 @@ export function createFileWatcher(options: FileWatcherOptions): FileWatcher {
 	const batcher = createDebouncedBatcher<string>(debounceMs, options.onBatch);
 
 	const watcher = chokidar.watch(options.cwd, {
-		ignored: projectIgnoredFn(options.cwd),
+		ignored: projectIgnoredFn(options.cwd, new Set(options.extraPaths)),
 		// With lstat, a symlink is an entry of its own and never a directory
 		// to walk: a link to `~` or `/` stays out of the watched tree.
 		followSymlinks: false,
