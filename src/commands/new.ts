@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { readManifest, writeManifest } from '../manifest.js';
+import { readManifest, readManifestIfPresent, writeManifest } from '../manifest.js';
 import { MANIFEST_FILENAME } from '../constants.js';
 import {
 	importTemplate,
@@ -47,9 +47,7 @@ export async function executeNew(name: string, options: NewOptions = {}): Promis
 	const cwd = options.cwd ?? process.cwd();
 	const destName = toKebabCase(name);
 
-	try {
-		await readManifest(cwd);
-	} catch {
+	if (!(await readManifestIfPresent(cwd))) {
 		throw new Error(
 			`No ${MANIFEST_FILENAME} found in ${cwd}. Run "poli init" first.`
 		);

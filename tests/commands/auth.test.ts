@@ -636,6 +636,15 @@ describe('auth commands', () => {
 			expect(result.mode).toBe('session-no-org');
 		});
 
+		it('reports an invalid poli-page.json instead of treating the folder as unlinked', async () => {
+			await setupSessionCreds();
+			await writeFile(join(projectDir, 'poli-page.json'), JSON.stringify({ project: { name: 'p' }, cloud: { orgSlug: 'acme', orgId: 'org_1' } }), 'utf-8');
+
+			await expect(
+				executeWhoami({ cwd: projectDir, homeDir: fakeHome, apiClient: createMockApiClient({}) })
+			).rejects.toThrow('Invalid poli-page.json — cloud.orgId: must be a UUID');
+		});
+
 		it('surfaces "Not logged in" if the session is rejected when listing orgs', async () => {
 			await setupSessionCreds();
 			const client = createMockApiClient({

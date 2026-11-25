@@ -10,7 +10,7 @@ import {
 import { getSessionToken } from '../credentials.js';
 import { assertEnvironmentName } from '../environment-name.js';
 import { UsageError, errorToExitCode } from '../exit-codes.js';
-import { readManifest, type PoliPageManifest } from '../manifest.js';
+import { readManifestIfPresent, type PoliPageManifest } from '../manifest.js';
 import { shouldEmitJson } from '../output.js';
 import { findOrganization, type Organization } from './link.js';
 import { shortBundleHash } from './publish.js';
@@ -22,12 +22,7 @@ type EnvListResult =
 
 /** The manifest's `cloud` block, or `undefined` when the folder has no poli-page.json. */
 async function readLinkedProject(cwd: string): Promise<PoliPageManifest['cloud']> {
-	try {
-		return (await readManifest(cwd)).cloud;
-	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-		throw err;
-	}
+	return (await readManifestIfPresent(cwd))?.cloud;
 }
 
 function selectOrganization(

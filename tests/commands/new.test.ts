@@ -226,6 +226,18 @@ describe('poli new', () => {
 		await rm(emptyDir, { recursive: true, force: true });
 	});
 
+	it('reports an invalid poli-page.json, not a missing one', async () => {
+		await writeFile(join(projectDir, MANIFEST_FILENAME), JSON.stringify({ project: { name: 'p' }, cloud: { orgSlug: 'acme', orgId: 'org_1' } }), 'utf-8');
+		await expect(
+			executeNew('invoice', {
+				cwd: projectDir,
+				fromTemplate: 'showcase/invoice',
+				homeDir: fakeHome,
+				fetcher: makeFetcher(SOURCE_FILES),
+			})
+		).rejects.toThrow('Invalid poli-page.json — cloud.orgId: must be a UUID');
+	});
+
 	it('sanitizes the destination name to kebab-case', async () => {
 		await executeNew('My Invoice', {
 			cwd: projectDir,

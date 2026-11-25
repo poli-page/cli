@@ -55,6 +55,11 @@ describe('executeDocumentsGet', () => {
 		}
 	});
 
+	it('reports an invalid poli-page.json instead of ignoring it', async () => {
+		await writeFile(join(tempDir, 'poli-page.json'), JSON.stringify({ project: { name: 'p' }, cloud: { orgSlug: 'acme', orgId: 'org_1' } }), 'utf-8');
+		await expect(executeDocumentsGet('doc_abc', { cwd: tempDir, homeDir: fakeHome, apiClient: createFakeApiClient({}) })).rejects.toThrow('Invalid poli-page.json — cloud.orgId: must be a UUID');
+	});
+
 	it('returns the descriptor when authenticated via api-key (no manifest)', async () => {
 		process.env.POLI_PAGE_API_KEY = testApiKey('live');
 

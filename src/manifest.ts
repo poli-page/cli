@@ -10,6 +10,18 @@ export async function readManifest(projectDir: string): Promise<PoliPageManifest
 	return parseManifest(await readManifestJson(projectDir));
 }
 
+/** `readManifest`, or `undefined` when the folder has no poli-page.json; an invalid one still throws. */
+export async function readManifestIfPresent(
+	projectDir: string
+): Promise<PoliPageManifest | undefined> {
+	try {
+		return await readManifest(projectDir);
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+		throw err;
+	}
+}
+
 async function readManifestJson(projectDir: string): Promise<unknown> {
 	const manifestPath = join(projectDir, MANIFEST_FILENAME);
 	const content = await readFile(manifestPath, 'utf-8');

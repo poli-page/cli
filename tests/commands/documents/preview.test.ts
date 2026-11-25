@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -42,6 +42,11 @@ describe('executeDocumentsPreview', () => {
 		} else {
 			process.env.POLI_PAGE_API_KEY = savedEnv;
 		}
+	});
+
+	it('reports an invalid poli-page.json instead of ignoring it', async () => {
+		await writeFile(join(tempDir, 'poli-page.json'), JSON.stringify({ project: { name: 'p' }, cloud: { orgSlug: 'acme', orgId: 'org_1' } }), 'utf-8');
+		await expect(executeDocumentsPreview('doc_abc', { cwd: tempDir, homeDir: fakeHome, apiClient: makeStubClient() })).rejects.toThrow('Invalid poli-page.json — cloud.orgId: must be a UUID');
 	});
 
 	it('writes HTML to ./output/documents/<id>.preview.html by default', async () => {

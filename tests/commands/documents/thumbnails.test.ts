@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeDocumentsThumbnails } from '../../../src/commands/documents/thumbnails.js';
@@ -45,6 +45,11 @@ describe('executeDocumentsThumbnails', () => {
 		} else {
 			process.env.POLI_PAGE_API_KEY = savedEnv;
 		}
+	});
+
+	it('reports an invalid poli-page.json instead of ignoring it', async () => {
+		await writeFile(join(tempDir, 'poli-page.json'), JSON.stringify({ project: { name: 'p' }, cloud: { orgSlug: 'acme', orgId: 'org_1' } }), 'utf-8');
+		await expect(executeDocumentsThumbnails('doc_abc', { cwd: tempDir, homeDir: fakeHome, apiClient: createFakeApiClient({}) })).rejects.toThrow('Invalid poli-page.json — cloud.orgId: must be a UUID');
 	});
 
 	it('writes PNG files to ./output/thumbnails/<id>/page-N.png by default', async () => {

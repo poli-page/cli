@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { resolveAuth } from '../../auth.js';
-import { readManifest } from '../../manifest.js';
+import { readManifestIfPresent } from '../../manifest.js';
 import { createApiClient, type ApiClient } from '../../api-client.js';
 import { errorToExitCode } from '../../exit-codes.js';
 import { shouldEmitJson } from '../../output.js';
@@ -99,13 +99,7 @@ export async function executeDocumentsPreview(
 ): Promise<DocumentsPreviewResult> {
 	const cwd = options.cwd ?? process.cwd();
 
-	let manifestOrgId: string | undefined;
-	try {
-		const manifest = await readManifest(cwd);
-		manifestOrgId = manifest.cloud?.orgId;
-	} catch {
-		// Not in a project — leave undefined.
-	}
+	const manifestOrgId = (await readManifestIfPresent(cwd))?.cloud?.orgId;
 
 	let auth;
 	try {
