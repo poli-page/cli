@@ -368,19 +368,32 @@ describe('poli init --starter', () => {
 		await expect(stat(join(tempDir, 'nope'))).rejects.toThrow();
 	});
 
-	it('refuses a file of the source tree that resolves outside the project, writing nothing', async () => {
-		const target = join(tempDir, 'out');
-		await expect(
-			executeInitStarter('getting-started', target, {
-				cwd: tempDir,
-				homeDir: fakeHome,
-				fetcher: makeFetcher([], { 'getting-started/assets/../../escaped.txt': 'PWNED' }),
-				apiClient: makeClient([]),
-			})
-		).rejects.toThrow(/outside/);
-		await expect(stat(join(tempDir, 'escaped.txt'))).rejects.toThrow();
-		await expect(stat(target)).rejects.toThrow();
-	});
+	// A backslash is a separator on Windows only: there the cache path could
+	// climb into another source's cache while the URL stays in this repo.
+	it.each([
+		'assets/../../escaped.txt',
+		'a\\..\\..\\..\\..\\..\\poli-page\\templates\\main\\index.json',
+		'assets//x.svg',
+		'assets/./x.svg',
+		'assets/x?.svg',
+	])(
+		'refuses the source tree path %s before fetching any file, writing nothing',
+		async (badPath) => {
+			const target = join(tempDir, 'out');
+			const requested: string[] = [];
+			await expect(
+				executeInitStarter('getting-started', target, {
+					cwd: tempDir,
+					homeDir: fakeHome,
+					fetcher: makeFetcher(requested, { [`getting-started/${badPath}`]: 'PWNED' }),
+					apiClient: makeClient([]),
+				})
+			).rejects.toThrow(/Unsafe path .* in starter "getting-started"/);
+			expect(requested).toEqual([TREE_URL]);
+			expect(await readdir(fakeHome)).toEqual([]);
+			expect(await readdir(tempDir)).toEqual([]);
+		}
+	);
 
 	it('refuses, with --force, a poli-page.json symlinked out of the project, writing nothing', async () => {
 		const target = join(tempDir, 'out');

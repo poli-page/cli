@@ -9,6 +9,14 @@ export function isSafeSegment(segment: unknown): segment is string {
 	return typeof segment === 'string' && SAFE_SEGMENT_RE.test(segment);
 }
 
+// Same characters, but a leading `.` is allowed: starters ship dotfiles
+// (`.gitignore`, `.poli-page/`) and GitHub repos may be named `.github`.
+const DOTTED_SEGMENT_RE = /^(?!\.+$)[A-Za-z0-9._-]+$/;
+
+export function isSafeDottedSegment(segment: unknown): segment is string {
+	return typeof segment === 'string' && DOTTED_SEGMENT_RE.test(segment);
+}
+
 /**
  * Throw unless `p` is a relative POSIX path made only of safe segments.
  * `what` names the field in the error (e.g. `fonts[].src`).

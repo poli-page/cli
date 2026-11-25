@@ -5,7 +5,12 @@ import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { readManifest, writeManifest } from './manifest.js';
 import { MANIFEST_FILENAME } from './constants.js';
-import { assertSafeRelativePath, isSafeSegment, resolveInside } from './security/paths.js';
+import {
+	assertSafeRelativePath,
+	isSafeDottedSegment,
+	isSafeSegment,
+	resolveInside,
+} from './security/paths.js';
 
 export interface TemplateSource {
 	owner: string;
@@ -89,7 +94,8 @@ const TEMPLATE_REF_RE = /^([^/]+)\/([^/]+)$/;
 
 export function parseSource(spec: string): TemplateSource {
 	const m = spec.match(SOURCE_RE);
-	if (!m) {
+	// Owner and repo are segments of the fetch URLs and of the cache path.
+	if (!m || !isSafeDottedSegment(m[1]) || !isSafeDottedSegment(m[2])) {
 		throw new Error(`Invalid source format. Expected github:<owner>/<repo>, got "${spec}".`);
 	}
 	return { owner: m[1], repo: m[2] };
@@ -148,7 +154,14 @@ function parseTemplateManifest(data: unknown): TemplateManifest {
 	const manifest = data as TemplateManifest;
 	assertSafeRelativePath(manifest.template?.template, 'template.template');
 	assertSafeRelativePath(manifest.template?.mock, 'template.mock');
-	for (const font of manifest.fonts ?? []) assertSafeRelativePath(font.src, 'fonts[].src');
+	for (const field of ['fonts', 'images'] as const) {
+		if (manifest[field] !== undefined && !Array.isArray(manifest[field])) {
+			throw new Error(
+				`Unsafe ${field}[]: expected an array, got ${JSON.stringify(manifest[field])}.`
+			);
+		}
+	}
+	for (const font of manifest.fonts ?? []) assertSafeRelativePath(font?.src, 'fonts[].src');
 	for (const img of manifest.images ?? []) assertSafeRelativePath(img, 'images[]');
 	return manifest;
 }
@@ -439,6 +452,15 @@ export async function fetchStarter(
 
 	if (!paths.includes(MANIFEST_FILENAME)) {
 		throw new Error(`Unknown starter "${starter}" in source ${source.owner}/${source.repo}.`);
+	}
+	// Tree paths become fetch URLs, cache paths and project paths: refuse the
+	// whole starter on the first bad one, before fetching any file.
+	for (const path of paths) {
+		if (!path.split('/').every(isSafeDottedSegment)) {
+			throw new Error(
+				`Unsafe path ${JSON.stringify(path)} in starter "${starter}" of source ${source.owner}/${source.repo}.`
+			);
+		}
 	}
 
 	const files: StarterFile[] = [];

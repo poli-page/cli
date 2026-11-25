@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { assertSafeRelativePath, isSafeSegment, resolveInside } from '../src/security/paths.js';
+import {
+	assertSafeRelativePath,
+	isSafeDottedSegment,
+	isSafeSegment,
+	resolveInside,
+} from '../src/security/paths.js';
 
 describe('isSafeSegment', () => {
 	it('accepts one plain segment', () => {
@@ -13,6 +18,33 @@ describe('isSafeSegment', () => {
 	it('refuses separators, dot segments and non-strings', () => {
 		for (const bad of ['a/b', '.', '..', '.hidden', '', 'a\\b', 'C:', 'a?b', 42, undefined]) {
 			expect(isSafeSegment(bad), String(bad)).toBe(false);
+		}
+	});
+});
+
+describe('isSafeDottedSegment', () => {
+	it('accepts a plain segment and a dotfile', () => {
+		for (const ok of ['invoice', '.gitignore', '.poli-page', '.github', '_x', 'a..b']) {
+			expect(isSafeDottedSegment(ok), ok).toBe(true);
+		}
+	});
+
+	it('refuses separators, dot-only segments and non-strings', () => {
+		for (const bad of [
+			'a/b',
+			'.',
+			'..',
+			'...',
+			'',
+			'a\\b',
+			'C:',
+			'a?b',
+			'a#b',
+			'%2e',
+			42,
+			undefined,
+		]) {
+			expect(isSafeDottedSegment(bad), String(bad)).toBe(false);
 		}
 	});
 });

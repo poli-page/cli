@@ -107,6 +107,17 @@ describe('template-importer — parsing helpers', () => {
 			expect(() => parseSource('not-a-source')).toThrow(/source/i);
 			expect(() => parseSource('github:onlyone')).toThrow(/source/i);
 		});
+
+		it('accepts a repo name that starts with a dot', () => {
+			expect(parseSource('poli-page/.github')).toEqual({ owner: 'poli-page', repo: '.github' });
+		});
+
+		it.each(['x/..', 'x/.', '../templates', 'a\\..\\poli-page/templates', 'x/a?b', 'x/%2e%2e'])(
+			'rejects an owner or repo that is not one plain name (%s)',
+			(spec) => {
+				expect(() => parseSource(spec)).toThrow(/Invalid source/);
+			}
+		);
 	});
 
 	describe('parseTemplateRef', () => {
@@ -486,6 +497,9 @@ describe('importTemplate — paths from the source', () => {
 			},
 		],
 		['images\\[\\]', { ...INVOICE_MANIFEST, images: ['logo.png', '../x'] }],
+		['images\\[\\]: expected an array', { ...INVOICE_MANIFEST, images: 'logo' }],
+		['fonts\\[\\]: expected an array', { ...INVOICE_MANIFEST, fonts: 'x.woff2' }],
+		['fonts\\[\\]\\.src', { ...INVOICE_MANIFEST, fonts: [null] }],
 		['template.mock', { ...INVOICE_MANIFEST, template: { name: 'invoice', template: 'invoice.html' } }],
 	])('refuses an unsafe %s with no file written anywhere', async (field, manifest) => {
 		const urls = await expectRefusedWithNothingWritten(
