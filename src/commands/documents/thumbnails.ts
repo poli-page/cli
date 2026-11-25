@@ -10,6 +10,8 @@ import {
 } from '../../api-client.js';
 import { errorToExitCode } from '../../exit-codes.js';
 import { shouldEmitJson } from '../../output.js';
+import { resolveInside, resolveWritable, safeWriteFile } from '../../security/paths.js';
+import { assertDocumentId } from './document-id.js';
 
 export interface DocumentsThumbnailsOptions {
 	cwd?: string;
@@ -35,6 +37,7 @@ export async function executeDocumentsThumbnails(
 	options: DocumentsThumbnailsOptions = {}
 ): Promise<DocumentsThumbnailFile[]> {
 	const cwd = options.cwd ?? process.cwd();
+	assertDocumentId(id);
 
 	const manifestOrgId = (await readManifestIfPresent(cwd))?.cloud?.orgId;
 
@@ -58,6 +61,10 @@ export async function executeDocumentsThumbnails(
 	if (options.quality !== undefined) apiOptions.quality = options.quality;
 	if (options.pages !== undefined) apiOptions.pages = options.pages;
 
+	// The file names come with the response; their folder can be refused
+	// before the request, which is billed on live keys.
+	if (!options.output) await resolveInside(cwd, join('output', 'thumbnails', id));
+
 	const thumbnails = await client.documentThumbnails(
 		auth.authorization,
 		auth.orgIdHeader,
@@ -65,16 +72,31 @@ export async function executeDocumentsThumbnails(
 		apiOptions
 	);
 
-	const outputDir = options.output
-		? resolve(cwd, options.output)
-		: join(cwd, 'output', 'thumbnails', id);
-	await mkdir(outputDir, { recursive: true });
+	// The page number from the API becomes a file name.
+	const names: string[] = [];
+	for (const thumb of thumbnails) {
+		if (!Number.isInteger(thumb.page) || thumb.page <= 0) {
+			throw new Error(`Refusing thumbnail with invalid page ${JSON.stringify(thumb.page)}.`);
+		}
+		const name = `page-${thumb.page}.${extensionForContentType(thumb.contentType)}`;
+		if (!options.output) await resolveWritable(cwd, join('output', 'thumbnails', id, name));
+		names.push(name);
+	}
+
+	const outputDir = options.output ? resolve(cwd, options.output) : undefined;
+	if (outputDir) await mkdir(outputDir, { recursive: true });
 
 	const results: DocumentsThumbnailFile[] = [];
-	for (const thumb of thumbnails) {
-		const ext = extensionForContentType(thumb.contentType);
-		const filePath = join(outputDir, `page-${thumb.page}.${ext}`);
-		await writeFile(filePath, Buffer.from(thumb.data, 'base64'));
+	for (const [i, thumb] of thumbnails.entries()) {
+		const name = names[i];
+		const data = Buffer.from(thumb.data, 'base64');
+		let filePath: string;
+		if (outputDir) {
+			filePath = join(outputDir, name);
+			await writeFile(filePath, data);
+		} else {
+			filePath = await safeWriteFile(cwd, join('output', 'thumbnails', id, name), data);
+		}
 		results.push({
 			page: thumb.page,
 			path: filePath,
@@ -128,9 +150,7 @@ export function registerDocumentsThumbnailsCommand(documents: Command): void {
 				const { default: ora } = await import('ora');
 
 				const emitJson = shouldEmitJson(opts);
-				const spinner = emitJson
-					? null
-					: ora(`Generating thumbnails for ${id}…`).start();
+				const spinner = emitJson ? null : ora(`Generating thumbnails for ${id}…`).start();
 				try {
 					const results = await executeDocumentsThumbnails(id, {
 						width: opts.width,
@@ -149,9 +169,7 @@ export function registerDocumentsThumbnailsCommand(documents: Command): void {
 						.map((r) => `  ${r.width}×${r.height} → ${r.path}`)
 						.join('\n');
 					spinner!.succeed(
-						chalk.green(
-							`${results.length} thumbnail(s) generated:\n${summary}`
-						)
+						chalk.green(`${results.length} thumbnail(s) generated:\n${summary}`)
 					);
 				} catch (err) {
 					if (spinner) {

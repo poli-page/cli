@@ -14,6 +14,7 @@ import { isValidEnvironmentName } from '../environment-name.js';
 import { UsageError, errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 import { formatOrientationSlug } from '../format-resolver.js';
+import { resolveWritable, safeWriteFile } from '../security/paths.js';
 
 export interface RenderOptions {
 	cwd?: string;
@@ -135,15 +136,26 @@ export async function executeRender(
 	// The format/orientation segment lets the same template coexist on disk
 	// at multiple page formats without overwriting itself, and aligns with
 	// the layout produced by the desktop editor.
-	const outputPath = options.output
-		? resolve(cwd, options.output)
-		: join(
-				projectDir,
-				'output',
-				entry.name,
-				formatOrientationSlug(entry.format, entry.orientation),
-				`${entry.name}.pdf`
-			);
+	//
+	// An explicit -o is the user's to point anywhere; the default path sits in
+	// a cloned repo, which may plant symlinks on it.
+	const defaultRel = join(
+		'output',
+		entry.name,
+		formatOrientationSlug(entry.format, entry.orientation),
+		`${entry.name}.pdf`
+	);
+	const outputPath = options.output ? resolve(cwd, options.output) : join(projectDir, defaultRel);
+	const writePdf = async (pdf: Buffer): Promise<void> => {
+		if (options.output) {
+			await mkdir(dirname(outputPath), { recursive: true });
+			await writeFile(outputPath, pdf);
+		} else {
+			await safeWriteFile(projectDir, defaultRel, pdf);
+		}
+	};
+	// Refuse before the API call: an environment render is billed.
+	if (!options.output && !options.noDownload) await resolveWritable(projectDir, defaultRel);
 
 	const client = options.apiClient ?? createApiClient();
 	const payload = {
@@ -164,7 +176,7 @@ export async function executeRender(
 			);
 		}
 		const pdf = await client.renderDraft(auth.authorization, auth.orgIdHeader, payload);
-		await writePdf(outputPath, pdf);
+		await writePdf(pdf);
 		return { kind: 'draft', template: entry.name, outputPath };
 	}
 
@@ -191,7 +203,7 @@ export async function executeRender(
 	const pdfBuffer = options.fetchPdf
 		? await options.fetchPdf(descriptor.presignedPdfUrl)
 		: await defaultFetchPdf(descriptor.presignedPdfUrl);
-	await writePdf(outputPath, pdfBuffer);
+	await writePdf(pdfBuffer);
 
 	return { kind: 'environment', descriptor, outputPath };
 }
@@ -271,11 +283,6 @@ export function formatRenderJson(result: RenderResult): unknown {
 		return { ...result.descriptor, outputPath: result.outputPath };
 	}
 	return result.descriptor;
-}
-
-async function writePdf(outputPath: string, pdf: Buffer): Promise<void> {
-	await mkdir(dirname(outputPath), { recursive: true });
-	await writeFile(outputPath, pdf);
 }
 
 async function defaultFetchPdf(url: string): Promise<Buffer> {

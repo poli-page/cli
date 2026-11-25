@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -63,6 +63,54 @@ describe('executeDocumentsPreview', () => {
 		const written = await readFile(result.path!, 'utf-8');
 		expect(written).toBe(`<html><head>${CSP_META}</head>fake preview</html>`);
 	});
+
+	it('refuses a symlink planted at the default path and leaves its target untouched', async () => {
+		const victim = join(fakeHome, 'victim');
+		await writeFile(victim, 'original');
+		await mkdir(join(tempDir, 'output', 'documents'), { recursive: true });
+		await symlink(victim, join(tempDir, 'output', 'documents', 'doc_abc.preview.html'));
+
+		await expect(
+			executeDocumentsPreview('doc_abc', {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				apiClient: makeStubClient(),
+				noOpen: true,
+			})
+		).rejects.toThrow(/Refusing/);
+		expect(await readFile(victim, 'utf-8')).toBe('original');
+	});
+
+	it('refuses a symlinked output folder that leaves the working directory', async () => {
+		await symlink(fakeHome, join(tempDir, 'output'));
+
+		await expect(
+			executeDocumentsPreview('doc_abc', {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				apiClient: makeStubClient(),
+				noOpen: true,
+			})
+		).rejects.toThrow(/Refusing/);
+		expect(await readdir(fakeHome)).toEqual([]);
+	});
+
+	it.each(['../../x', 'a/b', 'a\\b', '..', 'doc..x'])(
+		'refuses the id %s before any request and writes nothing',
+		async (id) => {
+			const documentPreview = vi.fn();
+			await expect(
+				executeDocumentsPreview(id, {
+					cwd: tempDir,
+					homeDir: fakeHome,
+					apiClient: makeStubClient({ documentPreview }),
+					noOpen: true,
+				})
+			).rejects.toThrow(/Invalid document ID/);
+			expect(documentPreview).not.toHaveBeenCalled();
+			expect(await readdir(tempDir)).toEqual([]);
+		}
+	);
 
 	it('writes HTML to a custom path when -o is provided', async () => {
 		const customPath = join(tempDir, 'preview.html');

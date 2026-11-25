@@ -1,4 +1,5 @@
-import { lstat, realpath } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { chmod, lstat, mkdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 // One path segment: no `.` or `..`, no separators, no `?`/`#`/`%` that would
@@ -78,4 +79,46 @@ async function realpathOfDeepestExisting(p: string): Promise<string | null> {
 			current = parent;
 		}
 	}
+}
+
+/**
+ * `resolveInside`, and the file itself must not be a symlink, even one that
+ * stays inside `root`: the pre-flight of a write made by `safeWriteFile`.
+ */
+export async function resolveWritable(root: string, rel: string): Promise<string> {
+	const target = await resolveInside(root, rel);
+	const leaf = await lstat(target).catch(() => null);
+	if (leaf?.isSymbolicLink()) {
+		throw new Error(`Refusing path "${rel}": it is a symlink.`);
+	}
+	return target;
+}
+
+/**
+ * Write `data` to `rel` under `root` without following a symlink (see
+ * `resolveWritable`). The bytes land in a fresh temp file in the same directory
+ * that is then renamed over the target, so a symlink planted after the check
+ * is replaced, never written through. A replaced file keeps its mode.
+ * Returns the absolute path written.
+ */
+export async function safeWriteFile(
+	root: string,
+	rel: string,
+	data: string | Uint8Array
+): Promise<string> {
+	const target = await resolveWritable(root, rel);
+	await mkdir(dirname(target), { recursive: true });
+	const temp = join(dirname(target), `.${basename(target)}.${randomUUID()}.tmp`);
+	const existing = await lstat(target).catch(() => null);
+	const mode = existing?.isFile() ? existing.mode & 0o7777 : undefined;
+	try {
+		await writeFile(temp, data, { flag: 'wx', mode });
+		// The umask may have narrowed `mode` at creation.
+		if (mode !== undefined) await chmod(temp, mode);
+		await rename(temp, target);
+	} catch (err) {
+		await rm(temp, { force: true });
+		throw err;
+	}
+	return target;
 }

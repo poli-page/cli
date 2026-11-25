@@ -53,12 +53,12 @@ export async function readProjectManifestJson(projectDir: string): Promise<unkno
  * every write drops them, without a word.
  */
 export async function writeManifest(projectDir: string, manifest: PoliPageManifest): Promise<void> {
-	const manifestPath = join(projectDir, MANIFEST_FILENAME);
-	await writeFile(
-		manifestPath,
-		JSON.stringify(withoutRetiredFields(manifest), null, '\t') + '\n',
-		'utf-8'
-	);
+	await writeFile(join(projectDir, MANIFEST_FILENAME), serializeManifest(manifest), 'utf-8');
+}
+
+/** The bytes `writeManifest` writes, for a caller that writes them itself. */
+export function serializeManifest(manifest: PoliPageManifest): string {
+	return JSON.stringify(withoutRetiredFields(manifest), null, '\t') + '\n';
 }
 
 function withoutRetiredFields(manifest: PoliPageManifest): PoliPageManifest {

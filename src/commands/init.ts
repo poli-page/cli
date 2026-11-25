@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, join, resolve } from 'node:path';
-import { writeManifest } from '../manifest.js';
+import { basename, join, resolve } from 'node:path';
+import { serializeManifest, writeManifest } from '../manifest.js';
 import { parseManifestWithoutCloud, type PoliPageManifest } from '../manifest.schema.js';
 import { readCredentials, sessionFor } from '../credentials.js';
 import { createApiClient, type ApiClient } from '../api-client.js';
@@ -19,7 +19,7 @@ import {
 import { promptForStarterTemplate, type TemplatePromptResult } from '../template-prompt.js';
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
-import { resolveInside } from '../security/paths.js';
+import { resolveWritable, safeWriteFile } from '../security/paths.js';
 
 function toKebabCase(name: string): string {
 	return name
@@ -222,19 +222,15 @@ export async function executeInitStarter(
 	if (cloud) manifest.cloud = cloud;
 
 	// Paths come from the source's git tree: confine them all before writing.
-	const writes: Array<{ dest: string; content: Buffer }> = [];
-	for (const file of files) {
-		if (file.path === MANIFEST_FILENAME) continue;
-		writes.push({ dest: await resolveInside(projectDir, file.path), content: file.content });
-	}
-	// --force may write over an existing poli-page.json: refuse a symlink out.
-	await resolveInside(projectDir, MANIFEST_FILENAME);
+	const writes = files.filter((f) => f.path !== MANIFEST_FILENAME);
+	for (const file of writes) await resolveWritable(projectDir, file.path);
+	// --force may write over an existing poli-page.json: refuse a symlink.
+	await resolveWritable(projectDir, MANIFEST_FILENAME);
 	await mkdir(projectDir, { recursive: true });
-	for (const { dest, content } of writes) {
-		await mkdir(dirname(dest), { recursive: true });
-		await writeFile(dest, content);
+	for (const file of writes) {
+		await safeWriteFile(projectDir, file.path, file.content);
 	}
-	await writeManifest(projectDir, manifest);
+	await safeWriteFile(projectDir, MANIFEST_FILENAME, serializeManifest(manifest));
 
 	return { projectDir, link };
 }
