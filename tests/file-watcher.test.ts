@@ -206,6 +206,27 @@ describe('createFileWatcher (integration)', () => {
 
 		expect(batches.flatMap((batch) => [...batch])).toEqual([join('fixtures', 'acme.json')]);
 	});
+
+	it.each(['dist', '.poli'])('emits a batch for an extra path inside %s/', async (dir) => {
+		await mkdir(join(tempDir, dir), { recursive: true });
+		await writeFile(join(tempDir, dir, 'acme.json'), '{}');
+		await writeFile(join(tempDir, dir, 'other.json'), '{}');
+
+		const { batches, seen, onBatch } = batchWith(join(dir, 'acme.json'));
+		const { watcher } = await startWatcher({
+			cwd: tempDir,
+			debounceMs: 200,
+			extraPaths: [join(tempDir, dir, 'acme.json')],
+			onBatch,
+		});
+
+		await writeFile(join(tempDir, dir, 'other.json'), '{"a":1}');
+		await writeFile(join(tempDir, dir, 'acme.json'), '{"a":1}');
+		await seen;
+		await watcher.close();
+
+		expect(batches.flatMap((batch) => [...batch])).toEqual([join(dir, 'acme.json')]);
+	});
 });
 
 describe('createFileWatcher (sync set)', () => {

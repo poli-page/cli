@@ -1,6 +1,6 @@
 import chokidar from 'chokidar';
 import type { Stats } from 'node:fs';
-import { relative } from 'node:path';
+import { relative, sep } from 'node:path';
 import { isInIgnoredProjectDirectory, shouldIgnoreProjectPath } from './project-sync.js';
 
 export interface DebouncedBatcher<T> {
@@ -53,7 +53,8 @@ export function createDebouncedBatcher<T>(
 // Chokidar calls `ignored` with the stats when it has them and without
 // them on some paths (before its own stat, on unlink), so a path without
 // stats is treated as a directory: the file check runs again once the
-// stats are in.
+// stats are in. A directory holding an extra path stays walked so chokidar
+// reaches that path; its other entries still go through the checks.
 function projectIgnoredFn(
 	cwd: string,
 	extraPaths: ReadonlySet<string>
@@ -61,7 +62,10 @@ function projectIgnoredFn(
 	return (path, stats) => {
 		if (extraPaths.has(path)) return false;
 		const relPath = relative(cwd, path);
-		if (!stats || stats.isDirectory()) return isInIgnoredProjectDirectory(relPath);
+		if (!stats || stats.isDirectory()) {
+			if ([...extraPaths].some((extra) => extra.startsWith(path + sep))) return false;
+			return isInIgnoredProjectDirectory(relPath);
+		}
 		return shouldIgnoreProjectPath(relPath);
 	};
 }
