@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { lstat, mkdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 // One path segment: no `.` or `..`, no separators, no `?`/`#`/`%` that would
@@ -98,7 +98,8 @@ export async function resolveWritable(root: string, rel: string): Promise<string
  * Write `data` to `rel` under `root` without following a symlink (see
  * `resolveWritable`). The bytes land in a fresh temp file in the same directory
  * that is then renamed over the target, so a symlink planted after the check
- * is replaced, never written through. Returns the absolute path written.
+ * is replaced, never written through. A replaced file keeps its mode.
+ * Returns the absolute path written.
  */
 export async function safeWriteFile(
 	root: string,
@@ -108,8 +109,12 @@ export async function safeWriteFile(
 	const target = await resolveWritable(root, rel);
 	await mkdir(dirname(target), { recursive: true });
 	const temp = join(dirname(target), `.${basename(target)}.${randomUUID()}.tmp`);
+	const existing = await lstat(target).catch(() => null);
+	const mode = existing?.isFile() ? existing.mode & 0o7777 : undefined;
 	try {
-		await writeFile(temp, data, { flag: 'wx' });
+		await writeFile(temp, data, { flag: 'wx', mode });
+		// The umask may have narrowed `mode` at creation.
+		if (mode !== undefined) await chmod(temp, mode);
 		await rename(temp, target);
 	} catch (err) {
 		await rm(temp, { force: true });

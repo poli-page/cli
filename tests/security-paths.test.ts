@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
+	chmod,
 	lstat,
 	mkdir,
 	mkdtemp,
@@ -213,6 +214,20 @@ describe('safeWriteFile', () => {
 		await writeFile(join(root, 'x.txt'), 'old');
 		await safeWriteFile(root, 'x.txt', Buffer.from('new'));
 		expect(await readFile(join(root, 'x.txt'), 'utf-8')).toBe('new');
+	});
+
+	it('keeps the mode of the file it replaces', async () => {
+		await writeFile(join(root, 'x.txt'), 'old');
+		await chmod(join(root, 'x.txt'), 0o600);
+		await safeWriteFile(root, 'x.txt', 'new');
+		expect((await lstat(join(root, 'x.txt'))).mode & 0o777).toBe(0o600);
+	});
+
+	it('keeps a mode wider than the umask', async () => {
+		await writeFile(join(root, 'x.txt'), 'old');
+		await chmod(join(root, 'x.txt'), 0o666);
+		await safeWriteFile(root, 'x.txt', 'new');
+		expect((await lstat(join(root, 'x.txt'))).mode & 0o777).toBe(0o666);
 	});
 
 	it('refuses a symlink leaf out of the root and leaves its target untouched', async () => {
