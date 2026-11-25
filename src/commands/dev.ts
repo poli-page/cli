@@ -212,29 +212,27 @@ export async function startDevSession(
 	const cwd = options.cwd ?? process.cwd();
 	const emit = (event: DevEvent) => options.onEvent?.(event);
 
-	// Resolves the manifest, the session token, the org and the confirmed
-	// link — throws the familiar "not linked" / "not logged in" errors
-	// before anything is served, so a misconfigured project fails fast
-	// instead of booting a server that can never work.
+	const initial = await loadProject(cwd);
+	let manifest: PoliPageManifest = initial.manifest;
+	let templates = templateNamesOf(manifest);
+
+	// A legacy link (no `projectSlug`) is refused like `poli render` does,
+	// and before the link prompt, so the user never confirms a folder that
+	// cannot render.
+	if (!manifest.cloud?.projectSlug) {
+		throw new Error("This folder isn't linked to a cloud project. Run `poli link` first.");
+	}
+
+	// Resolves the session token, the org and the confirmed link — throws
+	// the familiar "not logged in" errors before anything is served, so a
+	// misconfigured project fails fast instead of booting a server that can
+	// never work.
 	const { client, ctx } = await resolveCloudContext({
 		cwd,
 		apiClient: options.apiClient,
 		homeDir: options.homeDir,
 		confirmLink: options.confirmLink,
 	});
-
-	const initial = await loadProject(cwd);
-	let manifest: PoliPageManifest = initial.manifest;
-	let templates = templateNamesOf(manifest);
-
-	// `projectSlug` is optional in the manifest schema (legacy links lack
-	// it) but every render payload needs it. Without this guard the
-	// server boots and then fails every render into the overlay forever —
-	// fail fast instead, with the same message (and exit code) as
-	// `poli render`.
-	if (!manifest.cloud?.projectSlug) {
-		throw new Error("This folder isn't linked to a cloud project. Run `poli link` first.");
-	}
 
 	if (templateName !== undefined) {
 		// Fail fast on an unknown name given on the command line — same
@@ -345,7 +343,8 @@ export async function startDevSession(
 		locale: string | undefined
 	): Record<string, unknown> {
 		return {
-			project: manifest.cloud?.projectSlug,
+			// The verified project sync writes to, not the manifest re-read on each batch.
+			project: ctx.projectSlug,
 			template: entry.name,
 			data,
 			format: entry.format,

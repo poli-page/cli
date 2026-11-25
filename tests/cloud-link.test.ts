@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isLinkConfirmed, recordLink, verifyCloudLink } from '../src/cloud-link.js';
+import { forgetLink, isLinkConfirmed, recordLink, verifyCloudLink } from '../src/cloud-link.js';
 import { createFakeApiClient } from './helpers/fake-api-client.js';
 
 describe('confirmed links (~/.polipage/links.json)', () => {
@@ -65,6 +65,23 @@ describe('confirmed links (~/.polipage/links.json)', () => {
 		await recordLink(other, 'proj_2', fakeHome);
 		expect(await isLinkConfirmed(folder, 'proj_1', fakeHome)).toBe(true);
 		expect(await isLinkConfirmed(other, 'proj_2', fakeHome)).toBe(true);
+	});
+
+	it('forgets one folder and keeps the others', async () => {
+		const other = join(root, 'other');
+		await mkdir(other);
+		await recordLink(folder, 'proj_1', fakeHome);
+		await recordLink(other, 'proj_2', fakeHome);
+
+		await forgetLink(folder, fakeHome);
+
+		expect(await isLinkConfirmed(folder, 'proj_1', fakeHome)).toBe(false);
+		expect(await isLinkConfirmed(other, 'proj_2', fakeHome)).toBe(true);
+	});
+
+	it('forgets nothing, and writes no file, when no link is recorded', async () => {
+		await forgetLink(folder, fakeHome);
+		await expect(readFile(linksPath(), 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
 	});
 
 	it('treats a corrupt file as confirming nothing, and rewrites it on the next link', async () => {

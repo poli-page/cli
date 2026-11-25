@@ -249,13 +249,13 @@ Interactively select an organization, create the cloud project, and write the `c
 
 #### Confirmed links
 
-A `cloud:` block can come with a cloned repository, and every sync overwrites the cloud draft of the project it names. So `poli watch` and `poli dev` sync only a folder whose link you confirmed on this machine. The confirmed links are kept per user in `~/.polipage/links.json` (mode `0600`), keyed by the folder's real path and the project id; `poli link` and `poli init --starter` (when it links) write them. The first time you run `poli watch` or `poli dev` in a folder that is not there, or whose `projectId` changed, the command names the organization and project and asks once; a yes is recorded, a no stops the command before any sync. Without a terminal to ask in (stdin or stdout not a TTY), it refuses with exit `2`.
+A `cloud:` block can come with a cloned repository, and every sync overwrites the cloud draft of the project it names. So `poli watch` and `poli dev` sync only a folder whose link you confirmed on this machine. The confirmed links are kept per user in `~/.polipage/links.json` (mode `0600`), keyed by the folder's real path and the project id; `poli link` and `poli init --starter` (when it links) write them, `poli unlink` removes the folder's. The first time you run `poli watch` or `poli dev` in a folder that is not there, or whose `projectId` changed, the command names the organization and project and asks once; a yes is recorded, a no stops the command before any sync. Without a terminal to ask in (stdin or stdout not a TTY), it refuses with exit `2`.
 
 Before syncing, `poli watch` and `poli dev` also check with the API that the manifest's `orgSlug`, `orgId`, `projectId` and `projectSlug` all name the same project (sync writes to `projectId` in the `orgSlug` organization; render and publish address `projectSlug` with `orgId`). A manifest whose ids disagree is refused before any write (exit `6`); `poli publish` with a session refuses it too.
 
 #### `poli unlink`
 
-Removes the `cloud:` section from `poli-page.json`. Local files are preserved.
+Removes the `cloud:` section from `poli-page.json` and forgets the folder's [confirmed link](#confirmed-links), so a `cloud:` block that comes back later (a pull, a checkout) is asked about again. Local files are preserved.
 
 #### `poli watch`
 

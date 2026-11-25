@@ -8,6 +8,7 @@ export interface CloudContext {
 	orgId: string;
 	orgSlug: string;
 	projectId: string;
+	projectSlug: string;
 }
 
 /**
@@ -44,6 +45,7 @@ export async function resolveCloudContext(options: {
 			orgId: target.org.id,
 			orgSlug: target.org.slug,
 			projectId: target.project.id,
+			projectSlug: target.project.slug,
 		},
 	};
 }

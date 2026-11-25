@@ -100,6 +100,14 @@ export async function recordLink(dir: string, projectId: string, homeDir?: strin
 	await writePrivateFile(LINKS_FILENAME, JSON.stringify({ links }, null, '\t') + '\n', homeDir);
 }
 
+export async function forgetLink(dir: string, homeDir?: string): Promise<void> {
+	const links = await readLinks(homeDir);
+	const folder = await realpath(dir);
+	if (!(folder in links)) return;
+	delete links[folder];
+	await writePrivateFile(LINKS_FILENAME, JSON.stringify({ links }, null, '\t') + '\n', homeDir);
+}
+
 /**
  * A cloud block can come from a cloned repository: before the first sync of
  * a folder this user has not linked, name the target and ask, or refuse.

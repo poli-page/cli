@@ -154,7 +154,7 @@ export async function executePublish(options: PublishOptions): Promise<PublishOu
 	const body = await buildPublishBody(cwd, environment, options.message);
 
 	// `project` is the slug; refuse a manifest whose other ids name another project.
-	await verifyCloudLink(client, auth.authorization.slice('Bearer '.length), cloud);
+	await verifyCloudLink(client, auth.session, cloud);
 
 	const environments = await client.listEnvironments(auth.authorization, auth.orgIdHeader);
 	const target = environments.find((e) => e.name === environment);

@@ -40,6 +40,7 @@ describe('resolveAuth', () => {
 			});
 			expect(ctx).toEqual({
 				mode: 'session',
+				session: 'session-token-abc',
 				authorization: 'Bearer session-token-abc',
 				orgIdHeader: 'org-123',
 			});

@@ -3,7 +3,7 @@ import { readProjectManifest, writeManifest } from '../manifest.js';
 import { getSessionToken, readCredentials, sessionFor } from '../credentials.js';
 import { createApiClient, type ApiClient } from '../api-client.js';
 import { collectProjectPayload } from '../project-loader.js';
-import { recordLink } from '../cloud-link.js';
+import { forgetLink, recordLink } from '../cloud-link.js';
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
 
 export interface LinkOptions {
@@ -97,6 +97,7 @@ export async function executeLink(options: LinkOptions): Promise<void> {
 
 export interface UnlinkOptions {
 	cwd?: string;
+	homeDir?: string;
 }
 
 export async function executeUnlink(options: UnlinkOptions = {}): Promise<void> {
@@ -110,6 +111,7 @@ export async function executeUnlink(options: UnlinkOptions = {}): Promise<void> 
 
 	delete manifest.cloud;
 	await writeManifest(cwd, manifest);
+	await forgetLink(cwd, options.homeDir);
 }
 
 export function registerLinkCommands(program: Command) {

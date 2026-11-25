@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { executeInit } from '../../src/commands/init.js';
 import { executeLink, executeUnlink } from '../../src/commands/link.js';
 import { writeCredentials } from '../../src/credentials.js';
-import { isLinkConfirmed } from '../../src/cloud-link.js';
+import { isLinkConfirmed, recordLink } from '../../src/cloud-link.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import type { ApiClient } from '../../src/api-client.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
@@ -236,6 +236,26 @@ describe('poli link / unlink', () => {
 				await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
 			);
 			expect(manifest).toEqual({ project: { name: 'test-project' } });
+		});
+
+		it("forgets the folder's confirmed link, and only that folder's", async () => {
+			const other = await mkdtemp(join(tmpdir(), 'poli-link-other-'));
+			try {
+				await executeLink({
+					cwd: projectDir,
+					orgSlug: 'acme-corp',
+					apiClient: createMockApiClient(),
+					homeDir: fakeHome,
+				});
+				await recordLink(other, 'proj_other', fakeHome);
+
+				await executeUnlink({ cwd: projectDir, homeDir: fakeHome });
+
+				expect(await isLinkConfirmed(projectDir, 'proj_abc123', fakeHome)).toBe(false);
+				expect(await isLinkConfirmed(other, 'proj_other', fakeHome)).toBe(true);
+			} finally {
+				await rm(other, { recursive: true, force: true });
+			}
 		});
 
 		it('should throw if not linked', async () => {

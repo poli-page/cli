@@ -15,7 +15,7 @@ import {
 } from '../../src/commands/dev.js';
 import { createProgram } from '../../src/program.js';
 import { writeCredentials } from '../../src/credentials.js';
-import { recordLink } from '../../src/cloud-link.js';
+import { isLinkConfirmed, recordLink } from '../../src/cloud-link.js';
 import { readManifest, writeManifest } from '../../src/manifest.js';
 import { setupTemplate } from '../helpers/setup-template.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
@@ -482,10 +482,53 @@ describe('poli dev', () => {
 			await rm(join(fakeHome, '.polipage', 'links.json'));
 			await setupTemplate(projectDir, 'invoice');
 			const confirmLink = vi.fn(async () => true);
+			const patchBodies: PatchFilesBody[] = [];
 
-			await start(undefined, { apiClient: makeStubClient(), confirmLink });
+			await start(undefined, { apiClient: makeStubClient({ patchBodies }), confirmLink });
 
 			expect(confirmLink).toHaveBeenCalledTimes(1);
+			expect(patchBodies).toHaveLength(1);
+			expect(await isLinkConfirmed(projectDir, 'proj_1', fakeHome)).toBe(true);
+		});
+
+		it('refuses a legacy block without projectSlug before asking to confirm it', async () => {
+			await rm(join(fakeHome, '.polipage', 'links.json'));
+			await setupTemplate(projectDir, 'invoice');
+			const manifest = await readManifest(projectDir);
+			delete manifest.cloud!.projectSlug;
+			await writeManifest(projectDir, manifest);
+			const confirmLink = vi.fn(async () => true);
+
+			await expect(
+				startDevSession(undefined, {
+					cwd: projectDir,
+					homeDir: fakeHome,
+					port: 0,
+					open: false,
+					apiClient: makeStubClient(),
+					confirmLink,
+				})
+			).rejects.toThrow(/isn't linked to a cloud project/);
+			expect(confirmLink).not.toHaveBeenCalled();
+			expect(await isLinkConfirmed(projectDir, 'proj_1', fakeHome)).toBe(false);
+		});
+
+		it('keeps rendering the verified project when the cloud block changes mid-session', async () => {
+			await setupTemplate(projectDir, 'invoice');
+			const { factory, getController } = createManualWatcherFactory();
+			const draftCalls: RenderCall[] = [];
+			await start(undefined, {
+				apiClient: makeStubClient({ draftCalls }),
+				watcherFactory: factory,
+			});
+
+			const manifest = await readManifest(projectDir);
+			manifest.cloud!.projectSlug = 'other-project';
+			await writeManifest(projectDir, manifest);
+			getController().emit(['poli-page.json']);
+
+			await waitFor(() => draftCalls.length === 2, 're-render after the manifest edit');
+			expect(draftCalls[1].payload.project).toBe('demo');
 		});
 
 		it('refuses a manifest whose orgId is not its orgSlug organization (exit 6)', async () => {
