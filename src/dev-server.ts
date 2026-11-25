@@ -127,11 +127,12 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
 			return;
 		}
 		// With DNS rebinding a web page can read the responses of a
-		// loopback server. The Host header is the one thing the browser
-		// pins to the page's origin, so only the names a legitimate local
-		// browser sends are answered — everything else (rebinding against
-		// the draft preview, the SSE stream) gets a 403. Applies to every
-		// route, the SSE endpoint included.
+		// loopback server, and its requests look same-origin to the
+		// fetch-metadata check below. The Host header is the one thing the
+		// browser pins to the page's origin, so only the names a legitimate
+		// local browser sends are answered — everything else (rebinding
+		// against the draft preview, the SSE stream, the POST endpoints) gets
+		// a 403. Applies to every route and method, and must run first.
 		if (!isAllowedHost(req.headers.host)) {
 			res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
 			res.end(
