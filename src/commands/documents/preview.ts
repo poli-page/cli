@@ -6,6 +6,8 @@ import { readManifest } from '../../manifest.js';
 import { createApiClient, type ApiClient } from '../../api-client.js';
 import { errorToExitCode } from '../../exit-codes.js';
 import { shouldEmitJson } from '../../output.js';
+import { safeWriteFile } from '../../security/paths.js';
+import { assertDocumentId } from './document-id.js';
 
 const PREVIEW_CSP =
 	"default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; base-uri 'none'";
@@ -98,6 +100,7 @@ export async function executeDocumentsPreview(
 	options: DocumentsPreviewOptions = {}
 ): Promise<DocumentsPreviewResult> {
 	const cwd = options.cwd ?? process.cwd();
+	assertDocumentId(id);
 
 	let manifestOrgId: string | undefined;
 	try {
@@ -130,11 +133,16 @@ export async function executeDocumentsPreview(
 		return { html, pageCount };
 	}
 
-	const outputPath = options.output
-		? resolve(cwd, options.output)
-		: join(cwd, 'output', 'documents', `${id}.preview.html`);
-	await mkdir(dirname(outputPath), { recursive: true });
-	await writeFile(outputPath, injectPreviewCsp(html), 'utf-8');
+	const content = injectPreviewCsp(html);
+	let outputPath: string;
+	if (options.output) {
+		outputPath = resolve(cwd, options.output);
+		await mkdir(dirname(outputPath), { recursive: true });
+		await writeFile(outputPath, content, 'utf-8');
+	} else {
+		const rel = join('output', 'documents', `${id}.preview.html`);
+		outputPath = await safeWriteFile(cwd, rel, content);
+	}
 
 	if (!options.noOpen && options.openFn) {
 		await options.openFn(outputPath);

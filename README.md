@@ -158,7 +158,7 @@ Flags:
 - `--with-template <ref>` — pre-install a starter template, format `<collection>/<template>`. Skips the interactive prompt.
 - `--template-name <name>` — override the imported template's destination name
 - `--source <repo>` — source repo, format `github:<owner>/<repo>` (default: `github:poli-page/templates`); `<owner>` and `<repo>` are each one name of letters, digits, `.`, `_` and `-`, not `.` or `..`
-  A source's collection and template names, and the `template`, `mock`, `fonts[].src` and `images[]` paths of its template manifests, must be relative paths of letters, digits, `.`, `_` and `-` segments (no `..`, no leading `.` or `/`); the first one that is not refuses the whole import before anything is written. No imported file is written outside the project or the cache, including through a symlink that is there when the import starts; the paths are checked before the writes, so another process changing the project's folders during the import is not covered.
+  A source's collection and template names, and the `template`, `mock`, `fonts[].src` and `images[]` paths of its template manifests, must be relative paths of letters, digits, `.`, `_` and `-` segments (no `..`, no leading `.` or `/`); the first one that is not refuses the whole import before anything is written. No imported file is written outside the project or the cache, including through a symlink that is there when the import starts, and no file of the project (the template files, fonts, images, `tailwind.css`, the files of `--starter` and its `poli-page.json`) is written through a symlink, even one that stays inside the project: each is written to a temp file and renamed into place; the paths are checked before the writes, so another process changing the project's folders during the import is not covered.
 - `--no-cache` — bypass the 24-hour template cache
 
 ##### `--starter getting-started` — start from your org's getting-started project
@@ -433,7 +433,7 @@ Spec rules:
 Flags:
 
 - `--data <file>` — JSON data overrides the mock
-- `-o <file>` — output PDF path. Incompatible with `--no-download`
+- `-o <file>` — output PDF path. Incompatible with `--no-download`. Without it the PDF goes to `output/<name>/<format-orientation>/<name>.pdf` in the project, which is refused if it is a symlink or resolves outside the project through one; the PDF is written to a temp file and renamed into place. `-o` is written as given
 - `--no-download` — skip the presigned URL fetch (CI/CD pipelines). Environment renders only
 - `--json` — force JSON output even in a TTY
 
@@ -496,9 +496,11 @@ poli documents thumbnails doc_abc123 -o ./out
 
 Flags: `-w/--width`, `-f/--format png|jpeg`, `-q/--quality`, `--pages 1,3`, `-o/--output`, `--json`.
 
+The default folder is `./output/thumbnails/<id>/`, with `page-<n>.<ext>` files. The `<id>` must be letters, digits, `.`, `_` and `-`, starting with a letter or digit, without `..`; another one is refused before any request (exit `2`). A page number from the API that is not a positive integer refuses the whole set before anything is written. A default file that is a symlink, or resolves outside the current directory through one, refuses the whole set before any page is written; `-o` is written as given.
+
 #### `poli documents preview <id>`
 
-Fetch the stored canonical HTML re-wrapped as preview-mode (free, no quota cost). Default writes the file at `./output/documents/<id>.preview.html` and opens the browser. The written file carries a Content-Security-Policy meta that blocks scripts, network loads, form submissions and `<base>` (inline styles and `data:` images and fonts still render; a `<meta http-equiv="refresh">` in the HTML can still navigate away, which CSP cannot block; a second meta turns off DNS prefetching of hyperlinks, which CSP does not cover, but a `<link rel="dns-prefetch">` can still resolve its hostname); `--json` prints the HTML as received.
+Fetch the stored canonical HTML re-wrapped as preview-mode (free, no quota cost). Default writes the file at `./output/documents/<id>.preview.html` and opens the browser: the `<id>` is checked as for `thumbnails` before any request, and that file is refused if it is a symlink or resolves outside the current directory through one (`-o` is written as given). The written file carries a Content-Security-Policy meta that blocks scripts, network loads, form submissions and `<base>` (inline styles and `data:` images and fonts still render; a `<meta http-equiv="refresh">` in the HTML can still navigate away, which CSP cannot block; a second meta turns off DNS prefetching of hyperlinks, which CSP does not cover, but a `<link rel="dns-prefetch">` can still resolve its hostname); `--json` prints the HTML as received.
 
 ```bash
 poli documents preview doc_abc123
