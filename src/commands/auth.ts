@@ -9,6 +9,7 @@ import {
 import { readManifest } from '../manifest.js';
 import { resolveAuth } from '../auth.js';
 import { createApiClient, type ApiClient, type MeResponse } from '../api-client.js';
+import { apiOrigin } from '../api-origin.js';
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 
@@ -104,6 +105,7 @@ export async function executeDeviceLogin(
 				const apiUrl = options.apiUrl ?? process.env.POLI_API_URL;
 				const credentials: StoredCredentials = {
 					...(apiUrl ? { apiUrl } : {}),
+					origin: apiOrigin(),
 					session: result.sessionToken,
 					user: result.user,
 					orgs: {},

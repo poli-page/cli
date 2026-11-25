@@ -40,7 +40,7 @@ describe('api-client render', () => {
 	it('POSTs /v1/render with auth + body and returns the JSON descriptor', async () => {
 		const fetchMock = mockFetchOnce(200, fakeDescriptor);
 
-		const client = createApiClient('https://api.test');
+		const client = createApiClient('https://api.poli.page');
 		const result = await client.render('Bearer pp_live_abc', 'org_1', {
 			project: 'invoices',
 			template: 'invoice',
@@ -51,7 +51,7 @@ describe('api-client render', () => {
 		expect(result).toEqual(fakeDescriptor);
 
 		const [url, init] = fetchMock.mock.calls[0];
-		expect(url).toBe('https://api.test/v1/render');
+		expect(url).toBe('https://api.poli.page/v1/render');
 		expect((init as RequestInit).method).toBe('POST');
 
 		const headers = (init as RequestInit).headers as Record<string, string>;
@@ -70,7 +70,7 @@ describe('api-client render', () => {
 	it('omits X-Poli-Org-Id when orgIdHeader is undefined (api-key mode)', async () => {
 		const fetchMock = mockFetchOnce(200, fakeDescriptor);
 
-		const client = createApiClient('https://api.test');
+		const client = createApiClient('https://api.poli.page');
 		await client.render('Bearer pp_test_x', undefined, {
 			project: 'invoices',
 			template: 'invoice',

@@ -1,4 +1,4 @@
-import { readCredentials } from './credentials.js';
+import { readCredentials, sessionFor } from './credentials.js';
 
 export type AuthContext =
 	| { mode: 'session'; authorization: string; orgIdHeader: string }
@@ -23,12 +23,13 @@ export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<Aut
 	const credentials = await readCredentials(options.homeDir);
 
 	if (credentials?.session) {
+		const session = sessionFor(credentials);
 		if (!options.manifestOrgId) {
 			throw new Error("This folder isn't linked to a cloud project. Run `poli link` first.");
 		}
 		return {
 			mode: 'session',
-			authorization: `Bearer ${credentials.session}`,
+			authorization: `Bearer ${session}`,
 			orgIdHeader: options.manifestOrgId,
 		};
 	}
