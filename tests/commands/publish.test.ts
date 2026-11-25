@@ -155,7 +155,7 @@ describe('poli publish', () => {
 				})
 			);
 
-			expect(result).toEqual(publishResult());
+			expect(result).toEqual({ ...publishResult(), credential: 'session' });
 			expect(listed).toEqual([['Bearer session-token', 'org_1']]);
 			expect(calls).toHaveLength(1);
 			expect(calls[0].authorization).toBe('Bearer session-token');
@@ -402,23 +402,32 @@ describe('poli publish', () => {
 		it('--yes skips the confirmation', async () => {
 			const calls: PublishCall[] = [];
 			const confirmFn = vi.fn(async () => false);
-			vi.stubEnv('POLI_PAGE_API_KEY', testApiKey('live'));
 			await run({ env: 'live', yes: true, confirmFn }, makeClient(calls));
 			expect(confirmFn).not.toHaveBeenCalled();
 			expect(calls).toHaveLength(1);
 		});
 
-		it('CI=true counts as --yes', async () => {
+		it('CI=true is not consent: without --yes nothing is published (exit 2)', async () => {
 			vi.stubEnv('CI', 'true');
 			const calls: PublishCall[] = [];
-			await run({ env: 'live' }, makeClient(calls));
-			expect(calls).toHaveLength(1);
+			const err = await run({ env: 'live' }, makeClient(calls)).catch((e) => e);
+			expect(err.message).toContain('"live" is protected');
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
+			expect(calls).toHaveLength(0);
+		});
+
+		it('CI=true still asks when a prompt is available', async () => {
+			vi.stubEnv('CI', 'true');
+			const calls: PublishCall[] = [];
+			const confirmFn = vi.fn(async () => false);
+			await run({ env: 'live', confirmFn }, makeClient(calls)).catch(() => undefined);
+			expect(confirmFn).toHaveBeenCalledWith('live');
+			expect(calls).toHaveLength(0);
 		});
 
 		it('an unprotected environment never asks', async () => {
 			const calls: PublishCall[] = [];
 			const confirmFn = vi.fn(async () => false);
-			vi.stubEnv('POLI_PAGE_API_KEY', testApiKey('live'));
 			await run({ env: 'sandbox', confirmFn }, makeClient(calls));
 			expect(confirmFn).not.toHaveBeenCalled();
 			expect(calls).toHaveLength(1);
@@ -438,7 +447,7 @@ describe('poli publish', () => {
 		});
 	});
 
-	describe('with a service key in POLI_PAGE_API_KEY and no session', () => {
+	describe('with a service key in POLI_PAGE_API_KEY', () => {
 		let order: string[];
 
 		function keyClient(
@@ -474,7 +483,10 @@ describe('poli publish', () => {
 				keyClient(calls, keyMe())
 			);
 
-			expect(result).toEqual(publishResult({ environment: 'staging' }));
+			expect(result).toEqual({
+				...publishResult({ environment: 'staging' }),
+				credential: 'api-key',
+			});
 			expect(order).toEqual([`getMe Bearer ${SERVICE_KEY} undefined`, 'publish']);
 			expect(calls).toHaveLength(1);
 			expect(calls[0].authorization).toBe(`Bearer ${SERVICE_KEY}`);
@@ -558,7 +570,7 @@ describe('poli publish', () => {
 			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
 		});
 
-		it('a session wins over the key', async () => {
+		it('the key wins over a stored session', async () => {
 			await writeCredentials(
 				{
 					session: 'session-token',
@@ -568,11 +580,12 @@ describe('poli publish', () => {
 				fakeHome
 			);
 			const calls: PublishCall[] = [];
-			// makeClient stubs no getMe: the session path never asks who the key is.
-			await run({ env: 'sandbox' }, makeClient(calls));
-			expect(calls).toHaveLength(1);
-			expect(calls[0].authorization).toBe('Bearer session-token');
-			expect(calls[0].orgId).toBe('org_1');
+			// keyClient stubs no listEnvironments: the key path never lists the session's org.
+			const result = await run({ env: 'staging' }, keyClient(calls, keyMe()));
+			expect(result.credential).toBe('api-key');
+			expect(order).toEqual([`getMe Bearer ${SERVICE_KEY} undefined`, 'publish']);
+			expect(calls[0].authorization).toBe(`Bearer ${SERVICE_KEY}`);
+			expect(calls[0].orgId).toBeUndefined();
 		});
 
 		it('refuses an unlinked folder (exit 6) without calling the API', async () => {
@@ -703,6 +716,7 @@ describe('poli publish', () => {
 				'✓ Published invoices to sandbox',
 				'  Bundle:  0123456789ab (3 files)',
 				'  Log id:  log_1',
+				'  Auth:    session (poli login)',
 			]);
 			expect(publishCalls()).toHaveLength(1);
 		});
@@ -710,13 +724,13 @@ describe('poli publish', () => {
 		it('prints the result as JSON with --json', async () => {
 			setTTY(true, true);
 			await poli('--env', 'sandbox', '--json');
-			expect(JSON.parse(logs.join('\n'))).toEqual(RESULT);
+			expect(JSON.parse(logs.join('\n'))).toEqual({ ...RESULT, credential: 'session' });
 		});
 
 		it('prints the result as JSON when stdout is piped', async () => {
 			setTTY(true, false);
 			await poli('--env', 'sandbox', '--yes');
-			expect(JSON.parse(logs.join('\n'))).toEqual(RESULT);
+			expect(JSON.parse(logs.join('\n'))).toEqual({ ...RESULT, credential: 'session' });
 		});
 
 		it('--env draft exits 2 with the reason on stderr and calls no API', async () => {
@@ -770,6 +784,28 @@ describe('poli publish', () => {
 			const headers = (publishCalls()[0][1] as RequestInit).headers as Record<string, string>;
 			expect(headers.Authorization).toBe(`Bearer ${SERVICE_KEY}`);
 			expect('X-Poli-Org-Id' in headers).toBe(false);
+			expect(logs).toContain('  Auth:    POLI_PAGE_API_KEY');
+		});
+
+		it('with a session and a key, publishes with the key and says so', async () => {
+			setTTY(true, true);
+			vi.stubEnv('POLI_PAGE_API_KEY', SERVICE_KEY);
+			meAnswer = () => jsonResponse(200, keyMe());
+			await poli('--env', 'staging');
+			expect(errors).toEqual([]);
+			const headers = (publishCalls()[0][1] as RequestInit).headers as Record<string, string>;
+			expect(headers.Authorization).toBe(`Bearer ${SERVICE_KEY}`);
+			expect(logs).toContain('  Auth:    POLI_PAGE_API_KEY');
+		});
+
+		it('CI=true without --yes does not publish to a protected environment (exit 2)', async () => {
+			setTTY(false, false);
+			vi.stubEnv('CI', 'true');
+			await poli('--env', 'live');
+			expect(confirmMock).not.toHaveBeenCalled();
+			expect(process.exitCode).toBe(ExitCode.INVALID_USAGE);
+			expect(errors.join('\n')).toMatch(/--yes/);
+			expect(publishCalls()).toHaveLength(0);
 		});
 
 		it('a standard key: the reason on stderr, exit 5, no publish call', async () => {

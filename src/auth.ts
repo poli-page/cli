@@ -19,21 +19,9 @@ export interface ResolveAuthOptions {
 // for clients; the lookahead caps the environment name at 20 characters.
 const API_KEY = /^pp_(?=[a-z][a-z0-9-]{0,19}_)[a-z][a-z0-9]*(?:-[a-z0-9]+)*_[0-9a-f]{32}$/;
 
+// A set key is an explicit choice for this shell, so it beats the stored
+// session (e.g. a sandbox key exported to act with less than the full session).
 export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<AuthContext> {
-	const credentials = await readCredentials(options.homeDir);
-
-	if (credentials?.session) {
-		const session = sessionFor(credentials);
-		if (!options.manifestOrgId) {
-			throw new Error("This folder isn't linked to a cloud project. Run `poli link` first.");
-		}
-		return {
-			mode: 'session',
-			authorization: `Bearer ${session}`,
-			orgIdHeader: options.manifestOrgId,
-		};
-	}
-
 	const envKey = process.env.POLI_PAGE_API_KEY;
 	if (envKey) {
 		if (!API_KEY.test(envKey)) {
@@ -45,6 +33,19 @@ export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<Aut
 			mode: 'api-key',
 			authorization: `Bearer ${envKey}`,
 			environment: envKey.slice('pp_'.length, envKey.indexOf('_', 'pp_'.length)),
+		};
+	}
+
+	const credentials = await readCredentials(options.homeDir);
+	if (credentials?.session) {
+		const session = sessionFor(credentials);
+		if (!options.manifestOrgId) {
+			throw new Error("This folder isn't linked to a cloud project. Run `poli link` first.");
+		}
+		return {
+			mode: 'session',
+			authorization: `Bearer ${session}`,
+			orgIdHeader: options.manifestOrgId,
 		};
 	}
 

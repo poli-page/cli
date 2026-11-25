@@ -178,7 +178,7 @@ describe('auth commands', () => {
 
 			expect(infoMessages).toHaveLength(1);
 			expect(infoMessages[0]).toMatch(/POLI_PAGE_API_KEY/);
-			expect(infoMessages[0]).toMatch(/session.*will be preferred|will be ignored/i);
+			expect(infoMessages[0]).toMatch(/keep using it instead of your session/i);
 			// Device flow still runs and stores credentials.
 			expect(credentials.session).toBe('device-session-token');
 		});
@@ -343,6 +343,35 @@ describe('auth commands', () => {
 			expect(receivedOrgId).toBeUndefined();
 			expect(result.payload.key?.preview).toBe('pp_live_xxx…abcd');
 			expect(result.payload.auth.environment).toBe('live');
+			expect(result.mode === 'api-key' && result.sessionIgnored).toBe(false);
+		});
+
+		it('uses POLI_PAGE_API_KEY over a stored session in a linked project, and says so', async () => {
+			await setupSessionCreds();
+			await setupLinkedProject();
+			process.env.POLI_PAGE_API_KEY = testApiKey('live');
+
+			let receivedAuth = '';
+			let receivedOrgId: string | undefined;
+			const client = createMockApiClient({
+				getMe: async (auth, orgId) => {
+					receivedAuth = auth;
+					receivedOrgId = orgId;
+					return apiKeyMe();
+				},
+			});
+
+			const result = await executeWhoami({
+				cwd: projectDir,
+				homeDir: fakeHome,
+				apiClient: client,
+			});
+
+			expect(result.mode).toBe('api-key');
+			if (result.mode !== 'api-key') throw new Error('mode mismatch');
+			expect(result.sessionIgnored).toBe(true);
+			expect(receivedAuth).toBe(`Bearer ${testApiKey('live')}`);
+			expect(receivedOrgId).toBeUndefined();
 		});
 
 		it('throws "Not logged in" when neither credentials nor env var are set', async () => {
@@ -532,6 +561,28 @@ describe('auth commands', () => {
 			await whoami();
 			expect(logs).toEqual(['pp_live_xxx…abcd @ acme (api-key, environment=live)']);
 			expect(process.exitCode).toBeUndefined();
+		});
+
+		it('with a session and a key: prints the key and that the session is not used', async () => {
+			await writeCredentials(
+				{
+					session: 'session-token',
+					user: { id: 'user_1', name: 'Xavier', email: 'xavier@test.com' },
+					orgs: { acme: {} },
+				},
+				fakeHome
+			);
+			vi.stubEnv('POLI_PAGE_API_KEY', testApiKey('live'));
+			me = apiKeyMe();
+			await whoami();
+			expect(logs).toEqual([
+				'pp_live_xxx…abcd @ acme (api-key, environment=live)',
+				'  POLI_PAGE_API_KEY is set, so it is used instead of your `poli login` session.',
+			]);
+			const [, init] = vi.mocked(fetch).mock.calls[0];
+			expect((init?.headers as Record<string, string>).Authorization).toBe(
+				`Bearer ${testApiKey('live')}`
+			);
 		});
 
 		it('without a session or a key: exit 4 with "Not logged in" on stderr, and no API call', async () => {
