@@ -79,23 +79,22 @@ export async function executeDocumentsThumbnails(
 	);
 
 	// The page number from the API becomes a file name.
+	const names: string[] = [];
 	for (const thumb of thumbnails) {
 		if (!Number.isInteger(thumb.page) || thumb.page <= 0) {
 			throw new Error(`Refusing thumbnail with invalid page ${JSON.stringify(thumb.page)}.`);
 		}
-		if (!options.output) {
-			const name = `page-${thumb.page}.${extensionForContentType(thumb.contentType)}`;
-			await resolveWritable(cwd, join('output', 'thumbnails', id, name));
-		}
+		const name = `page-${thumb.page}.${extensionForContentType(thumb.contentType)}`;
+		if (!options.output) await resolveWritable(cwd, join('output', 'thumbnails', id, name));
+		names.push(name);
 	}
 
 	const outputDir = options.output ? resolve(cwd, options.output) : undefined;
 	if (outputDir) await mkdir(outputDir, { recursive: true });
 
 	const results: DocumentsThumbnailFile[] = [];
-	for (const thumb of thumbnails) {
-		const ext = extensionForContentType(thumb.contentType);
-		const name = `page-${thumb.page}.${ext}`;
+	for (const [i, thumb] of thumbnails.entries()) {
+		const name = names[i];
 		const data = Buffer.from(thumb.data, 'base64');
 		let filePath: string;
 		if (outputDir) {
