@@ -33,6 +33,8 @@ export function assertSafeRelativePath(p: unknown, what = 'path'): asserts p is 
  * Resolve `rel` under `root` and return the absolute path, or throw when it
  * lands outside `root` — lexically, or through a symlinked ancestor (or the
  * target itself being a symlink). Neither `root` nor the target need exist.
+ * The check is on the filesystem as it is now: a write made later follows
+ * whatever symlink another process puts on the way in between.
  */
 export async function resolveInside(root: string, rel: string): Promise<string> {
 	const absRoot = resolve(root);

@@ -305,46 +305,52 @@ export async function importTemplate(
 	const taBuf = await fetchRaw(source, `${tplBase}/tailwind-additions.css`, fetchOpts);
 	const tailwindAdditions = taBuf.toString('utf-8');
 
-	// 4. Copy fonts (with conflict handling)
-	const copiedFonts: string[] = [];
-	const projectedFonts: TemplateManifestFontEntry[] = [];
+	// 4. Fetch the fonts and images, then settle every conflict (prompt,
+	// numbered duplicate) before the first write into the project.
+	const planned = new Map<string, AssetPlan>();
+	const fontPlans: AssetPlan[] = [];
 	for (const [i, font] of (tplManifest.fonts ?? []).entries()) {
-		const sourceFontPath = `${ref.collection}/assets/${font.src}`;
-		const fontBuf = await fetchRaw(source, sourceFontPath, fetchOpts);
-		const destFontPath = destFontPaths[i];
-		const result = await writeAssetWithConflict(
-			'font',
-			basename(font.src),
-			destFontPath,
-			fontBuf,
-			options.onConflict
+		const fontBuf = await fetchRaw(source, `${ref.collection}/assets/${font.src}`, fetchOpts);
+		fontPlans.push(
+			await planAsset(
+				planned,
+				'font',
+				basename(font.src),
+				destFontPaths[i],
+				fontBuf,
+				options.onConflict
+			)
 		);
-		const projected = { ...font };
-		if (result.path !== destFontPath) {
-			const newName = basename(result.path);
-			projected.src = font.src.replace(basename(font.src), newName);
-		}
-		projectedFonts.push(projected);
-		if (result.copied) copiedFonts.push(basename(result.path));
 	}
-
-	// 5. Copy images
-	const copiedImages: string[] = [];
+	const imgPlans: AssetPlan[] = [];
 	for (const [i, imgFile] of (tplManifest.images ?? []).entries()) {
 		const imgBuf = await fetchRaw(
 			source,
 			`${ref.collection}/assets/images/${imgFile}`,
 			fetchOpts
 		);
-		const destImgPath = destImgPaths[i];
-		const result = await writeAssetWithConflict(
-			'image',
-			imgFile,
-			destImgPath,
-			imgBuf,
-			options.onConflict
+		imgPlans.push(
+			await planAsset(planned, 'image', imgFile, destImgPaths[i], imgBuf, options.onConflict)
 		);
-		if (result.copied) copiedImages.push(basename(result.path));
+	}
+
+	// 5. Copy fonts and images
+	const copiedFonts: string[] = [];
+	const projectedFonts: TemplateManifestFontEntry[] = [];
+	for (const [i, font] of (tplManifest.fonts ?? []).entries()) {
+		const plan = fontPlans[i];
+		await writeAsset(plan);
+		const projected = { ...font };
+		if (plan.path !== destFontPaths[i]) {
+			projected.src = font.src.replace(basename(font.src), basename(plan.path));
+		}
+		projectedFonts.push(projected);
+		if (plan.content) copiedFonts.push(basename(plan.path));
+	}
+	const copiedImages: string[] = [];
+	for (const plan of imgPlans) {
+		await writeAsset(plan);
+		if (plan.content) copiedImages.push(basename(plan.path));
 	}
 
 	// 6. Copy template body files, renamed to match destName so the
@@ -470,13 +476,36 @@ export async function fetchStarter(
 	return files;
 }
 
-async function writeAssetWithConflict(
+// Where an asset goes, and the bytes to write there (null: nothing to write).
+interface AssetPlan {
+	path: string;
+	content: Buffer | null;
+}
+
+// `planned` holds the plans made so far in this import, by destination: a
+// second entry for the same file (two weights of one font file) is written once.
+async function planAsset(
+	planned: Map<string, AssetPlan>,
 	type: 'font' | 'image',
 	filename: string,
 	destPath: string,
 	sourceContent: Buffer,
 	onConflict?: ConflictHandler
-): Promise<{ path: string; copied: boolean }> {
+): Promise<AssetPlan> {
+	const earlier = planned.get(destPath);
+	if (earlier) return { path: earlier.path, content: null };
+	const plan = await decideAsset(type, filename, destPath, sourceContent, onConflict);
+	planned.set(destPath, plan);
+	return plan;
+}
+
+async function decideAsset(
+	type: 'font' | 'image',
+	filename: string,
+	destPath: string,
+	sourceContent: Buffer,
+	onConflict?: ConflictHandler
+): Promise<AssetPlan> {
 	let destContent: Buffer | undefined;
 	try {
 		destContent = await readFile(destPath);
@@ -485,13 +514,11 @@ async function writeAssetWithConflict(
 	}
 
 	if (!destContent) {
-		await mkdir(dirname(destPath), { recursive: true });
-		await writeFile(destPath, sourceContent);
-		return { path: destPath, copied: true };
+		return { path: destPath, content: sourceContent };
 	}
 
 	if (sha256(destContent) === sha256(sourceContent)) {
-		return { path: destPath, copied: false };
+		return { path: destPath, content: null };
 	}
 
 	const handler = onConflict ?? defaultSkipHandler;
@@ -504,11 +531,10 @@ async function writeAssetWithConflict(
 	});
 
 	if (resolution === 'overwrite') {
-		await writeFile(destPath, sourceContent);
-		return { path: destPath, copied: true };
+		return { path: destPath, content: sourceContent };
 	}
 	if (resolution === 'skip') {
-		return { path: destPath, copied: false };
+		return { path: destPath, content: null };
 	}
 	// duplicate
 	const ext = extname(destPath);
@@ -519,8 +545,16 @@ async function writeAssetWithConflict(
 		counter++;
 		candidate = `${stem}-${counter}${ext}`;
 	}
-	await writeFile(await resolveInside(dirname(destPath), basename(candidate)), sourceContent);
-	return { path: candidate, copied: true };
+	return {
+		path: await resolveInside(dirname(destPath), basename(candidate)),
+		content: sourceContent,
+	};
+}
+
+async function writeAsset(plan: AssetPlan): Promise<void> {
+	if (!plan.content) return;
+	await mkdir(dirname(plan.path), { recursive: true });
+	await writeFile(plan.path, plan.content);
 }
 
 const defaultSkipHandler: ConflictHandler = async (info) => {

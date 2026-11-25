@@ -668,6 +668,9 @@ describe('importTemplate — paths from the source', () => {
 			})
 		).rejects.toThrow(/outside/);
 		expect(await listFiles(outsideDir)).toEqual([]);
+		// Refused before the first project write: the fonts come first.
+		expect(await listFiles(join(projectDir, 'assets', 'fonts'))).toEqual([]);
+		await expect(stat(join(projectDir, 'templates', 'invoice'))).rejects.toThrow();
 	});
 
 	it('encodes each segment of the fetch URL', async () => {

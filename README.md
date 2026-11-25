@@ -160,7 +160,7 @@ Flags:
 - `--with-template <ref>` — pre-install a starter template, format `<collection>/<template>`. Skips the interactive prompt.
 - `--template-name <name>` — override the imported template's destination name
 - `--source <repo>` — source repo, format `github:<owner>/<repo>` (default: `github:poli-page/templates`); `<owner>` and `<repo>` are each one name of letters, digits, `.`, `_` and `-`, not `.` or `..`
-  A source's collection and template names, and the `template`, `mock`, `fonts[].src` and `images[]` paths of its template manifests, must be relative paths of letters, digits, `.`, `_` and `-` segments (no `..`, no leading `.` or `/`); the first one that is not refuses the whole import before anything is written. No imported file is written outside the project or the cache, including through a symlink.
+  A source's collection and template names, and the `template`, `mock`, `fonts[].src` and `images[]` paths of its template manifests, must be relative paths of letters, digits, `.`, `_` and `-` segments (no `..`, no leading `.` or `/`); the first one that is not refuses the whole import before anything is written. No imported file is written outside the project or the cache, including through a symlink that is there when the import starts; the paths are checked before the writes, so another process changing the project's folders during the import is not covered.
 - `--no-cache` — bypass the 24-hour template cache
 
 ##### `--starter getting-started` — start from your org's getting-started project
