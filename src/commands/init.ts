@@ -19,6 +19,7 @@ import {
 import { promptForStarterTemplate, type TemplatePromptResult } from '../template-prompt.js';
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
+import { resolveInside } from '../security/paths.js';
 
 function toKebabCase(name: string): string {
 	return name
@@ -220,12 +221,16 @@ export async function executeInitStarter(
 	const { link, cloud } = await linkStarter(starter, options);
 	if (cloud) manifest.cloud = cloud;
 
-	await mkdir(projectDir, { recursive: true });
+	// Paths come from the source's git tree: confine them all before writing.
+	const writes: Array<{ dest: string; content: Buffer }> = [];
 	for (const file of files) {
 		if (file.path === MANIFEST_FILENAME) continue;
-		const dest = join(projectDir, ...file.path.split('/'));
+		writes.push({ dest: await resolveInside(projectDir, file.path), content: file.content });
+	}
+	await mkdir(projectDir, { recursive: true });
+	for (const { dest, content } of writes) {
 		await mkdir(dirname(dest), { recursive: true });
-		await writeFile(dest, file.content);
+		await writeFile(dest, content);
 	}
 	await writeManifest(projectDir, manifest);
 

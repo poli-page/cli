@@ -35,20 +35,21 @@ const SOURCE_FILES: Record<string, string> = {
 
 const TREE_URL = 'https://api.github.com/repos/poli-page/templates/git/trees/main?recursive=1';
 
-function makeFetcher(requested: string[]): Fetcher {
+function makeFetcher(requested: string[], extraFiles: Record<string, string> = {}): Fetcher {
+	const files = { ...SOURCE_FILES, ...extraFiles };
 	return async (url: string) => {
 		requested.push(url);
 		if (url === TREE_URL) {
 			const tree = [
 				{ path: 'getting-started', type: 'tree' },
-				...Object.keys(SOURCE_FILES).map((path) => ({ path, type: 'blob' })),
+				...Object.keys(files).map((path) => ({ path, type: 'blob' })),
 			];
 			return new Response(JSON.stringify({ tree, truncated: false }), { status: 200 });
 		}
 		const m = url.match(
 			/^https:\/\/raw\.githubusercontent\.com\/poli-page\/templates\/main\/(.+)$/
 		);
-		const content = m ? SOURCE_FILES[m[1]] : undefined;
+		const content = m ? files[m[1]] : undefined;
 		if (content === undefined) return new Response('not found', { status: 404 });
 		return new Response(content, { status: 200 });
 	};
@@ -341,6 +342,20 @@ describe('poli init --starter', () => {
 			})
 		).rejects.toThrow(/Unknown starter "nope"/);
 		await expect(stat(join(tempDir, 'nope'))).rejects.toThrow();
+	});
+
+	it('refuses a file of the source tree that resolves outside the project, writing nothing', async () => {
+		const target = join(tempDir, 'out');
+		await expect(
+			executeInitStarter('getting-started', target, {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher([], { 'getting-started/assets/../../escaped.txt': 'PWNED' }),
+				apiClient: makeClient([]),
+			})
+		).rejects.toThrow(/outside/);
+		await expect(stat(join(tempDir, 'escaped.txt'))).rejects.toThrow();
+		await expect(stat(target)).rejects.toThrow();
 	});
 
 	it.each(['../getting-started', 'getting-started/templates', '.', ''])(

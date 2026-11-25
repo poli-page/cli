@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { readManifest, writeManifest } from './manifest.js';
 import { MANIFEST_FILENAME } from './constants.js';
+import { assertSafeRelativePath, isSafeSegment, resolveInside } from './security/paths.js';
 
 export interface TemplateSource {
 	owner: string;
@@ -119,38 +120,83 @@ export async function fetchTemplateIndex(
 	source: TemplateSource = DEFAULT_SOURCE,
 	options: FetchOptions = {}
 ): Promise<TemplateIndex> {
-	const buf = await fetchRaw(source, 'index.json', options);
-	return JSON.parse(buf.toString('utf-8')) as TemplateIndex;
+	return fetchJson(source, 'index.json', options, parseTemplateIndex);
 }
 
+// Collection keys and template names become path segments of the fetch URLs,
+// the cache and the project: refuse the whole index on the first bad one.
+function parseTemplateIndex(data: unknown): TemplateIndex {
+	const index = data as TemplateIndex;
+	for (const [key, coll] of Object.entries(index.collections ?? {})) {
+		if (!isSafeSegment(key)) {
+			throw new Error(`Unsafe collection name ${JSON.stringify(key)} in the source index.json.`);
+		}
+		for (const t of coll.templates ?? []) {
+			if (!isSafeSegment(t.name)) {
+				throw new Error(
+					`Unsafe template name ${JSON.stringify(t.name)} in collection "${key}" of the source index.json.`
+				);
+			}
+		}
+	}
+	return index;
+}
+
+function parseTemplateManifest(data: unknown): TemplateManifest {
+	const manifest = data as TemplateManifest;
+	assertSafeRelativePath(manifest.template?.template, 'template.template');
+	assertSafeRelativePath(manifest.template?.mock, 'template.mock');
+	for (const font of manifest.fonts ?? []) assertSafeRelativePath(font.src, 'fonts[].src');
+	for (const img of manifest.images ?? []) assertSafeRelativePath(img, 'images[]');
+	return manifest;
+}
+
+async function fetchJson<T>(
+	source: TemplateSource,
+	relativePath: string,
+	options: FetchOptions,
+	parse: (data: unknown) => T
+): Promise<T> {
+	let parsed: T | undefined;
+	await fetchRaw(source, relativePath, options, (buf) => {
+		parsed = parse(JSON.parse(buf.toString('utf-8')));
+	});
+	return parsed as T;
+}
+
+/**
+ * `accept` runs on the content, cached or fetched, and throws to refuse it;
+ * refused content is never written to the cache.
+ */
 async function fetchRaw(
 	source: TemplateSource,
 	relativePath: string,
-	options: FetchOptions
+	options: FetchOptions,
+	accept?: (buf: Buffer) => void
 ): Promise<Buffer> {
 	const fetcher = options.fetcher ?? ((url: string) => fetch(url));
-	const cacheRoot = join(
-		options.homeDir ?? homedir(),
-		'.polipage',
-		'cache',
-		source.owner,
-		source.repo,
-		'main'
+	const cachePath = await resolveInside(
+		join(options.homeDir ?? homedir(), '.polipage', 'cache'),
+		join(source.owner, source.repo, 'main', relativePath)
 	);
-	const cachePath = join(cacheRoot, relativePath);
 
 	if (!options.noCache) {
+		let cached: Buffer | undefined;
 		try {
 			const s = await stat(cachePath);
 			if (Date.now() - s.mtimeMs < CACHE_TTL_MS) {
-				return readFile(cachePath);
+				cached = await readFile(cachePath);
 			}
 		} catch {
 			// cache miss
 		}
+		if (cached) {
+			accept?.(cached);
+			return cached;
+		}
 	}
 
-	const url = `${RAW_GITHUB}/${source.owner}/${source.repo}/main/${relativePath}`;
+	const url = `${RAW_GITHUB}/${encodePath(`${source.owner}/${source.repo}/main/${relativePath}`)}`;
 	const response = await fetcher(url);
 	if (!response.ok) {
 		throw new Error(
@@ -159,6 +205,7 @@ async function fetchRaw(
 	}
 
 	const buffer = Buffer.from(await response.arrayBuffer());
+	accept?.(buffer);
 
 	try {
 		await mkdir(dirname(cachePath), { recursive: true });
@@ -168,6 +215,10 @@ async function fetchRaw(
 	}
 
 	return buffer;
+}
+
+function encodePath(p: string): string {
+	return p.split('/').map(encodeURIComponent).join('/');
 }
 
 export async function importTemplate(
@@ -183,9 +234,10 @@ export async function importTemplate(
 	};
 
 	// 1. Fetch + validate index
-	const indexBuf = await fetchRaw(source, 'index.json', fetchOpts);
-	const index = JSON.parse(indexBuf.toString('utf-8')) as TemplateIndex;
-	const coll = index.collections?.[ref.collection];
+	const index = await fetchJson(source, 'index.json', fetchOpts, parseTemplateIndex);
+	const coll = Object.hasOwn(index.collections ?? {}, ref.collection)
+		? index.collections[ref.collection]
+		: undefined;
 	if (!coll) {
 		throw new Error(
 			`Unknown collection "${ref.collection}" in source ${source.owner}/${source.repo}.`
@@ -198,7 +250,7 @@ export async function importTemplate(
 	}
 
 	// 2. Check destination doesn't already exist in the project
-	const destDir = join(options.projectDir, 'templates', destName);
+	const destDir = await resolveInside(options.projectDir, join('templates', destName));
 	if (existsSync(destDir)) {
 		throw new Error(
 			`Template "${destName}" already exists in this project. Pick a different --template-name or remove the existing folder.`
@@ -207,8 +259,23 @@ export async function importTemplate(
 
 	// 3. Fetch the per-template manifest + body files + tailwind block
 	const tplBase = `${ref.collection}/templates/${ref.name}`;
-	const manifestBuf = await fetchRaw(source, `${tplBase}/manifest.json`, fetchOpts);
-	const tplManifest = JSON.parse(manifestBuf.toString('utf-8')) as TemplateManifest;
+	const tplManifest = await fetchJson(
+		source,
+		`${tplBase}/manifest.json`,
+		fetchOpts,
+		parseTemplateManifest
+	);
+	// Resolve every asset destination before the first write, so a symlink
+	// out of the project refuses the import with nothing written.
+	const assetsDir = join(options.projectDir, 'assets');
+	const destFontPaths: string[] = [];
+	for (const font of tplManifest.fonts ?? []) {
+		destFontPaths.push(await resolveInside(assetsDir, font.src));
+	}
+	const destImgPaths: string[] = [];
+	for (const imgFile of tplManifest.images ?? []) {
+		destImgPaths.push(await resolveInside(assetsDir, join('images', imgFile)));
+	}
 
 	const htmlBuf = await fetchRaw(
 		source,
@@ -222,10 +289,10 @@ export async function importTemplate(
 	// 4. Copy fonts (with conflict handling)
 	const copiedFonts: string[] = [];
 	const projectedFonts: TemplateManifestFontEntry[] = [];
-	for (const font of tplManifest.fonts ?? []) {
+	for (const [i, font] of (tplManifest.fonts ?? []).entries()) {
 		const sourceFontPath = `${ref.collection}/assets/${font.src}`;
 		const fontBuf = await fetchRaw(source, sourceFontPath, fetchOpts);
-		const destFontPath = join(options.projectDir, 'assets', font.src);
+		const destFontPath = destFontPaths[i];
 		const result = await writeAssetWithConflict(
 			'font',
 			basename(font.src),
@@ -244,13 +311,13 @@ export async function importTemplate(
 
 	// 5. Copy images
 	const copiedImages: string[] = [];
-	for (const imgFile of tplManifest.images ?? []) {
+	for (const [i, imgFile] of (tplManifest.images ?? []).entries()) {
 		const imgBuf = await fetchRaw(
 			source,
 			`${ref.collection}/assets/images/${imgFile}`,
 			fetchOpts
 		);
-		const destImgPath = join(options.projectDir, 'assets', 'images', imgFile);
+		const destImgPath = destImgPaths[i];
 		const result = await writeAssetWithConflict(
 			'image',
 			imgFile,
@@ -328,9 +395,6 @@ interface GitTreeResponse {
 // imports. A project never carries them (the API seeds without them too).
 const STARTER_IMPORT_ONLY_RE = /^templates\/[^/]+\/(?:manifest\.json|tailwind-additions\.css)$/;
 
-// A starter is one top-level folder of the source: no `/`, no `.` or `..`.
-const STARTER_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-
 /**
  * Fetch every file of a starter project — a top-level folder of the
  * source repo holding a `poli-page.json` (e.g. `getting-started/`).
@@ -345,13 +409,14 @@ export async function fetchStarter(
 	source: TemplateSource = DEFAULT_SOURCE,
 	options: FetchOptions = {}
 ): Promise<StarterFile[]> {
-	if (!STARTER_NAME_RE.test(starter)) {
+	// A starter is one top-level folder of the source.
+	if (!isSafeSegment(starter)) {
 		throw new Error(
 			`Invalid starter name "${starter}": a starter is a top-level folder of the source (e.g. getting-started).`
 		);
 	}
 	const fetcher = options.fetcher ?? ((url: string) => fetch(url));
-	const treeUrl = `${GITHUB_API}/repos/${source.owner}/${source.repo}/git/trees/main?recursive=1`;
+	const treeUrl = `${GITHUB_API}/repos/${encodePath(`${source.owner}/${source.repo}`)}/git/trees/main?recursive=1`;
 	const response = await fetcher(treeUrl);
 	if (!response.ok) {
 		throw new Error(`Failed to list ${source.owner}/${source.repo} (HTTP ${response.status}).`);
@@ -427,7 +492,7 @@ async function writeAssetWithConflict(
 		counter++;
 		candidate = `${stem}-${counter}${ext}`;
 	}
-	await writeFile(candidate, sourceContent);
+	await writeFile(await resolveInside(dirname(destPath), basename(candidate)), sourceContent);
 	return { path: candidate, copied: true };
 }
 

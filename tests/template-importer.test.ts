@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, readFile, writeFile, mkdir, stat } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, readdir, writeFile, mkdir, stat, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
 	parseSource,
 	parseTemplateRef,
 	DEFAULT_SOURCE,
+	fetchStarter,
+	fetchTemplateIndex,
 	importTemplate,
 	type Fetcher,
 	type ConflictHandler,
@@ -402,5 +404,251 @@ describe('importTemplate — asset conflicts', () => {
 
 		const img = await readFile(join(projectDir, 'assets', 'images', 'logo.png'));
 		expect(img.toString()).toBe('OLD_LOGO_BYTES');
+	});
+});
+
+describe('importTemplate — paths from the source', () => {
+	let projectDir: string;
+	let fakeHome: string;
+	let outsideDir: string;
+
+	beforeEach(async () => {
+		({ projectDir, fakeHome } = await setupBlankProject());
+		outsideDir = await mkdtemp(join(tmpdir(), 'poli-importer-outside-'));
+	});
+
+	afterEach(async () => {
+		await rm(projectDir, { recursive: true, force: true });
+		await rm(fakeHome, { recursive: true, force: true });
+		await rm(outsideDir, { recursive: true, force: true });
+	});
+
+	async function listFiles(dir: string): Promise<string[]> {
+		const entries = await readdir(dir, { recursive: true, withFileTypes: true });
+		return entries
+			.filter((e) => !e.isDirectory())
+			.map((e) => join(e.parentPath, e.name).slice(dir.length + 1))
+			.sort();
+	}
+
+	function sourceWithManifest(manifest: unknown): Record<string, string | Buffer> {
+		return {
+			...fullSource(),
+			'showcase/templates/invoice/manifest.json': JSON.stringify(manifest),
+		};
+	}
+
+	function recording(files: Record<string, string | Buffer>, urls: string[]): Fetcher {
+		const inner = makeFetcher(files);
+		return async (url) => {
+			urls.push(url);
+			return inner(url);
+		};
+	}
+
+	async function expectRefusedWithNothingWritten(
+		files: Record<string, string | Buffer>,
+		error: RegExp,
+		cached: string[]
+	): Promise<string[]> {
+		const projectBefore = await listFiles(projectDir);
+		const urls: string[] = [];
+		await expect(
+			importTemplate({
+				templateRef: { collection: 'showcase', name: 'invoice' },
+				projectDir,
+				homeDir: fakeHome,
+				fetcher: recording(files, urls),
+			})
+		).rejects.toThrow(error);
+		expect(await listFiles(projectDir)).toEqual(projectBefore);
+		expect(await listFiles(fakeHome)).toEqual(
+			cached.map((p) => join('.polipage', 'cache', 'poli-page', 'templates', 'main', p))
+		);
+		expect(await listFiles(outsideDir)).toEqual([]);
+		return urls;
+	}
+
+	it.each([
+		[
+			'template.template',
+			{ ...INVOICE_MANIFEST, template: { ...INVOICE_MANIFEST.template, template: 'x?/../../.bashrc' } },
+		],
+		[
+			'template.mock',
+			{ ...INVOICE_MANIFEST, template: { ...INVOICE_MANIFEST.template, mock: '../../../mock.json' } },
+		],
+		[
+			'fonts\\[\\]\\.src',
+			{
+				...INVOICE_MANIFEST,
+				fonts: [{ family: 'X', src: '../../.ssh/authorized_keys', weight: 400 }],
+			},
+		],
+		['images\\[\\]', { ...INVOICE_MANIFEST, images: ['logo.png', '../x'] }],
+		['template.mock', { ...INVOICE_MANIFEST, template: { name: 'invoice', template: 'invoice.html' } }],
+	])('refuses an unsafe %s with no file written anywhere', async (field, manifest) => {
+		const urls = await expectRefusedWithNothingWritten(
+			sourceWithManifest(manifest),
+			new RegExp(`Unsafe ${field}`),
+			['index.json']
+		);
+		// Nothing past the manifest is fetched.
+		expect(urls.map((u) => u.split('/main/')[1])).toEqual([
+			'index.json',
+			'showcase/templates/invoice/manifest.json',
+		]);
+	});
+
+	it('refuses a poisoned manifest already in the cache', async () => {
+		const cacheDir = join(fakeHome, '.polipage', 'cache', 'poli-page', 'templates', 'main');
+		const cachedManifest = join(cacheDir, 'showcase', 'templates', 'invoice', 'manifest.json');
+		await mkdir(join(cachedManifest, '..'), { recursive: true });
+		await writeFile(
+			cachedManifest,
+			JSON.stringify({ ...INVOICE_MANIFEST, images: ['../../../../evil'] })
+		);
+		await expect(
+			importTemplate({
+				templateRef: { collection: 'showcase', name: 'invoice' },
+				projectDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher(fullSource()),
+			})
+		).rejects.toThrow(/Unsafe images\[\]/);
+	});
+
+	it.each([
+		['collection', { collections: { '..': MINIMAL_INDEX.collections.showcase, ...MINIMAL_INDEX.collections } }],
+		[
+			'template',
+			{
+				collections: {
+					showcase: {
+						...MINIMAL_INDEX.collections.showcase,
+						templates: [
+							...MINIMAL_INDEX.collections.showcase.templates,
+							{ name: '../../../../.bashrc', description: '' },
+						],
+					},
+				},
+			},
+		],
+	])('refuses an index.json with an unsafe %s name, with no file written', async (kind, index) => {
+		const files = { ...fullSource(), 'index.json': JSON.stringify(index) };
+		const urls = await expectRefusedWithNothingWritten(
+			files,
+			new RegExp(`Unsafe ${kind} name`),
+			[]
+		);
+		expect(urls).toHaveLength(1);
+		await expect(
+			fetchTemplateIndex(DEFAULT_SOURCE, { homeDir: fakeHome, fetcher: makeFetcher(files) })
+		).rejects.toThrow(new RegExp(`Unsafe ${kind} name`));
+	});
+
+	it('does not take a collection from the prototype chain', async () => {
+		await expect(
+			importTemplate({
+				templateRef: { collection: 'constructor', name: 'invoice' },
+				projectDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher(fullSource()),
+			})
+		).rejects.toThrow(/Unknown collection "constructor"/);
+	});
+
+	it('refuses an assets folder symlinked out of the project before writing any asset', async () => {
+		await rm(join(projectDir, 'assets', 'images'), { recursive: true });
+		await symlink(outsideDir, join(projectDir, 'assets', 'images'));
+		await expect(
+			importTemplate({
+				templateRef: { collection: 'showcase', name: 'invoice' },
+				projectDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher(fullSource()),
+			})
+		).rejects.toThrow(/outside/);
+		expect(await listFiles(outsideDir)).toEqual([]);
+		// The fonts come first in the import; they are refused with it.
+		expect(await listFiles(join(projectDir, 'assets', 'fonts'))).toEqual([]);
+		await expect(stat(join(projectDir, 'templates', 'invoice'))).rejects.toThrow();
+	});
+
+	it('refuses a templates folder symlinked out of the project', async () => {
+		await rm(join(projectDir, 'templates'), { recursive: true });
+		await symlink(outsideDir, join(projectDir, 'templates'));
+		await expect(
+			importTemplate({
+				templateRef: { collection: 'showcase', name: 'invoice' },
+				projectDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher(fullSource()),
+			})
+		).rejects.toThrow(/outside/);
+		expect(await listFiles(outsideDir)).toEqual([]);
+	});
+
+	it('refuses an asset that is a symlink out of the project', async () => {
+		await symlink(join(outsideDir, 'logo.png'), join(projectDir, 'assets', 'images', 'logo.png'));
+		await expect(
+			importTemplate({
+				templateRef: { collection: 'showcase', name: 'invoice' },
+				projectDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher(fullSource()),
+			})
+		).rejects.toThrow(/outside/);
+		expect(await listFiles(outsideDir)).toEqual([]);
+	});
+
+	it('refuses a numbered duplicate that is a dangling symlink out of the project', async () => {
+		await writeFile(join(projectDir, 'assets', 'images', 'logo.png'), 'OLD');
+		await symlink(join(outsideDir, 'pwned'), join(projectDir, 'assets', 'images', 'logo-2.png'));
+		await expect(
+			importTemplate({
+				templateRef: { collection: 'showcase', name: 'invoice' },
+				projectDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher(fullSource()),
+				onConflict: async () => 'duplicate',
+			})
+		).rejects.toThrow(/outside/);
+		expect(await listFiles(outsideDir)).toEqual([]);
+	});
+
+	it('encodes each segment of the fetch URL', async () => {
+		const urls: string[] = [];
+		await fetchTemplateIndex(
+			{ owner: 'poli-page', repo: 'templates?x=#' },
+			{ homeDir: fakeHome, fetcher: recording(fullSource(), urls) }
+		);
+		expect(urls).toEqual([
+			'https://raw.githubusercontent.com/poli-page/templates%3Fx%3D%23/main/index.json',
+		]);
+	});
+
+	it('encodes the source in the git tree URL of a starter', async () => {
+		const urls: string[] = [];
+		await expect(
+			fetchStarter('getting-started', { owner: 'poli-page', repo: 'templates?x=#' }, {
+				homeDir: fakeHome,
+				fetcher: recording({}, urls),
+			})
+		).rejects.toThrow(/HTTP 404/);
+		expect(urls).toEqual([
+			'https://api.github.com/repos/poli-page/templates%3Fx%3D%23/git/trees/main?recursive=1',
+		]);
+	});
+
+	it('refuses a source whose cache path leaves the cache', async () => {
+		const urls: string[] = [];
+		await expect(
+			fetchTemplateIndex(
+				{ owner: '..', repo: '..' },
+				{ homeDir: fakeHome, fetcher: recording(fullSource(), urls) }
+			)
+		).rejects.toThrow(/outside/);
+		expect(urls).toEqual([]);
 	});
 });
