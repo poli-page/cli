@@ -101,7 +101,7 @@ describe('CI integration with POLI_PAGE_API_KEY', () => {
 		expect(ctx.mode).toBe('api-key');
 	});
 
-	it('credentials file precedence: session wins over env var', async () => {
+	it('credentials file precedence: the env var wins over a session', async () => {
 		process.env.POLI_PAGE_API_KEY = testApiKey('live');
 		const { writeCredentials } = await import('../src/credentials.js');
 		await writeCredentials(
@@ -117,7 +117,7 @@ describe('CI integration with POLI_PAGE_API_KEY', () => {
 			manifestOrgId: 'org_1',
 			homeDir: fakeHome,
 		});
-		expect(ctx.mode).toBe('session');
-		expect(ctx.authorization).toBe('Bearer session-from-login');
+		expect(ctx.mode).toBe('api-key');
+		expect(ctx.authorization).toBe(`Bearer ${testApiKey('live')}`);
 	});
 });

@@ -101,7 +101,7 @@ poli whoami   # show the current session and active org
 poli logout   # clear ~/.polipage/credentials.json
 ```
 
-After `poli login`, the session token is stored at `~/.polipage/credentials.json` and used automatically by every subsequent command.
+After `poli login`, the session token is stored at `~/.polipage/credentials.json` and used by every command that needs it (while `POLI_PAGE_API_KEY` is set, the commands that accept a key use the key instead: see [Precedence](#precedence)).
 
 ### Programmatic (CI / CD / scripts)
 
@@ -113,7 +113,7 @@ Set the `POLI_PAGE_API_KEY` environment variable. Every key is bound to one envi
 | `pp_live_…`             | `name@live` — counted in the monthly quota                       |
 | `pp_<environment>_…`    | `name@<environment>` — counted in the monthly quota              |
 
-A key renders only its own environment, and never the draft: the draft (`poli render name`) needs `poli login`.
+A key renders only its own environment, and never the draft: the draft (`poli render name`) needs `poli login`, with `POLI_PAGE_API_KEY` unset (see [Precedence](#precedence)).
 
 ```bash
 export POLI_PAGE_API_KEY=pp_live_xxx
@@ -130,9 +130,7 @@ The other workspace commands (`link`, `watch`, `dev`) need `poli login`.
 
 ### Precedence
 
-When **both** `~/.polipage/credentials.json` (a session) and `POLI_PAGE_API_KEY` are set, **the session wins**. `poli login` does not refuse if the env var is set — it shows an info-message and proceeds, after which the new session takes precedence.
-
-This means a developer can keep `POLI_PAGE_API_KEY` set in `.zshrc` for occasional CI-style commands without it interfering with their interactive workflow.
+When **both** `~/.polipage/credentials.json` (a session) and `POLI_PAGE_API_KEY` are set, **the key wins** for every command that accepts either credential (`whoami`, `publish`, `render`, `documents`): a set key is an explicit choice, so exporting a `pp_sandbox_…` key makes those commands act as that key, not as your full session. The session-only commands (`link`, `watch`, `dev`, `env`) keep using your session. While the key wins, what it cannot do is refused even though a session is stored: `poli render <name>` (the draft), `poli render <name>@<environment>` for another environment than the key's, `poli publish` with a standard key or with an `--env` other than the key's, and any of those commands with a malformed key fail, and their error says to unset `POLI_PAGE_API_KEY` to use the session. In a terminal, `poli whoami` says when the key is used instead of a stored session (its JSON is the `GET /v1/me` response, unchanged), and `poli publish` prints which credential it used (`Auth:` in its summary, `credential` in its JSON). `poli login` does not refuse if the env var is set — it shows an info-message and proceeds, but the key keeps winning until you unset it.
 
 ---
 
@@ -343,7 +341,7 @@ Notes:
 
 #### `poli publish`
 
-Publishes the local project, the files on disk, to an environment of your organization: `POST /v1/projects/<projectSlug>/publish`, with your `poli login` session and the manifest's `cloud.orgId`, or, without a session, with a service key in `POLI_PAGE_API_KEY` (see below). The environment's copy of the project is replaced in place. There is no rollback: to go back, check out the earlier state from your own version control and publish again.
+Publishes the local project, the files on disk, to an environment of your organization: `POST /v1/projects/<projectSlug>/publish`, with a service key in `POLI_PAGE_API_KEY` when one is set (see below), or else with your `poli login` session and the manifest's `cloud.orgId`. The environment's copy of the project is replaced in place. There is no rollback: to go back, check out the earlier state from your own version control and publish again.
 
 ```bash
 poli publish --env sandbox
@@ -360,11 +358,11 @@ poli publish --env live --yes      # protected environment, no prompt (scripts)
 
 - **Environment names** are 1-20 characters: lowercase letters, digits and single inner hyphens, starting with a letter. A name that breaks this rule is refused before any call (exit `2`). An environment that does not exist in the organization is refused with the list of the ones that do (exit `2`).
 - **The bundle** is the project file set: `poli-page.json`, `tailwind.css`, the `.html`, `.json` and `.css` files under `templates/<slug>/`, the `.html` files under `partials/`, everything under `assets/images/` and `assets/icons/`, and the `.woff2`, `.woff`, `.ttf` and `.otf` files under `assets/fonts/`. Anything else (`.gitignore`, `README.md`, `output/`, `node_modules/`) is left out. Assets are sent base64-encoded, every other file as UTF-8. A bundle over 5 MiB, or a message over 500 characters, is refused before any call (exit `2`).
-- **Protected environments** (`live` by default) accept a publish from an owner or an admin only. In a terminal, `poli publish` asks for confirmation first; without a TTY it needs `--yes`, and `CI=true` counts as `--yes`. Without the role, the API refuses with `ENVIRONMENT_PROTECTED` (exit `5`).
-- **With a service key** (`POLI_PAGE_API_KEY` and no `poli login` session; a session wins when both are there): the CLI calls `GET /v1/me`, then publishes to the manifest's `cloud.projectSlug` with no organization header, since the key carries its organization. `--env` must name the key's own environment, or the publish is refused before any upload, naming it (exit `2`). A standard key is refused with "Standard API keys can only render. Use a service key or `poli login`." (exit `5`). There is no prompt and no environment check on the CLI side: the API applies the protected-environment rule, and a service key without the `admin` role gets `ENVIRONMENT_PROTECTED` (exit `5`).
+- **Protected environments** (`live` by default) accept a publish from an owner or an admin only. In a terminal, `poli publish` asks for confirmation first; without a TTY it needs `--yes`. `CI=true` does not stand in for `--yes`. Without the role, the API refuses with `ENVIRONMENT_PROTECTED` (exit `5`).
+- **With a service key** (`POLI_PAGE_API_KEY`; the key wins over a `poli login` session when both are there): the CLI calls `GET /v1/me`, then publishes to the manifest's `cloud.projectSlug` with no organization header, since the key carries its organization. `--env` must name the key's own environment, or the publish is refused before any upload, naming it (exit `2`). A standard key is refused with "Standard API keys can only render. Use a service key or `poli login`." (exit `5`); with a session stored, both messages say to unset `POLI_PAGE_API_KEY` to use the session instead. There is no prompt and no environment check on the CLI side: the API applies the protected-environment rule, and a service key without the `admin` role gets `ENVIRONMENT_PROTECTED` (exit `5`).
 - **One publish at a time** per project and environment: while one runs, a second gets `PUBLISH_IN_PROGRESS` (exit `3`). It is not retried; run it again once the first one is done.
 
-On success it prints the environment, the project, the short bundle hash, the file count and the publish log id.
+On success it prints the environment, the project, the short bundle hash, the file count, the publish log id and the credential used (`POLI_PAGE_API_KEY` or `session (poli login)`).
 
 #### `poli env list`
 
@@ -556,11 +554,11 @@ A manifest from before environments may still carry `project.version` or `cloud.
 
 | Variable             | Effect                                                                                                                                                                                                                                          |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POLI_PAGE_API_KEY`  | Single env var for any API key in CI/CD: `pp_<environment>_` followed by 32 lowercase hex characters, checked in full before any call. The key renders only its own environment; a service key also publishes to it. **Precedence**: when a credentials file is also present, the session wins. |
+| `POLI_PAGE_API_KEY`  | Single env var for any API key in CI/CD: `pp_<environment>_` followed by 32 lowercase hex characters, checked in full before any call. The key renders only its own environment; a service key also publishes to it. **Precedence**: when a credentials file is also present, the key wins for `whoami`, `publish`, `render` and `documents`. |
 | `POLI_API_URL`       | Override the API base URL (precedence: `--api-url` flag → `POLI_API_URL` → `poli-page.json` `cloud.apiUrl`, when allowed (see below) → `~/.polipage/credentials.json` `apiUrl` → default `https://api.poli.page`). The URL must be an origin only (no user, path, query or hash) on `https://poli.page` or `https://*.poli.page`; anything else exits `2` before any request. `poli-page.json` `cloud.apiUrl` is ignored, with a warning, unless it equals the stored `apiUrl` or the default: a cloned folder cannot choose where your credentials go. A session is only sent to the API origin that issued it; log in again to use another one. |
 | `POLI_ALLOW_INSECURE_API` | Set to `1` to allow a local API URL (`http://localhost`, `http://127.0.0.1`), like `--allow-insecure-api`. |
 | `NO_COLOR`           | Disable ANSI colors (Unix standard).                                                                                                                                                                                                            |
-| `CI`                 | Auto-detected; equivalent to a global `--yes`, except for `poli env remove-project`.                                                                                                                                                            |
+| `CI`                 | Not read. `CI=true` is not consent: without a TTY, a prompt needs `--yes`.                                                                                                                                                                       |
 
 ### Common flags
 
@@ -695,15 +693,15 @@ Either run `poli login` interactively, or export `POLI_PAGE_API_KEY` for CI use.
 
 ### `POLI_PAGE_API_KEY must be a Poli Page API key: \`pp_<environment>_…\`...`
 
-You set the variable but its value is not a whole key: `pp_`, the environment name, `_`, then 32 lowercase hex characters. Copy the key again, or create one from the dashboard's API keys page. Exit code `4`.
+You set the variable but its value is not a whole key: `pp_`, the environment name, `_`, then 32 lowercase hex characters. Copy the key again, or create one from the dashboard's API keys page. If you are logged in, the key wins over your session while it is set, so a malformed key is refused even then (the message then says so): fix it, or unset `POLI_PAGE_API_KEY` to use the session. Exit code `4`.
 
 ### `Standard API keys can only render. Use a service key or \`poli login\`.`
 
-`poli publish` with `POLI_PAGE_API_KEY` set to a standard key. Only a service key, or a `poli login` session, can publish. Exit code `5`.
+`poli publish` with `POLI_PAGE_API_KEY` set to a standard key. Only a service key, or a `poli login` session, can publish. If you are already logged in, the key wins over your session while it is set (the message then says so): unset `POLI_PAGE_API_KEY` to publish with the session. Exit code `5`.
 
 ### `This service key publishes to "<a>" only, not "<b>"...`
 
-A service key publishes into its own environment only. Pass `--env <a>`, or use a service key for `<b>`. Exit code `2`.
+A service key publishes into its own environment only. Pass `--env <a>`, or use a service key for `<b>`. If you are logged in, the key wins over your session while it is set (the message then says so): unset `POLI_PAGE_API_KEY` to publish with the session. Exit code `2`.
 
 ### `This folder isn't linked to a cloud project. Run \`poli link\` first.`
 
@@ -711,11 +709,11 @@ You're in session mode and the local manifest has no `cloud:` block. Either run 
 
 ### `API keys render a published environment: use \`name@<environment>\``
 
-`poli render name` renders the draft, which only a `poli login` session can do. With an API key, render the key's environment: `poli render name@<environment>`. Exit code `2`.
+`poli render name` renders the draft, which only a `poli login` session can do. With an API key, render the key's environment: `poli render name@<environment>`. If you are logged in, the key wins over your session while it is set (the message then says so): unset `POLI_PAGE_API_KEY` to render the draft. Exit code `2`.
 
 ### `This API key renders the \`<a>\` environment, not \`<b>\``
 
-A key renders only the environment in its prefix. Render `name@<a>`, or use a key for `<b>`. Exit code `2`.
+A key renders only the environment in its prefix. Render `name@<a>`, or use a key for `<b>`. If you are logged in, the key wins over your session while it is set (the message then says so): unset `POLI_PAGE_API_KEY` to render `<b>` with the session. Exit code `2`.
 
 ### `\`invoice@1.2.3\`: templates no longer have versions...`
 
@@ -729,7 +727,7 @@ The API renders the draft for a `poli login` session only. The CLI refuses a dra
 
 `poli publish --env <env>` to a protected environment (`live` by default) by someone who is not an owner or admin of the organization, or with a service key without the `admin` role. Ask an owner or admin to publish, or use an `admin` service key. Exit code `5`.
 
-Without a terminal, `Environment "<env>" is protected. Pass --yes to publish to it without a prompt.` means the confirmation could not be asked: pass `--yes` (`CI=true` counts as `--yes`). Exit code `2`.
+Without a terminal, `Environment "<env>" is protected. Pass --yes to publish to it without a prompt.` means the confirmation could not be asked: pass `--yes` (`CI=true` does not count as `--yes`). Exit code `2`.
 
 ### `PUBLISH_IN_PROGRESS`
 
