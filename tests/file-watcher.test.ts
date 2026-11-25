@@ -218,6 +218,10 @@ describe('createFileWatcher (sync set)', () => {
 		await symlink(outsideDir, join(tempDir, 'home'));
 		await symlink(outsideDir, join(tempDir, 'templates', 'invoice', 'linked'));
 		await symlink(outsideDir, join(tempDir, 'partials'));
+		// Names inside the file set: only lstat keeps these from being walked.
+		await mkdir(join(tempDir, 'assets', 'images'), { recursive: true });
+		await symlink(outsideDir, join(tempDir, 'assets', 'images', 'linked'));
+		await symlink(outsideDir, join(tempDir, 'templates', 'invoice', 'linked.html'));
 
 		const { watcher, watchedPaths } = await startWatcher({
 			cwd: tempDir,

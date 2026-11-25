@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`poli watch` and `poli dev` walked and watched whatever a symlink in the project pointed to.** A link to `~` or `/` made the watcher traverse it, since it followed symlinks and ignored less than the sync reads. The watcher no longer follows symlinks, and only files of the project file set trigger a sync. `.poli/` joins the ignored directories.
+
 ## [0.10.0] — 2026-10-27
 
 ### Changed (BREAKING)
