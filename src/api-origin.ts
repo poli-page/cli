@@ -48,9 +48,12 @@ export class UntrustedVerificationUrlError extends Error {
 	readonly exitCode = ExitCode.NETWORK_OR_API_ERROR;
 }
 
+// Not a valid hostname, so no URL host can share the loopback site.
+const LOOPBACK_SITE = ':loopback';
+
 function siteOf(host: string): string {
 	if (host === 'poli.page' || host.endsWith('.poli.page')) return 'poli.page';
-	return LOOPBACK_HOSTS.has(host) ? 'loopback' : host;
+	return LOOPBACK_HOSTS.has(host) ? LOOPBACK_SITE : host;
 }
 
 /**
@@ -67,10 +70,10 @@ export function assertVerificationUrl(url: string, api: string): string {
 	}
 	const site = siteOf(new URL(api).hostname);
 	const sameSite = (parsed.protocol === 'http:' || parsed.protocol === 'https:') && siteOf(parsed.hostname) === site;
-	if (sameSite && (parsed.protocol === 'https:' || site === 'loopback')) return parsed.href;
+	if (sameSite && (parsed.protocol === 'https:' || site === LOOPBACK_SITE)) return parsed.href;
 	// href, not the raw string: the URL parser percent-encodes control characters.
 	throw new UntrustedVerificationUrlError(
-		`Refusing to open the verification URL ${parsed.href}: it is not an https page on ${site === 'loopback' ? 'a local address' : site}.`
+		`Refusing to open the verification URL ${parsed.href}: it is not ${site === LOOPBACK_SITE ? 'a page on a local address' : `an https page on ${site}`}.`
 	);
 }
 

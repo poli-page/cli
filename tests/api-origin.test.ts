@@ -146,6 +146,8 @@ describe('assertVerificationUrl', () => {
 		['https://app.poli.page/device', 'http://127.0.0.1:8787'],
 		['file:///etc/passwd', 'http://127.0.0.1:8787'],
 		['smb://localhost/share', 'http://127.0.0.1:8787'],
+		['http://loopback/device', 'http://127.0.0.1:8787'],
+		['https://loopback/device', 'http://localhost:8787'],
 		['not a url', 'https://api.poli.page'],
 	])('refuses %s for the API %s with exit code 3', (url, api) => {
 		expect(() => assertVerificationUrl(url, api)).toThrow(
@@ -161,6 +163,12 @@ describe('assertVerificationUrl', () => {
 			expect.objectContaining({
 				message: expect.stringContaining('smb://attacker.example/share%1B[2J'),
 			})
+		);
+	});
+
+	it('does not ask for https when refusing a page for a local API, which may use http', () => {
+		expect(() => assertVerificationUrl('https://evil.com/device', 'http://127.0.0.1:8787')).toThrow(
+			'Refusing to open the verification URL https://evil.com/device: it is not a page on a local address.'
 		);
 	});
 });
