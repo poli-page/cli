@@ -9,6 +9,17 @@ import {
 } from './project-files.js';
 import { computeDelta, hashContent, syncWithRetry } from './sync-engine.js';
 
+const IGNORED_DIRECTORY_NAMES = new Set(['node_modules', '.git', 'output', 'dist', '.poli']);
+
+/**
+ * `true` when a segment of `relPath` names a directory the sync never
+ * enters. The watcher prunes directories with it: `shouldIgnoreProjectPath`
+ * rejects every directory, none being in the file set.
+ */
+export function isInIgnoredProjectDirectory(relPath: string): boolean {
+	return relPath.split(/[\\/]/).some((segment) => IGNORED_DIRECTORY_NAMES.has(segment));
+}
+
 export function shouldIgnoreProjectPath(relPath: string): boolean {
 	// Callers pass the raw output of `relative()`, which is
 	// backslash-separated on Windows. Normalise here, at the public
@@ -16,11 +27,7 @@ export function shouldIgnoreProjectPath(relPath: string): boolean {
 	// `templates\\inv\\inv.html` is in the file set, and
 	// `templates\\inv\\node_modules\\x.json` is not.
 	const normalized = relPath.split(/[\\/]/).join('/');
-	const segments = normalized.split('/');
-	if (segments.includes('node_modules')) return true;
-	if (segments.includes('.git')) return true;
-	if (segments.includes('output')) return true;
-	if (segments.includes('dist')) return true;
+	if (isInIgnoredProjectDirectory(normalized)) return true;
 	if (normalized.endsWith('.DS_Store')) return true;
 	if (normalized.endsWith('.log')) return true;
 	return !isAcceptedProjectPath(normalized);
