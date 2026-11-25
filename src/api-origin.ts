@@ -18,13 +18,14 @@ export function assertTrustedApiOrigin(url: string, allowInsecure = insecureApiA
 	try {
 		parsed = new URL(url);
 	} catch {
-		throw new UsageError(`Invalid API URL "${url}".`);
+		throw new UsageError(`Invalid API URL: expected an origin like ${DEFAULT_API_URL}.`);
 	}
-	// The exact match refuses userinfo, a path, a query or a hash: a string
-	// check on such a URL is not a check on the host it resolves to.
-	if (url !== parsed.origin && url !== `${parsed.origin}/`) {
+	// A string check on a URL with userinfo, a path, a query or a hash is not a
+	// check on the host it resolves to. The raw URL stays out of the message:
+	// those parts may hold a token.
+	if (parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
 		throw new UsageError(
-			`API URL "${url}" must be an origin only (scheme, host and port), like ${DEFAULT_API_URL}.`
+			`The API URL must be an origin only (scheme, host and port), like ${DEFAULT_API_URL}.`
 		);
 	}
 	const host = parsed.hostname;
@@ -34,11 +35,11 @@ export function assertTrustedApiOrigin(url: string, allowInsecure = insecureApiA
 	if ((parsed.protocol === 'http:' || parsed.protocol === 'https:') && LOOPBACK_HOSTS.has(host)) {
 		if (allowInsecure) return parsed.origin;
 		throw new UsageError(
-			`API URL "${url}" is a local address: pass --allow-insecure-api or set POLI_ALLOW_INSECURE_API=1 to use it.`
+			`API URL "${parsed.origin}" is a local address: pass --allow-insecure-api or set POLI_ALLOW_INSECURE_API=1 to use it.`
 		);
 	}
 	throw new UsageError(
-		`API URL "${url}" is not a Poli Page API: credentials are only sent to https://poli.page or https://*.poli.page.`
+		`API URL "${parsed.origin}" is not a Poli Page API: credentials are only sent to https://poli.page or https://*.poli.page.`
 	);
 }
 

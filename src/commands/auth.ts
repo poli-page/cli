@@ -3,6 +3,7 @@ import {
 	writeCredentials,
 	clearCredentials,
 	readCredentials,
+	sessionFor,
 	type StoredCredentials,
 	type UserInfo,
 } from '../credentials.js';
@@ -184,7 +185,7 @@ export async function executeWhoami(
 			if (credentials?.session) {
 				let orgs: Array<{ id: string; slug: string; name: string }>;
 				try {
-					orgs = await client.getOrganizations(credentials.session);
+					orgs = await client.getOrganizations(sessionFor(credentials));
 				} catch {
 					// 401 / network / API issue — the session is no longer usable.
 					throw new Error(

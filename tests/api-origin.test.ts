@@ -74,6 +74,7 @@ describe('assertTrustedApiOrigin', () => {
 		['https://api.poli.page/', 'https://api.poli.page'],
 		['https://api-develop.poli.page', 'https://api-develop.poli.page'],
 		['https://poli.page', 'https://poli.page'],
+		['https://api.poli.page:443', 'https://api.poli.page'],
 	])('accepts %s', (url, origin) => {
 		expect(assertTrustedApiOrigin(url, false)).toBe(origin);
 	});
@@ -85,6 +86,8 @@ describe('assertTrustedApiOrigin', () => {
 		'https://api.poli.page/?x=1',
 		'https://api.poli.page/#frag',
 		'https://user:pw@api.poli.page',
+		'https://user@api.poli.page',
+		'https://:pw@api.poli.page',
 		'http://api.poli.page',
 		'https://evilpoli.page',
 		'https://api.poli.page.evil.com',
@@ -93,6 +96,20 @@ describe('assertTrustedApiOrigin', () => {
 	])('refuses %s with exit code 2', (url) => {
 		expect(() => assertTrustedApiOrigin(url, true)).toThrow(
 			expect.objectContaining({ exitCode: ExitCode.INVALID_USAGE })
+		);
+	});
+
+	it.each([
+		'https://user:s3cret@api.poli.page',
+		'https://api.poli.page/?token=s3cret',
+		'https://api.poli.page/#s3cret',
+		'https://api.poli.page/s3cret',
+		'http://user:s3cret@localhost:3000',
+		'https://user:s3cret@evil.com',
+		'not a url s3cret',
+	])('keeps %s out of the error message', (url) => {
+		expect(() => assertTrustedApiOrigin(url, false)).toThrow(
+			expect.objectContaining({ message: expect.not.stringContaining('s3cret') })
 		);
 	});
 
