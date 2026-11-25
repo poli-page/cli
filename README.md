@@ -130,7 +130,7 @@ The other workspace commands (`link`, `watch`, `dev`) need `poli login`.
 
 ### Precedence
 
-When **both** `~/.polipage/credentials.json` (a session) and `POLI_PAGE_API_KEY` are set, **the key wins** for every command that accepts either credential (`whoami`, `publish`, `render`, `documents`): a set key is an explicit choice, so exporting a `pp_sandbox_…` key makes those commands act as that key, not as your full session. The session-only commands (`link`, `watch`, `dev`, `env`) keep using your session. While the key wins, what it cannot do is refused even though a session is stored: `poli render <name>` (the draft), `poli render <name>@<environment>` for another environment than the key's, and `poli publish` with a standard key or with an `--env` other than the key's fail, and their error says to unset `POLI_PAGE_API_KEY` to use the session. In a terminal, `poli whoami` says when the key is used instead of a stored session (its JSON is the `GET /v1/me` response, unchanged), and `poli publish` prints which credential it used (`Auth:` in its summary, `credential` in its JSON). `poli login` does not refuse if the env var is set — it shows an info-message and proceeds, but the key keeps winning until you unset it.
+When **both** `~/.polipage/credentials.json` (a session) and `POLI_PAGE_API_KEY` are set, **the key wins** for every command that accepts either credential (`whoami`, `publish`, `render`, `documents`): a set key is an explicit choice, so exporting a `pp_sandbox_…` key makes those commands act as that key, not as your full session. The session-only commands (`link`, `watch`, `dev`, `env`) keep using your session. While the key wins, what it cannot do is refused even though a session is stored: `poli render <name>` (the draft), `poli render <name>@<environment>` for another environment than the key's, `poli publish` with a standard key or with an `--env` other than the key's, and any of those commands with a malformed key fail, and their error says to unset `POLI_PAGE_API_KEY` to use the session. In a terminal, `poli whoami` says when the key is used instead of a stored session (its JSON is the `GET /v1/me` response, unchanged), and `poli publish` prints which credential it used (`Auth:` in its summary, `credential` in its JSON). `poli login` does not refuse if the env var is set — it shows an info-message and proceeds, but the key keeps winning until you unset it.
 
 ---
 
@@ -693,7 +693,7 @@ Either run `poli login` interactively, or export `POLI_PAGE_API_KEY` for CI use.
 
 ### `POLI_PAGE_API_KEY must be a Poli Page API key: \`pp_<environment>_…\`...`
 
-You set the variable but its value is not a whole key: `pp_`, the environment name, `_`, then 32 lowercase hex characters. Copy the key again, or create one from the dashboard's API keys page. Exit code `4`.
+You set the variable but its value is not a whole key: `pp_`, the environment name, `_`, then 32 lowercase hex characters. Copy the key again, or create one from the dashboard's API keys page. If you are logged in, the key wins over your session while it is set, so a malformed key is refused even then (the message then says so): fix it, or unset `POLI_PAGE_API_KEY` to use the session. Exit code `4`.
 
 ### `Standard API keys can only render. Use a service key or \`poli login\`.`
 

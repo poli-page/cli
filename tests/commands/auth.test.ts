@@ -182,7 +182,7 @@ describe('auth commands', () => {
 
 			expect(infoMessages).toHaveLength(1);
 			expect(infoMessages[0]).toMatch(/POLI_PAGE_API_KEY/);
-			expect(infoMessages[0]).toMatch(/keep using it instead of your session/i);
+			expect(infoMessages[0]).toMatch(/whoami, publish, render and documents keep using it instead of your session/i);
 			// Device flow still runs and stores credentials.
 			expect(credentials.session).toBe('device-session-token');
 		});

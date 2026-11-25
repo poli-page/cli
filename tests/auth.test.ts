@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { resolveAuth } from '../src/auth.js';
+import { resolveAuth, SESSION_IGNORED_HINT } from '../src/auth.js';
 import { writeCredentials, type StoredCredentials } from '../src/credentials.js';
 import { testApiKey } from './helpers/api-key.js';
 
@@ -68,9 +68,16 @@ describe('resolveAuth', () => {
 		it('refuses a malformed POLI_PAGE_API_KEY even with a session stored', async () => {
 			await writeCredentials(baseCredentials, fakeHome);
 			process.env.POLI_PAGE_API_KEY = 'not_a_key';
-			await expect(
-				resolveAuth({ manifestOrgId: 'org-123', homeDir: fakeHome })
-			).rejects.toThrow(/POLI_PAGE_API_KEY must be/);
+			const refusal = resolveAuth({ manifestOrgId: 'org-123', homeDir: fakeHome });
+			await expect(refusal).rejects.toThrow(/POLI_PAGE_API_KEY must be/);
+			await expect(refusal).rejects.toThrow(SESSION_IGNORED_HINT);
+		});
+
+		it('refuses a malformed POLI_PAGE_API_KEY without the session hint when no session is stored', async () => {
+			process.env.POLI_PAGE_API_KEY = 'not_a_key';
+			const refusal = resolveAuth({ homeDir: fakeHome });
+			await expect(refusal).rejects.toThrow(/POLI_PAGE_API_KEY must be/);
+			await expect(refusal).rejects.not.toThrow(SESSION_IGNORED_HINT);
 		});
 	});
 

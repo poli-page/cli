@@ -32,7 +32,7 @@ export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<Aut
 	if (envKey) {
 		if (!API_KEY.test(envKey)) {
 			throw new Error(
-				'POLI_PAGE_API_KEY must be a Poli Page API key: `pp_<environment>_…` (e.g. `pp_sandbox_…`, `pp_live_…`), the environment name followed by 32 lowercase hex characters.'
+				`POLI_PAGE_API_KEY must be a Poli Page API key: \`pp_<environment>_…\` (e.g. \`pp_sandbox_…\`, \`pp_live_…\`), the environment name followed by 32 lowercase hex characters.${credentials?.session ? ` ${SESSION_IGNORED_HINT}` : ''}`
 			);
 		}
 		return {

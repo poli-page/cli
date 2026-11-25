@@ -57,7 +57,7 @@ export async function executeDeviceLogin(
 		options.envApiKey !== undefined ? options.envApiKey : process.env.POLI_PAGE_API_KEY;
 	if (envApiKey && options.onEnvVarInfo) {
 		options.onEnvVarInfo(
-			'POLI_PAGE_API_KEY is set in your environment: commands keep using it instead of your session until you unset it.'
+			'POLI_PAGE_API_KEY is set in your environment: whoami, publish, render and documents keep using it instead of your session until you unset it.'
 		);
 	}
 
