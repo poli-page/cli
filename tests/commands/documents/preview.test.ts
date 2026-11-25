@@ -10,8 +10,7 @@ import { DocumentNotFoundError, type ApiClient } from '../../../src/api-client.j
 import { createFakeApiClient } from '../../helpers/fake-api-client.js';
 import { testApiKey } from '../../helpers/api-key.js';
 
-const CSP_META =
-	`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:">`;
+const CSP_META = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:">`;
 
 function makeStubClient(overrides: Partial<ApiClient> = {}): ApiClient {
 	return createFakeApiClient({
@@ -188,6 +187,48 @@ describe('injectPreviewCsp', () => {
 		);
 		expect(injectPreviewCsp('<html><script>x</script><head></head>')).toBe(
 			`<html><head>${CSP_META}</head><script>x</script><head></head>`
+		);
+	});
+});
+
+describe('injectPreviewCsp, parsing tags as browsers do', () => {
+	it('reads a quote inside an attribute name as part of the name', () => {
+		expect(injectPreviewCsp(`<head a'><script>alert('1')</script></head>`)).toBe(
+			`<head a'>${CSP_META}<script>alert('1')</script></head>`
+		);
+		expect(injectPreviewCsp(`<html a"><script>alert("1")</script><head></head>`)).toBe(
+			`<html a"><head>${CSP_META}</head><script>alert("1")</script><head></head>`
+		);
+	});
+
+	it('does not take a custom element named head-x or html-x for <head> or <html>', () => {
+		expect(injectPreviewCsp('<html><head-x><script>x</script></head-x>')).toBe(
+			`<html><head>${CSP_META}</head><head-x><script>x</script></head-x>`
+		);
+		expect(injectPreviewCsp('<html-x><script>x</script><head></head>')).toBe(
+			`<head>${CSP_META}</head><html-x><script>x</script><head></head>`
+		);
+	});
+
+	it('skips only HTML whitespace before <head>', () => {
+		expect(injectPreviewCsp('\u00A0<head><script>x</script></head>')).toBe(
+			`<head>${CSP_META}</head>\u00A0<head><script>x</script></head>`
+		);
+		expect(injectPreviewCsp('\t\n\f\r <head></head>')).toBe(
+			`\t\n\f\r <head>${CSP_META}</head>`
+		);
+	});
+
+	it('ends a tag at > after an unquoted, self-closing or missing attribute value', () => {
+		expect(injectPreviewCsp('<html a=x/ d = "e>f" b= c=><head/ id=h>x')).toBe(
+			`<html a=x/ d = "e>f" b= c=><head/ id=h>${CSP_META}x`
+		);
+		expect(injectPreviewCsp('<head/="a>b">x')).toBe(`<head/="a>${CSP_META}b">x`);
+	});
+
+	it('creates a <head> before a tag whose quoted value never closes', () => {
+		expect(injectPreviewCsp('<head a="x><script>x</script>')).toBe(
+			`<head>${CSP_META}</head><head a="x><script>x</script>`
 		);
 	});
 });

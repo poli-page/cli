@@ -12,23 +12,61 @@ const PREVIEW_CSP =
 
 const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${PREVIEW_CSP}">`;
 
-const TAG_ATTRS = String.raw`(?:[^>"']|"[^"]*"|'[^']*')*`;
-// What a browser parses before it opens <head>: BOM, whitespace, doctype,
-// comments (including the `<!-->` and `--!>` forms) and the <html> tag.
-// Anything past it would already run before a meta placed later.
-const BEFORE_HEAD = new RegExp(
-	String.raw`^\uFEFF?(?:\s+|<!--(?:>|->|[\s\S]*?--!?>)|<!doctype[^>]*>|<html\b${TAG_ATTRS}>)*`,
-	'i'
-);
-const HEAD_OPEN = new RegExp(String.raw`^<head\b${TAG_ATTRS}>`, 'i');
+// What a browser parses before it opens <head>: comments (including the
+// `<!-->` and `--!>` forms), the doctype and HTML whitespace (not \s: a
+// non-breaking space is text and opens <body>).
+const BEFORE_HEAD_TOKEN = /<!--(?:>|->|[\s\S]*?--!?>)|<!doctype[^>]*>|[\t\n\f\r ]+/iy;
+
+const isTagSpace = (c: string) => '\t\n\f\r '.includes(c);
+
+// Index just past the `<name ...>` start tag at `at`, or -1. Follows the HTML
+// tokenizer's attribute states: only a quote that opens a value quotes, so
+// `<head a'>` ends at its first `>`, and `<head-x>` is another element.
+function startTagEnd(html: string, at: number, name: string): number {
+	let i = at + name.length + 1;
+	if (html.slice(at, i).toLowerCase() !== `<${name}`) return -1;
+	if (i < html.length && !isTagSpace(html[i]) && html[i] !== '/' && html[i] !== '>') {
+		return -1;
+	}
+	while (i < html.length) {
+		const c = html[i];
+		if (c === '>') return i + 1;
+		if (isTagSpace(c) || c === '/') {
+			i++;
+			continue;
+		}
+		i++; // an attribute name may start with `=`
+		while (i < html.length && !isTagSpace(html[i]) && !'/>='.includes(html[i])) i++;
+		while (i < html.length && isTagSpace(html[i])) i++;
+		if (html[i] !== '=') continue;
+		i++;
+		while (i < html.length && isTagSpace(html[i])) i++;
+		const quote = html[i];
+		if (quote === '"' || quote === "'") {
+			const close = html.indexOf(quote, i + 1);
+			if (close === -1) return -1;
+			i = close + 1;
+		} else {
+			while (i < html.length && !isTagSpace(html[i]) && html[i] !== '>') i++;
+		}
+	}
+	return -1;
+}
 
 // The preview is opened as file://, so its template markup and customer data
-// must not load or run anything.
+// must not load or run anything. Anything past the point where the browser
+// opens <head> would already run before a meta placed later.
 export function injectPreviewCsp(html: string): string {
-	const at = BEFORE_HEAD.exec(html)![0].length;
-	const head = HEAD_OPEN.exec(html.slice(at));
-	if (head) {
-		const end = at + head[0].length;
+	let at = html.startsWith('\uFEFF') ? 1 : 0;
+	for (;;) {
+		BEFORE_HEAD_TOKEN.lastIndex = at;
+		const token = BEFORE_HEAD_TOKEN.exec(html);
+		const end = token ? at + token[0].length : startTagEnd(html, at, 'html');
+		if (end === -1) break;
+		at = end;
+	}
+	const end = startTagEnd(html, at, 'head');
+	if (end !== -1) {
 		return html.slice(0, end) + CSP_META + html.slice(end);
 	}
 	return html.slice(0, at) + `<head>${CSP_META}</head>` + html.slice(at);
