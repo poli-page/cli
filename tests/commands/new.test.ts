@@ -227,7 +227,11 @@ describe('poli new', () => {
 	});
 
 	it('reports an invalid poli-page.json, not a missing one', async () => {
-		await writeFile(join(projectDir, MANIFEST_FILENAME), JSON.stringify({ project: { name: 'p' }, cloud: { orgSlug: 'acme', orgId: 'org_1' } }), 'utf-8');
+		await writeFile(
+			join(projectDir, MANIFEST_FILENAME),
+			JSON.stringify({ project: { name: 'p' }, cloud: { orgSlug: 'acme', orgId: 'org_1' } }),
+			'utf-8'
+		);
 		await expect(
 			executeNew('invoice', {
 				cwd: projectDir,

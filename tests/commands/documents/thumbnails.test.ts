@@ -48,8 +48,18 @@ describe('executeDocumentsThumbnails', () => {
 	});
 
 	it('reports an invalid poli-page.json instead of ignoring it', async () => {
-		await writeFile(join(tempDir, 'poli-page.json'), JSON.stringify({ project: { name: 'p' }, cloud: { orgSlug: 'acme', orgId: 'org_1' } }), 'utf-8');
-		await expect(executeDocumentsThumbnails('doc_abc', { cwd: tempDir, homeDir: fakeHome, apiClient: createFakeApiClient({}) })).rejects.toThrow('Invalid poli-page.json — cloud.orgId: must be a UUID');
+		await writeFile(
+			join(tempDir, 'poli-page.json'),
+			JSON.stringify({ project: { name: 'p' }, cloud: { orgSlug: 'acme', orgId: 'org_1' } }),
+			'utf-8'
+		);
+		await expect(
+			executeDocumentsThumbnails('doc_abc', {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				apiClient: createFakeApiClient({}),
+			})
+		).rejects.toThrow('Invalid poli-page.json — cloud.orgId: must be a UUID');
 	});
 
 	it('writes PNG files to ./output/thumbnails/<id>/page-N.png by default', async () => {

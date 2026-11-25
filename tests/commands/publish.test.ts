@@ -88,7 +88,13 @@ function keyMe(auth: Partial<MeResponse['auth']> = {}): MeResponse {
 		},
 		user: null,
 		key: null,
-		org: { id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', slug: 'acme', name: 'Acme', tier: 'free', lifecycleStatus: 'active' },
+		org: {
+			id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
+			slug: 'acme',
+			name: 'Acme',
+			tier: 'free',
+			lifecycleStatus: 'active',
+		},
 	};
 }
 
@@ -156,7 +162,9 @@ describe('poli publish', () => {
 			);
 
 			expect(result).toEqual({ ...publishResult(), credential: 'session' });
-			expect(listed).toEqual([['Bearer session-token', '0e89d99e-1516-4b48-baa1-f49e660ad1c1']]);
+			expect(listed).toEqual([
+				['Bearer session-token', '0e89d99e-1516-4b48-baa1-f49e660ad1c1'],
+			]);
 			expect(calls).toHaveLength(1);
 			expect(calls[0].authorization).toBe('Bearer session-token');
 			expect(calls[0].orgId).toBe('0e89d99e-1516-4b48-baa1-f49e660ad1c1');
@@ -717,7 +725,9 @@ describe('poli publish', () => {
 			meAnswer = () => new Response('unexpected', { status: 500 });
 			fetchMock = vi.fn(async (url: string) => {
 				if (url === `${API_URL}/v1/me`) return meAnswer();
-				if (url.endsWith('/organizations/0e89d99e-1516-4b48-baa1-f49e660ad1c1/environments')) {
+				if (
+					url.endsWith('/organizations/0e89d99e-1516-4b48-baa1-f49e660ad1c1/environments')
+				) {
 					return jsonResponse(200, ENVIRONMENTS);
 				}
 				if (url === `${API_URL}/v1/projects/invoices/publish`) return publishAnswer();

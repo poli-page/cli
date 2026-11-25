@@ -50,7 +50,9 @@ function fakePdf(label: string): Buffer {
  */
 function makeStubClient(options: StubOptions = {}): ApiClient {
 	return createFakeApiClient({
-		getOrganizations: async () => [{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme', slug: 'acme' }],
+		getOrganizations: async () => [
+			{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme', slug: 'acme' },
+		],
 		patchFiles: async (_session, _orgId, _projectId, body) => {
 			options.patchBodies?.push(body);
 			if (options.patchImpl) return options.patchImpl(body);

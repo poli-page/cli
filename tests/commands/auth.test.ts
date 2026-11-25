@@ -71,7 +71,9 @@ function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
 			sessionToken: 'device-session-token',
 			user: { id: 'user_1', name: 'Xavier', email: 'xavier@test.com' },
 		}),
-		getOrganizations: async () => [{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme Corp', slug: 'acme-corp' }],
+		getOrganizations: async () => [
+			{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme Corp', slug: 'acme-corp' },
+		],
 		...overrides,
 	});
 }
@@ -374,7 +376,13 @@ describe('auth commands', () => {
 		async function linkProject(apiUrl: string) {
 			await writeManifest(projectDir, {
 				project: { name: 'p' },
-				cloud: { orgSlug: 'acme', orgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', projectSlug: 'p', projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268', apiUrl },
+				cloud: {
+					orgSlug: 'acme',
+					orgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
+					projectSlug: 'p',
+					projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268',
+					apiUrl,
+				},
 			});
 		}
 
@@ -624,7 +632,9 @@ describe('auth commands', () => {
 			);
 
 			const client = createMockApiClient({
-				getOrganizations: async () => [{ id: '3b241101-e2bb-4255-8caf-4136c566a962', slug: 'acme', name: 'Acme' }],
+				getOrganizations: async () => [
+					{ id: '3b241101-e2bb-4255-8caf-4136c566a962', slug: 'acme', name: 'Acme' },
+				],
 			});
 
 			const result = await executeWhoami({
@@ -638,10 +648,21 @@ describe('auth commands', () => {
 
 		it('reports an invalid poli-page.json instead of treating the folder as unlinked', async () => {
 			await setupSessionCreds();
-			await writeFile(join(projectDir, 'poli-page.json'), JSON.stringify({ project: { name: 'p' }, cloud: { orgSlug: 'acme', orgId: 'org_1' } }), 'utf-8');
+			await writeFile(
+				join(projectDir, 'poli-page.json'),
+				JSON.stringify({
+					project: { name: 'p' },
+					cloud: { orgSlug: 'acme', orgId: 'org_1' },
+				}),
+				'utf-8'
+			);
 
 			await expect(
-				executeWhoami({ cwd: projectDir, homeDir: fakeHome, apiClient: createMockApiClient({}) })
+				executeWhoami({
+					cwd: projectDir,
+					homeDir: fakeHome,
+					apiClient: createMockApiClient({}),
+				})
 			).rejects.toThrow('Invalid poli-page.json — cloud.orgId: must be a UUID');
 		});
 

@@ -87,7 +87,11 @@ describe('api-client patchFiles', () => {
 			const fetchMock = mockFetchOnce(200, {});
 			const client = createApiClient('https://api.poli.page');
 			await expect(
-				client.patchFiles('sess-tok', orgId, projectId, { added: [], modified: [], deleted: [] })
+				client.patchFiles('sess-tok', orgId, projectId, {
+					added: [],
+					modified: [],
+					deleted: [],
+				})
 			).rejects.toThrow(message);
 			expect(fetchMock).not.toHaveBeenCalled();
 		}
