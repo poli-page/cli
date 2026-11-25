@@ -17,11 +17,17 @@ import type { PoliPageManifest } from '../manifest.js';
 import { errorToExitCode } from '../exit-codes.js';
 import {
 	startDevServer,
+	securityHeaders,
 	DEFAULT_DEV_PORT,
 	type DevServer,
 	type DevServerRequest,
 } from '../dev-server.js';
-import { DEV_PAGE_HTML, DEV_PLACEHOLDER_HTML } from '../dev-page.js';
+import {
+	DEV_PAGE_HTML,
+	DEV_PAGE_SECURITY_HEADERS,
+	DEV_PLACEHOLDER_HTML,
+	DEV_PLACEHOLDER_SECURITY_HEADERS,
+} from '../dev-page.js';
 
 const DEFAULT_DEBOUNCE_MS = 300;
 
@@ -417,13 +423,13 @@ export async function startDevSession(
 		const { method, pathname, query, res } = request;
 
 		if (method === 'GET' && (pathname === '/' || pathname === '/index.html')) {
-			sendHtml(res, DEV_PAGE_HTML);
+			sendHtml(res, DEV_PAGE_HTML, DEV_PAGE_SECURITY_HEADERS);
 			return;
 		}
 
 		if (method === 'GET' && pathname === '/pdf') {
 			if (!lastGoodPdf) {
-				sendHtml(res, DEV_PLACEHOLDER_HTML);
+				sendHtml(res, DEV_PLACEHOLDER_HTML, DEV_PLACEHOLDER_SECURITY_HEADERS);
 				return;
 			}
 			res.writeHead(200, {
@@ -431,6 +437,7 @@ export async function startDevSession(
 				'Content-Length': String(lastGoodPdf.buffer.byteLength),
 				'Content-Disposition': `inline; filename="${encodeURIComponent(lastGoodPdf.template)}.pdf"`,
 				'Cache-Control': 'no-store',
+				...securityHeaders({ frameable: true }),
 			});
 			res.end(lastGoodPdf.buffer);
 			return;
@@ -444,9 +451,11 @@ export async function startDevSession(
 		if (method === 'POST' && pathname === '/api/select') {
 			const requested = query.get('template');
 			if (!requested || !templates.includes(requested)) {
+				// The name comes from the request, which may not be the dev
+				// page's own: never echo it into the overlay.
 				state.error = {
 					stage: 'project',
-					message: `Template "${requested ?? ''}" is not in poli-page.json.`,
+					message: 'Unknown template: pick one listed in poli-page.json.',
 				};
 				sendJson(res, 404, state);
 				broadcast();
@@ -589,10 +598,11 @@ function templateNamesOf(manifest: PoliPageManifest): string[] {
 	return (manifest.templates ?? []).map((entry) => entry.name);
 }
 
-function sendHtml(res: ServerResponse, html: string): void {
+function sendHtml(res: ServerResponse, html: string, headers: Record<string, string>): void {
 	res.writeHead(200, {
 		'Content-Type': 'text/html; charset=utf-8',
 		'Cache-Control': 'no-store',
+		...headers,
 	});
 	res.end(html);
 }

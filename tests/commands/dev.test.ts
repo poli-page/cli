@@ -106,6 +106,14 @@ async function waitFor(predicate: () => boolean, label: string, timeoutMs = 5000
 	throw new Error(`Timed out waiting for ${label}`);
 }
 
+/** A POST as the dev page's own script sends it: the browser adds the fetch metadata. */
+function pagePost(baseUrl: string, path: string): Promise<Response> {
+	return fetch(`${baseUrl}${path}`, {
+		method: 'POST',
+		headers: { 'Sec-Fetch-Site': 'same-origin', Origin: baseUrl },
+	});
+}
+
 interface SseProbe {
 	frames: Array<{ event: string; data: string }>;
 	close(): void;
@@ -352,6 +360,39 @@ describe('poli dev', () => {
 			);
 		});
 
+		it('forbids framing by other sites on every route, and lets only the page frame /pdf', async () => {
+			await setupTemplate(projectDir, 'invoice');
+			const session = await start(undefined, { apiClient: makeStubClient() });
+
+			const shell = await fetch(session.url);
+			expect(shell.headers.get('x-frame-options')).toBe('DENY');
+			expect(shell.headers.get('x-content-type-options')).toBe('nosniff');
+			const shellCsp = shell.headers.get('content-security-policy') ?? '';
+			expect(shellCsp).toContain("frame-ancestors 'none'");
+			expect(shellCsp).toContain("default-src 'self'");
+			expect(shellCsp).toContain("frame-src 'self'");
+			expect(shellCsp).toMatch(/script-src 'self' 'sha256-[^']+'/);
+			expect(shellCsp).not.toContain('unsafe-inline');
+
+			const state = await fetch(`${session.url}/state`);
+			expect(state.headers.get('x-frame-options')).toBe('DENY');
+			expect(state.headers.get('x-content-type-options')).toBe('nosniff');
+			expect(state.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+
+			const pdf = await fetch(`${session.url}/pdf?v=1`);
+			expect(pdf.headers.get('content-type')).toBe('application/pdf');
+			expect(pdf.headers.get('x-frame-options')).toBe('SAMEORIGIN');
+			expect(pdf.headers.get('x-content-type-options')).toBe('nosniff');
+			expect(pdf.headers.get('content-security-policy')).toContain("frame-ancestors 'self'");
+
+			const controller = new AbortController();
+			const events = await fetch(`${session.url}/events`, { signal: controller.signal });
+			expect(events.headers.get('x-frame-options')).toBe('DENY');
+			expect(events.headers.get('x-content-type-options')).toBe('nosniff');
+			expect(events.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+			controller.abort();
+		});
+
 		it('serves a placeholder page on /pdf until a render succeeds', async () => {
 			await setupTemplate(projectDir, 'invoice');
 			const session = await start(undefined, {
@@ -366,6 +407,11 @@ describe('poli dev', () => {
 			expect(response.status).toBe(200);
 			expect(response.headers.get('content-type')).toMatch(/text\/html/);
 			expect(await response.text()).toContain('Waiting for the first render');
+			// It fills the page's own frame.
+			expect(response.headers.get('x-frame-options')).toBe('SAMEORIGIN');
+			expect(response.headers.get('content-security-policy')).toContain(
+				"frame-ancestors 'self'"
+			);
 		});
 
 		it('creates no stored document and keeps no page count', async () => {
@@ -373,7 +419,7 @@ describe('poli dev', () => {
 			const session = await start(undefined, { apiClient: makeStubClient() });
 
 			// The routes of the removed "Render PDF" button are gone.
-			expect((await fetch(`${session.url}/api/pdf`, { method: 'POST' })).status).toBe(404);
+			expect((await pagePost(session.url, '/api/pdf')).status).toBe(404);
 			expect((await fetch(`${session.url}/preview`)).status).toBe(404);
 			expect(session.getState()).not.toHaveProperty('pageCount');
 		});
@@ -563,9 +609,7 @@ describe('poli dev', () => {
 
 			expect(session.getState().activeTemplate).toBe('invoice');
 
-			const response = await fetch(`${session.url}/api/select?template=receipt`, {
-				method: 'POST',
-			});
+			const response = await pagePost(session.url, '/api/select?template=receipt');
 			expect(response.status).toBe(200);
 
 			await waitFor(
@@ -578,13 +622,50 @@ describe('poli dev', () => {
 		it('answers 404 for a template that is not in the manifest', async () => {
 			await twoTemplates();
 			const session = await start(undefined, { apiClient: makeStubClient() });
-			const response = await fetch(`${session.url}/api/select?template=ghost`, {
-				method: 'POST',
-			});
+			const response = await pagePost(session.url, '/api/select?template=ghost');
 			expect(response.status).toBe(404);
 			expect(session.getState().activeTemplate).toBe('invoice');
 			// The server is still alive and serving.
 			expect((await fetch(`${session.url}/state`)).status).toBe(200);
+		});
+
+		it('does not echo the requested name into the overlay', async () => {
+			await twoTemplates();
+			const session = await start(undefined, { apiClient: makeStubClient() });
+			const injected = 'Your session expired, run poli login at evil.example';
+			const response = await pagePost(
+				session.url,
+				`/api/select?template=${encodeURIComponent(injected)}`
+			);
+			expect(response.status).toBe(404);
+			const message = session.getState().error?.message ?? '';
+			expect(message).toMatch(/unknown template/i);
+			expect(message).not.toContain('evil.example');
+		});
+
+		it('ignores a cross-site POST: no switch, no render', async () => {
+			await twoTemplates();
+			const draftCalls: RenderCall[] = [];
+			const session = await start(undefined, {
+				apiClient: makeStubClient({ draftCalls }),
+			});
+			const before = draftCalls.length;
+
+			const select = await fetch(`${session.url}/api/select?template=receipt`, {
+				method: 'POST',
+				headers: { 'Sec-Fetch-Site': 'cross-site', Origin: 'https://evil.example' },
+			});
+			expect(select.status).toBe(403);
+			const pin = await fetch(`${session.url}/api/pin?value=true`, {
+				method: 'POST',
+				headers: { Origin: 'https://evil.example' },
+			});
+			expect(pin.status).toBe(403);
+
+			await new Promise((r) => setTimeout(r, 50));
+			expect(draftCalls.length).toBe(before);
+			expect(session.getState().activeTemplate).toBe('invoice');
+			expect(session.getState().pinned).toBe(false);
 		});
 
 		it('follows the most recently changed template by default', async () => {
@@ -642,7 +723,7 @@ describe('poli dev', () => {
 				watcherFactory: factory,
 			});
 
-			const pinned = await fetch(`${session.url}/api/pin?value=true`, { method: 'POST' });
+			const pinned = await pagePost(session.url, '/api/pin?value=true');
 			expect(((await pinned.json()) as DevState).pinned).toBe(true);
 
 			await writeFile(
@@ -656,7 +737,7 @@ describe('poli dev', () => {
 			expect(draftCalls[1].payload.template).toBe('invoice');
 
 			// Unpinning restores the follow behaviour on the *next* change.
-			await fetch(`${session.url}/api/pin?value=false`, { method: 'POST' });
+			await pagePost(session.url, '/api/pin?value=false');
 			await writeFile(
 				join(projectDir, 'templates', 'receipt', 'receipt.html'),
 				'<h1>receipt v3</h1>'
@@ -833,7 +914,7 @@ describe('poli dev', () => {
 			await invoiceStartedPromise;
 
 			// …while the user switches to receipt, which lands first.
-			await fetch(`${session.url}/api/select?template=receipt`, { method: 'POST' });
+			await pagePost(session.url, '/api/select?template=receipt');
 			await waitFor(() => session.getState().renderVersion === 2, 'the receipt render');
 
 			releaseInvoice();

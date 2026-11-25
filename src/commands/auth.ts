@@ -10,8 +10,8 @@ import {
 import { readManifest } from '../manifest.js';
 import { resolveAuth } from '../auth.js';
 import { createApiClient, type ApiClient, type MeResponse } from '../api-client.js';
-import { apiOrigin } from '../api-origin.js';
-import { errorToExitCode, ExitCode } from '../exit-codes.js';
+import { apiOrigin, assertTrustedApiOrigin, assertVerificationUrl, getLoginApiUrl } from '../api-origin.js';
+import { errorToExitCode, ExitCode, UsageError } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 
 export interface DeviceLoginOptions {
@@ -26,17 +26,17 @@ export interface DeviceLoginOptions {
 	/**
 	 * Inject the POLI_PAGE_API_KEY value (defaults to the env var). When set
 	 * and the device flow is about to run, `onEnvVarInfo` is invoked with
-	 * a friendly message — login proceeds normally; once it succeeds the
-	 * stored session takes precedence over the env var (precedence rule).
+	 * a friendly message — login proceeds normally, but the env var keeps
+	 * precedence over the stored session while it is set.
 	 */
 	envApiKey?: string;
 	onEnvVarInfo?: (message: string) => void;
 	/**
-	 * Explicit API URL to persist in credentials after a successful login.
-	 * When omitted, falls back to `process.env.POLI_API_URL`. This is the
-	 * value the CLI will use on subsequent runs without `--api-url` —
-	 * critical for non-prod (develop) targeting, which relies on a custom
-	 * URL but should not require the flag at every invocation.
+	 * The API URL to store in credentials after a successful login, so later
+	 * runs target it without `--api-url` (develop relies on this). Only one
+	 * the user chose: a URL taken from a manifest must never become the
+	 * default for every later command. It must be the API this login talks
+	 * to (POLI_API_URL), or the stored apiUrl and origin would disagree.
 	 */
 	apiUrl?: string;
 }
@@ -44,29 +44,34 @@ export interface DeviceLoginOptions {
 export async function executeDeviceLogin(
 	options: DeviceLoginOptions = {},
 ): Promise<StoredCredentials> {
+	const apiUrl = options.apiUrl === undefined ? undefined : assertTrustedApiOrigin(options.apiUrl);
+	if (apiUrl !== undefined && apiUrl !== apiOrigin()) {
+		throw new UsageError(`Cannot store ${apiUrl}: this login talks to ${apiOrigin()}.`);
+	}
 	const client = options.apiClient ?? createApiClient();
 
 	// Step 0: friendly info-message when an api-key env var is set.
-	// Login is not blocked — but once the session is stored, it takes
-	// precedence over the env var (resolveAuth rule).
+	// Login is not blocked, but the env var keeps precedence over the
+	// stored session (resolveAuth rule).
 	const envApiKey =
 		options.envApiKey !== undefined ? options.envApiKey : process.env.POLI_PAGE_API_KEY;
 	if (envApiKey && options.onEnvVarInfo) {
 		options.onEnvVarInfo(
-			'POLI_PAGE_API_KEY is set in your environment. After login completes, your session will be preferred over the env var.'
+			'POLI_PAGE_API_KEY is set in your environment: whoami, publish, render and documents keep using it instead of your session until you unset it.'
 		);
 	}
 
 	// Step 1: Request device code
 	const deviceReq = await client.deviceRequest();
-	options.onUserCode?.(deviceReq.userCode, deviceReq.verificationUrl);
+	const verificationUrl = assertVerificationUrl(deviceReq.verificationUrl, apiOrigin());
+	options.onUserCode?.(deviceReq.userCode, verificationUrl);
 
 	// Step 2: Open browser
 	if (options.openUrl) {
-		await options.openUrl(deviceReq.verificationUrl);
+		await options.openUrl(verificationUrl);
 	} else {
 		const open = await import('open');
-		await open.default(deviceReq.verificationUrl);
+		await open.default(verificationUrl);
 	}
 
 	// Step 3: Poll for confirmation
@@ -103,7 +108,6 @@ export async function executeDeviceLogin(
 			const result = await client.devicePoll(deviceReq.deviceCode);
 
 			if (result.status === 'confirmed' && result.sessionToken && result.user) {
-				const apiUrl = options.apiUrl ?? process.env.POLI_API_URL;
 				const credentials: StoredCredentials = {
 					...(apiUrl ? { apiUrl } : {}),
 					origin: apiOrigin(),
@@ -152,7 +156,7 @@ export interface WhoamiOptions {
 
 export type WhoamiResult =
 	| { mode: 'session'; payload: MeResponse }
-	| { mode: 'api-key'; payload: MeResponse }
+	| { mode: 'api-key'; payload: MeResponse; sessionIgnored: boolean }
 	| {
 			mode: 'session-no-org';
 			user: UserInfo;
@@ -199,6 +203,9 @@ export async function executeWhoami(
 	}
 
 	const payload = await client.getMe(auth.authorization, auth.orgIdHeader);
+	if (auth.mode === 'api-key') {
+		return { mode: auth.mode, payload, sessionIgnored: auth.sessionIgnored === true };
+	}
 	return { mode: auth.mode, payload };
 }
 
@@ -210,10 +217,12 @@ export function registerAuthCommands(program: Command) {
 			const { default: chalk } = await import('chalk');
 			const { default: ora } = await import('ora');
 
+			console.log(chalk.dim(`Logging in to ${new URL(apiOrigin()).host}`));
 			const spinner = ora('Opening browser for authentication…').start();
 
 			try {
 				const credentials = await executeDeviceLogin({
+					apiUrl: getLoginApiUrl(),
 					onEnvVarInfo: (msg) => {
 						spinner.info(chalk.dim(msg));
 						spinner.start('Opening browser for authentication…');
@@ -316,6 +325,13 @@ export function registerAuthCommands(program: Command) {
 					console.log(
 						`${chalk.bold(preview)} @ ${chalk.cyan(orgSlug)} (api-key, environment=${env}${role})`
 					);
+					if (result.sessionIgnored) {
+						console.log(
+							chalk.dim(
+								'  POLI_PAGE_API_KEY is set, so it is used instead of your `poli login` session.'
+							)
+						);
+					}
 				}
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : 'whoami failed';

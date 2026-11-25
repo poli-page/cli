@@ -12,6 +12,9 @@ import type { ApiClient, MeResponse } from '../../src/api-client.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
 import { testApiKey } from '../helpers/api-key.js';
 
+const openBrowser = vi.hoisted(() => vi.fn(async (_url: string) => {}));
+vi.mock('open', () => ({ default: openBrowser }));
+
 function sessionMe(): MeResponse {
 	return {
 		auth: { mode: 'session', keyType: null, environment: null, role: 'owner' },
@@ -81,6 +84,7 @@ describe('auth commands', () => {
 	});
 
 	afterEach(async () => {
+		vi.unstubAllEnvs();
 		await rm(fakeHome, { recursive: true, force: true });
 	});
 
@@ -178,7 +182,7 @@ describe('auth commands', () => {
 
 			expect(infoMessages).toHaveLength(1);
 			expect(infoMessages[0]).toMatch(/POLI_PAGE_API_KEY/);
-			expect(infoMessages[0]).toMatch(/session.*will be preferred|will be ignored/i);
+			expect(infoMessages[0]).toMatch(/whoami, publish, render and documents keep using it instead of your session/i);
 			// Device flow still runs and stores credentials.
 			expect(credentials.session).toBe('device-session-token');
 		});
@@ -198,6 +202,7 @@ describe('auth commands', () => {
 		});
 
 		it('persists the explicit apiUrl in credentials when provided', async () => {
+			vi.stubEnv('POLI_API_URL', 'https://api-develop.poli.page');
 			const credentials = await executeDeviceLogin({
 				apiClient: createMockApiClient(),
 				homeDir: fakeHome,
@@ -211,9 +216,8 @@ describe('auth commands', () => {
 			expect(stored?.apiUrl).toBe('https://api-develop.poli.page');
 		});
 
-		it('does not write apiUrl when neither option nor env var is set', async () => {
-			const savedEnv = process.env.POLI_API_URL;
-			delete process.env.POLI_API_URL;
+		it('does not persist POLI_API_URL on its own: only the apiUrl the caller passes', async () => {
+			vi.stubEnv('POLI_API_URL', 'https://api.poli.page');
 			try {
 				const credentials = await executeDeviceLogin({
 					apiClient: createMockApiClient(),
@@ -221,11 +225,215 @@ describe('auth commands', () => {
 					openUrl: async () => {},
 				});
 				expect(credentials.apiUrl).toBeUndefined();
+				expect((await readCredentials(fakeHome))?.apiUrl).toBeUndefined();
 			} finally {
-				if (savedEnv !== undefined) {
-					process.env.POLI_API_URL = savedEnv;
-				}
+				vi.unstubAllEnvs();
 			}
+		});
+
+		it('stores the apiUrl as its validated origin', async () => {
+			vi.stubEnv('POLI_API_URL', 'https://api-develop.poli.page');
+			const credentials = await executeDeviceLogin({
+				apiClient: createMockApiClient(),
+				homeDir: fakeHome,
+				apiUrl: 'https://api-develop.poli.page/',
+				openUrl: async () => {},
+			});
+			expect(credentials.apiUrl).toBe('https://api-develop.poli.page');
+		});
+
+		it('refuses an apiUrl that is not the API this login talks to, before the device flow starts', async () => {
+			vi.stubEnv('POLI_API_URL', 'https://api.poli.page');
+			const deviceRequest = vi.fn();
+			await expect(
+				executeDeviceLogin({
+					apiClient: createMockApiClient({ deviceRequest }),
+					homeDir: fakeHome,
+					apiUrl: 'https://api-develop.poli.page',
+					openUrl: async () => {},
+				})
+			).rejects.toMatchObject({ exitCode: ExitCode.INVALID_USAGE });
+			expect(deviceRequest).not.toHaveBeenCalled();
+			expect(await readCredentials(fakeHome)).toBeNull();
+		});
+
+		it('refuses an untrusted apiUrl before the device flow starts', async () => {
+			const deviceRequest = vi.fn();
+			await expect(
+				executeDeviceLogin({
+					apiClient: createMockApiClient({ deviceRequest }),
+					homeDir: fakeHome,
+					apiUrl: 'https://evil.com',
+					openUrl: async () => {},
+				})
+			).rejects.toMatchObject({ exitCode: ExitCode.INVALID_USAGE });
+			expect(deviceRequest).not.toHaveBeenCalled();
+		});
+
+		it.each([
+			'file:///etc/passwd',
+			'smb://attacker.example/share',
+			'poli-evil://run',
+			'https://evil.com/device',
+		])('does not open the verification URL %s, polls nothing and stores nothing', async (url) => {
+			const opened: string[] = [];
+			const userCodes: string[] = [];
+			const devicePoll = vi.fn();
+			await expect(
+				executeDeviceLogin({
+					apiClient: createMockApiClient({
+						deviceRequest: async () => ({
+							deviceCode: 'dc',
+							userCode: 'UC',
+							verificationUrl: url,
+							expiresIn: 60,
+							interval: 0,
+						}),
+						devicePoll,
+					}),
+					homeDir: fakeHome,
+					openUrl: async (u) => {
+						opened.push(u);
+					},
+					onUserCode: (code) => userCodes.push(code),
+				})
+			).rejects.toMatchObject({
+				exitCode: ExitCode.NETWORK_OR_API_ERROR,
+				message: expect.stringContaining(new URL(url).href),
+			});
+			expect(opened).toEqual([]);
+			expect(userCodes).toEqual([]);
+			expect(devicePoll).not.toHaveBeenCalled();
+			expect(await readCredentials(fakeHome)).toBeNull();
+		});
+	});
+
+	describe('poli login (the command)', () => {
+		const DEVICE_SITE = 'https://app.poli.page/auth/device?code=UC';
+		let projectDir: string;
+		let logs: string[];
+		let output: string;
+		let verificationUrl: string;
+		let fetchedUrls: string[];
+		let savedExitCode: typeof process.exitCode;
+
+		beforeEach(async () => {
+			projectDir = await mkdtemp(join(tmpdir(), 'poli-login-cmd-'));
+			vi.stubEnv('HOME', fakeHome);
+			vi.stubEnv('USERPROFILE', fakeHome);
+			vi.stubEnv('POLI_API_URL', '');
+			vi.stubEnv('POLI_ALLOW_INSECURE_API', '');
+			vi.stubEnv('POLI_PAGE_API_KEY', '');
+			vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
+			openBrowser.mockReset();
+			verificationUrl = DEVICE_SITE;
+			fetchedUrls = [];
+			vi.stubGlobal(
+				'fetch',
+				vi.fn(async (url: string) => {
+					fetchedUrls.push(url);
+					const path = new URL(url).pathname;
+					const body =
+						path === '/api/device/request'
+							? { deviceCode: 'dc', userCode: 'UC', verificationUrl, expiresIn: 60, interval: 0 }
+							: path === '/api/device/poll'
+								? { status: 'confirmed', sessionToken: 'tok', user: { id: 'u', name: 'X', email: 'x@test.com' } }
+								: [];
+					return new Response(JSON.stringify(body), {
+						status: 200,
+						headers: { 'Content-Type': 'application/json' },
+					});
+				})
+			);
+			logs = [];
+			vi.spyOn(console, 'log').mockImplementation((msg: unknown = '') => {
+				logs.push(stripVTControlCharacters(String(msg)));
+			});
+			vi.spyOn(console, 'error').mockImplementation(() => {});
+			output = '';
+			vi.spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
+				output += stripVTControlCharacters(String(chunk));
+				return true;
+			});
+			savedExitCode = process.exitCode;
+			process.exitCode = undefined;
+		});
+
+		afterEach(async () => {
+			process.exitCode = savedExitCode;
+			vi.unstubAllEnvs();
+			vi.unstubAllGlobals();
+			vi.restoreAllMocks();
+			await rm(projectDir, { recursive: true, force: true });
+		});
+
+		function poli(...args: string[]) {
+			return createProgram().parseAsync(args, { from: 'user' });
+		}
+
+		async function linkProject(apiUrl: string) {
+			await writeManifest(projectDir, {
+				project: { name: 'p' },
+				cloud: { orgSlug: 'acme', orgId: 'org_1', projectSlug: 'p', projectId: 'proj_1', apiUrl },
+			});
+		}
+
+		it.each(['https://api.poli.page', 'https://api-develop.poli.page'])(
+			'in a folder whose manifest sets cloud.apiUrl %s, stores no apiUrl',
+			async (apiUrl) => {
+				await linkProject(apiUrl);
+				await poli('login');
+				expect(process.exitCode).toBeUndefined();
+				const stored = await readCredentials(fakeHome);
+				expect(stored?.session).toBe('tok');
+				expect(stored?.apiUrl).toBeUndefined();
+				expect(fetchedUrls.every((u) => u.startsWith('https://api.poli.page/'))).toBe(true);
+			}
+		);
+
+		it('stores the --api-url origin and names that host before the device flow', async () => {
+			await poli('--api-url', 'https://api-develop.poli.page', 'login');
+			expect((await readCredentials(fakeHome))?.apiUrl).toBe('https://api-develop.poli.page');
+			expect(logs[0]).toBe('Logging in to api-develop.poli.page');
+			expect(openBrowser).toHaveBeenCalledWith(DEVICE_SITE);
+		});
+
+		it('stores a POLI_API_URL the user set', async () => {
+			vi.stubEnv('POLI_API_URL', 'https://api-develop.poli.page');
+			await poli('login');
+			expect((await readCredentials(fakeHome))?.apiUrl).toBe('https://api-develop.poli.page');
+		});
+
+		it('keeps the apiUrl an earlier login stored', async () => {
+			await writeCredentials(
+				{
+					apiUrl: 'https://api-develop.poli.page',
+					origin: 'https://api-develop.poli.page',
+					session: 'old',
+					user: { id: 'u', name: 'X', email: 'x@test.com' },
+					orgs: {},
+				},
+				fakeHome
+			);
+			await poli('login');
+			const stored = await readCredentials(fakeHome);
+			expect(stored?.session).toBe('tok');
+			expect(stored?.apiUrl).toBe('https://api-develop.poli.page');
+			expect(logs[0]).toBe('Logging in to api-develop.poli.page');
+		});
+
+		it('names the default API host', async () => {
+			await poli('login');
+			expect(logs[0]).toBe('Logging in to api.poli.page');
+		});
+
+		it('refuses to open a verification URL on another site: prints it and exits non-zero', async () => {
+			verificationUrl = 'smb://attacker.example/share';
+			await poli('login');
+			expect(openBrowser).not.toHaveBeenCalled();
+			expect(process.exitCode).toBe(ExitCode.NETWORK_OR_API_ERROR);
+			expect(output).toContain('smb://attacker.example/share');
+			expect(await readCredentials(fakeHome)).toBeNull();
 		});
 	});
 
@@ -343,6 +551,35 @@ describe('auth commands', () => {
 			expect(receivedOrgId).toBeUndefined();
 			expect(result.payload.key?.preview).toBe('pp_live_xxx…abcd');
 			expect(result.payload.auth.environment).toBe('live');
+			expect(result.mode === 'api-key' && result.sessionIgnored).toBe(false);
+		});
+
+		it('uses POLI_PAGE_API_KEY over a stored session in a linked project, and says so', async () => {
+			await setupSessionCreds();
+			await setupLinkedProject();
+			process.env.POLI_PAGE_API_KEY = testApiKey('live');
+
+			let receivedAuth = '';
+			let receivedOrgId: string | undefined;
+			const client = createMockApiClient({
+				getMe: async (auth, orgId) => {
+					receivedAuth = auth;
+					receivedOrgId = orgId;
+					return apiKeyMe();
+				},
+			});
+
+			const result = await executeWhoami({
+				cwd: projectDir,
+				homeDir: fakeHome,
+				apiClient: client,
+			});
+
+			expect(result.mode).toBe('api-key');
+			if (result.mode !== 'api-key') throw new Error('mode mismatch');
+			expect(result.sessionIgnored).toBe(true);
+			expect(receivedAuth).toBe(`Bearer ${testApiKey('live')}`);
+			expect(receivedOrgId).toBeUndefined();
 		});
 
 		it('throws "Not logged in" when neither credentials nor env var are set', async () => {
@@ -532,6 +769,28 @@ describe('auth commands', () => {
 			await whoami();
 			expect(logs).toEqual(['pp_live_xxx…abcd @ acme (api-key, environment=live)']);
 			expect(process.exitCode).toBeUndefined();
+		});
+
+		it('with a session and a key: prints the key and that the session is not used', async () => {
+			await writeCredentials(
+				{
+					session: 'session-token',
+					user: { id: 'user_1', name: 'Xavier', email: 'xavier@test.com' },
+					orgs: { acme: {} },
+				},
+				fakeHome
+			);
+			vi.stubEnv('POLI_PAGE_API_KEY', testApiKey('live'));
+			me = apiKeyMe();
+			await whoami();
+			expect(logs).toEqual([
+				'pp_live_xxx…abcd @ acme (api-key, environment=live)',
+				'  POLI_PAGE_API_KEY is set, so it is used instead of your `poli login` session.',
+			]);
+			const [, init] = vi.mocked(fetch).mock.calls[0];
+			expect((init?.headers as Record<string, string>).Authorization).toBe(
+				`Bearer ${testApiKey('live')}`
+			);
 		});
 
 		it('without a session or a key: exit 4 with "Not logged in" on stderr, and no API call', async () => {
