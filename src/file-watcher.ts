@@ -1,6 +1,6 @@
 import chokidar from 'chokidar';
 import type { Stats } from 'node:fs';
-import { relative, sep } from 'node:path';
+import { relative } from 'node:path';
 import { isInIgnoredProjectDirectory, shouldIgnoreProjectPath } from './project-sync.js';
 
 export interface DebouncedBatcher<T> {
@@ -55,15 +55,19 @@ export function createDebouncedBatcher<T>(
 // stats is treated as a directory: the file check runs again once the
 // stats are in. A directory holding an extra path stays walked so chokidar
 // reaches that path; its other entries still go through the checks.
-function projectIgnoredFn(
+// Paths are compared project-relative in POSIX form: chokidar hands
+// `ignored` forward-slash paths, `resolve()` gives backslashes on Windows.
+export function projectIgnoredFn(
 	cwd: string,
 	extraPaths: ReadonlySet<string>
 ): (path: string, stats?: Stats) => boolean {
+	const toPosixRelative = (path: string) => relative(cwd, path).split(/[\\/]/).join('/');
+	const extras = [...extraPaths].map(toPosixRelative);
 	return (path, stats) => {
-		if (extraPaths.has(path)) return false;
-		const relPath = relative(cwd, path);
+		const relPath = toPosixRelative(path);
+		if (extras.includes(relPath)) return false;
 		if (!stats || stats.isDirectory()) {
-			if ([...extraPaths].some((extra) => extra.startsWith(path + sep))) return false;
+			if (extras.some((extra) => extra.startsWith(relPath + '/'))) return false;
 			return isInIgnoredProjectDirectory(relPath);
 		}
 		return shouldIgnoreProjectPath(relPath);

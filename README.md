@@ -743,7 +743,7 @@ Your org is being migrated to a new tier. `poli watch` retries automatically aft
 
 ### `poli watch` doesn't fire on save
 
-Make sure the file is in the project file set (`poli-page.json`, `tailwind.css`, `templates/{slug}/`, `partials/`, `assets/`): no other file triggers a sync, except the `poli dev --data` file. Ignored directories: `node_modules/`, `.git/`, `output/`, `dist/`, `.poli/`; `*.log` and `.DS_Store` are ignored too. The watcher does not follow symlinks: a file reached through a symlinked directory is not watched. The watcher uses `chokidar` v5; if your editor saves via "atomic write + rename" (some Vim setups), the rename event fires within the debounce window and triggers a sync.
+Make sure the file is in the project file set, as [`poli publish`](#poli-publish) defines the bundle (only some file types count under each folder, e.g. `templates/<slug>/logo.svg` does not): no other file triggers a sync, except the `poli dev --data` file. The watcher does not follow symlinks: a file reached through a symlinked directory is not watched. The watcher uses `chokidar` v5; if your editor saves via "atomic write + rename" (some Vim setups), the rename event fires within the debounce window and triggers a sync.
 
 ---
 
