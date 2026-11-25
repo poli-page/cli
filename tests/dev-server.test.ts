@@ -114,6 +114,22 @@ describe('Host validation', () => {
 		expect(noHost).toMatch(/^HTTP\/1\.[01] 403 /);
 	});
 
+	it('rejects a rebinding POST that looks same-origin to the fetch metadata', async () => {
+		// A rebound page controls both Host and Origin, so the cross-site
+		// check alone would pass it: only the Host check, run first, stops it.
+		const { server, handled } = await boot();
+		const host = `evil.example:${server.port}`;
+		const response = await requestWithHost(
+			server.port,
+			host,
+			'/api/select?template=invoice',
+			'POST',
+			{ 'Sec-Fetch-Site': 'same-origin', Origin: `http://${host}` }
+		);
+		expect(response.status).toBe(403);
+		expect(handled).toEqual([]);
+	});
+
 	it('guards the SSE endpoint too', async () => {
 		const { server } = await boot();
 		const response = await requestWithHost(server.port, 'evil.example', '/events');
