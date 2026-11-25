@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Socket } from 'node:net';
@@ -21,6 +22,48 @@ export const DEFAULT_DEV_PORT = 7654;
 
 const DEFAULT_PORT_ATTEMPTS = 20;
 const SSE_HEARTBEAT_MS = 25_000;
+
+export interface SecurityHeaderOptions {
+	/**
+	 * Allow this response inside a frame of the same origin: the dev page
+	 * shows `/pdf` in an iframe, which `frame-ancestors 'none'` would blank.
+	 */
+	frameable?: boolean;
+	/** Exact contents of the response's inline `<script>` elements, allowed by hash. */
+	inlineScripts?: readonly string[];
+	/** Exact contents of the response's inline `<style>` elements, allowed by hash. */
+	inlineStyles?: readonly string[];
+}
+
+/**
+ * Headers every dev server response carries, so no other site can frame
+ * the preview (clickjacking the Pin and template controls) or sniff a
+ * response into a script. The server sets the default set before any
+ * handler runs; a handler passes its own set to `writeHead` to loosen
+ * framing or allow its inline code.
+ */
+export function securityHeaders(options: SecurityHeaderOptions = {}): Record<string, string> {
+	const directives = [
+		"default-src 'self'",
+		"frame-src 'self'",
+		`frame-ancestors ${options.frameable ? "'self'" : "'none'"}`,
+	];
+	if (options.inlineScripts?.length) {
+		directives.push(`script-src 'self' ${options.inlineScripts.map(cspHash).join(' ')}`);
+	}
+	if (options.inlineStyles?.length) {
+		directives.push(`style-src 'self' ${options.inlineStyles.map(cspHash).join(' ')}`);
+	}
+	return {
+		'X-Frame-Options': options.frameable ? 'SAMEORIGIN' : 'DENY',
+		'Content-Security-Policy': directives.join('; '),
+		'X-Content-Type-Options': 'nosniff',
+	};
+}
+
+function cspHash(source: string): string {
+	return `'sha256-${createHash('sha256').update(source, 'utf8').digest('base64')}'`;
+}
 
 export interface DevServerRequest {
 	method: string;
@@ -69,6 +112,7 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
 	let closed = false;
 
 	const server = createServer((req, res) => {
+		for (const [name, value] of Object.entries(securityHeaders())) res.setHeader(name, value);
 		// The request target is the first attacker-controlled input this
 		// listener touches, and the WHATWG parser throws on targets the
 		// HTTP parser lets through (an absolute-form URI with an
@@ -82,18 +126,31 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
 			res.end(JSON.stringify({ error: 'Malformed request URL.' }));
 			return;
 		}
-		// Any web page can fire requests at 127.0.0.1, and with DNS
-		// rebinding it can even read the responses. The Host header is the
-		// one thing the browser pins to the page's origin, so only the
-		// names a legitimate local browser sends are answered — everything
-		// else (CSRF against the POST endpoints, rebinding against the
-		// draft preview, the SSE stream) gets a 403. Applies to every
-		// route, the SSE endpoint included.
+		// With DNS rebinding a web page can read the responses of a
+		// loopback server, and its requests look same-origin to the
+		// fetch-metadata check below. The Host header is the one thing the
+		// browser pins to the page's origin, so only the names a legitimate
+		// local browser sends are answered — everything else (rebinding
+		// against the draft preview, the SSE stream, the POST endpoints) gets
+		// a 403. Applies to every route and method, and must run first.
 		if (!isAllowedHost(req.headers.host)) {
 			res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
 			res.end(
 				JSON.stringify({
 					error: `Blocked request with unrecognized Host header. poli dev answers only ${host} and localhost on its own port.`,
+				})
+			);
+			return;
+		}
+		// The Host check does not stop CSRF: a page on any site can send a
+		// simple POST to 127.0.0.1 with the right Host and no preflight,
+		// and each one would trigger a draft render on the user's session.
+		const method = (req.method ?? 'GET').toUpperCase();
+		if (method !== 'GET' && method !== 'HEAD' && !isSameOriginRequest(req)) {
+			res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+			res.end(
+				JSON.stringify({
+					error: 'Blocked cross-site request. poli dev accepts changes only from its own page.',
 				})
 			);
 			return;
@@ -104,7 +161,7 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
 		}
 		void Promise.resolve(
 			options.handleRequest({
-				method: (req.method ?? 'GET').toUpperCase(),
+				method,
 				pathname: url.pathname,
 				query: url.searchParams,
 				req,
@@ -143,6 +200,24 @@ export async function startDevServer(options: DevServerOptions): Promise<DevServ
 		if (!address) return false;
 		const requestPort = authority.port === '' ? '80' : authority.port;
 		return requestPort === String(address.port);
+	}
+
+	/**
+	 * Called after `isAllowedHost`, so the Host header names this server.
+	 * `Sec-Fetch-Site` is set by the browser and cannot be forged by a
+	 * page; browsers without it still send `Origin` on a POST. A request
+	 * with neither is not from a browser page we can vouch for.
+	 */
+	function isSameOriginRequest(req: IncomingMessage): boolean {
+		const site = req.headers['sec-fetch-site'];
+		if (site !== undefined) return site === 'same-origin';
+		const origin = req.headers.origin;
+		if (origin === undefined) return false;
+		try {
+			return new URL(origin).origin === new URL(`http://${req.headers.host}`).origin;
+		} catch {
+			return false;
+		}
 	}
 
 	server.on('connection', (socket) => {

@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { DEV_ERROR_TITLES, DEV_PAGE_HTML } from '../src/dev-page.js';
+import { createHash } from 'node:crypto';
+import {
+	DEV_ERROR_TITLES,
+	DEV_PAGE_HTML,
+	DEV_PAGE_SECURITY_HEADERS,
+	DEV_PLACEHOLDER_HTML,
+	DEV_PLACEHOLDER_SECURITY_HEADERS,
+} from '../src/dev-page.js';
 import type { DevError } from '../src/commands/dev.js';
 
 describe('dev page template', () => {
@@ -39,5 +46,31 @@ describe('dev page template', () => {
 		expect(DEV_PAGE_HTML).not.toContain('Live preview');
 		expect(DEV_PAGE_HTML).not.toContain('/api/pdf');
 		expect(DEV_PAGE_HTML).not.toContain('pageCount');
+	});
+
+	it('allows its inline script and style by hash, and has no inline code the CSP would block', () => {
+		const hash = (source: string) =>
+			`'sha256-${createHash('sha256').update(source, 'utf8').digest('base64')}'`;
+		const cases = [
+			[DEV_PAGE_HTML, DEV_PAGE_SECURITY_HEADERS],
+			[DEV_PLACEHOLDER_HTML, DEV_PLACEHOLDER_SECURITY_HEADERS],
+		] as const;
+		for (const [html, headers] of cases) {
+			const csp = headers['Content-Security-Policy'];
+			expect(csp).not.toContain('unsafe-inline');
+			const scripts = html.split('<script>').slice(1).map((part) => part.split('</script>')[0]);
+			const styles = html.split('<style>').slice(1).map((part) => part.split('</style>')[0]);
+			// Every element is a bare <script>/<style>, so each one is hashed.
+			expect(html.split('<script').length - 1).toBe(scripts.length);
+			expect(html.split('<style').length - 1).toBe(styles.length);
+			for (const source of scripts) expect(csp).toContain(hash(source));
+			for (const source of styles) expect(csp).toContain(hash(source));
+			// Attributes CSP blocks without 'unsafe-inline'.
+			expect(html).not.toMatch(/\s(on[a-z]+|style)=/);
+		}
+		expect(DEV_PAGE_HTML).toContain('<script>');
+		expect(DEV_PAGE_HTML).toContain('<style>');
+		expect(DEV_PLACEHOLDER_SECURITY_HEADERS['X-Frame-Options']).toBe('SAMEORIGIN');
+		expect(DEV_PAGE_SECURITY_HEADERS['X-Frame-Options']).toBe('DENY');
 	});
 });

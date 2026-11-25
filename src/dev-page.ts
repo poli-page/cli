@@ -1,4 +1,5 @@
 import type { DevError } from './commands/dev.js';
+import { securityHeaders } from './dev-server.js';
 
 /**
  * Overlay title for each failure stage. Typed against `DevError['stage']`
@@ -281,3 +282,23 @@ export const DEV_PLACEHOLDER_HTML = `<!doctype html>
 </style>
 </head><body><p>Waiting for the first render…</p></body></html>
 `;
+
+function inlineBlocks(html: string, tag: 'script' | 'style'): string[] {
+	const pattern = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'g');
+	return [...html.matchAll(pattern)].map((match) => match[1] ?? '');
+}
+
+/**
+ * The page's CSP allows its own inline script and style by hash, computed
+ * from the markup above so an edit cannot leave a stale hash behind.
+ */
+export const DEV_PAGE_SECURITY_HEADERS = securityHeaders({
+	inlineScripts: inlineBlocks(DEV_PAGE_HTML, 'script'),
+	inlineStyles: inlineBlocks(DEV_PAGE_HTML, 'style'),
+});
+
+/** The placeholder fills the page's own `/pdf` frame, so same-origin framing stays allowed. */
+export const DEV_PLACEHOLDER_SECURITY_HEADERS = securityHeaders({
+	frameable: true,
+	inlineStyles: inlineBlocks(DEV_PLACEHOLDER_HTML, 'style'),
+});
