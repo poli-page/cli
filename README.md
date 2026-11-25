@@ -159,7 +159,8 @@ Flags:
 
 - `--with-template <ref>` — pre-install a starter template, format `<collection>/<template>`. Skips the interactive prompt.
 - `--template-name <name>` — override the imported template's destination name
-- `--source <repo>` — source repo, format `github:<owner>/<repo>` (default: `github:poli-page/templates`)
+- `--source <repo>` — source repo, format `github:<owner>/<repo>` (default: `github:poli-page/templates`); `<owner>` and `<repo>` are each one name of letters, digits, `.`, `_` and `-`, not `.` or `..`
+  A source's collection and template names, and the `template`, `mock`, `fonts[].src` and `images[]` paths of its template manifests, must be relative paths of letters, digits, `.`, `_` and `-` segments (no `..`, no leading `.` or `/`); the first one that is not refuses the whole import before anything is written. No imported file is written outside the project or the cache, including through a symlink that is there when the import starts; the paths are checked before the writes, so another process changing the project's folders during the import is not covered.
 - `--no-cache` — bypass the 24-hour template cache
 
 ##### `--starter getting-started` — start from your org's getting-started project
@@ -183,7 +184,7 @@ poli publish --env sandbox   # publish the project to the sandbox environment
 
 and re-run the dashboard snippet to see your change.
 
-Piped, or with `--json`, it prints `{ starter, projectDir, link }` as JSON instead (`link` is `{ status: "linked", orgSlug }` or `{ status: "unlinked", reason }`) and never prompts. `<name>` is one top-level folder of the source (no `/`).
+Piped, or with `--json`, it prints `{ starter, projectDir, link }` as JSON instead (`link` is `{ status: "linked", orgSlug }` or `{ status: "unlinked", reason }`) and never prompts. `<name>` is one top-level folder of the source (no `/`). Every file path in that folder must be made of letters, digits, `.`, `_` and `-` segments (dotfiles allowed, no `.` or `..` segment); the first one that is not refuses the starter before any file is fetched.
 
 Flags: `--starter <name>`, `--org <slug>`, `--force`, `--json`, plus `--source` and `--no-cache` as above.
 
