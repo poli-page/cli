@@ -10,12 +10,15 @@ import { shouldEmitJson } from '../../output.js';
 const PREVIEW_CSP =
 	"default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; base-uri 'none'";
 
-const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${PREVIEW_CSP}">`;
+// DNS prefetch is outside CSP: a <link rel="dns-prefetch"> could still leak
+// data in a hostname.
+const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${PREVIEW_CSP}"><meta http-equiv="x-dns-prefetch-control" content="off">`;
 
 // What a browser parses before it opens <head>: comments (including the
-// `<!-->` and `--!>` forms), the doctype and HTML whitespace (not \s: a
-// non-breaking space is text and opens <body>).
-const BEFORE_HEAD_TOKEN = /<!--(?:>|->|[\s\S]*?--!?>)|<!doctype[^>]*>|[\t\n\f\r ]+/iy;
+// `<!-->` and `--!>` forms), the doctype and the other `<!...>` and `<?...>`
+// bogus comments (an XML prolog), and HTML whitespace (not \s: a non-breaking
+// space is text and opens <body>).
+const BEFORE_HEAD_TOKEN = /<!--(?:>|->|[\s\S]*?--!?>)|<!(?!--)[^>]*>|<\?[^>]*>|[\t\n\f\r ]+/y;
 
 const isTagSpace = (c: string) => '\t\n\f\r '.includes(c);
 

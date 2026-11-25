@@ -10,7 +10,7 @@ import { DocumentNotFoundError, type ApiClient } from '../../../src/api-client.j
 import { createFakeApiClient } from '../../helpers/fake-api-client.js';
 import { testApiKey } from '../../helpers/api-key.js';
 
-const CSP_META = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; base-uri 'none'">`;
+const CSP_META = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; base-uri 'none'"><meta http-equiv="x-dns-prefetch-control" content="off">`;
 
 function makeStubClient(overrides: Partial<ApiClient> = {}): ApiClient {
 	return createFakeApiClient({
@@ -184,6 +184,23 @@ describe('injectPreviewCsp', () => {
 	it('ends a comment at --!> as browsers do', () => {
 		expect(injectPreviewCsp('<!-- a --!><script>x</script><!-- --><head></head>')).toBe(
 			`<!-- a --!><head>${CSP_META}</head><script>x</script><!-- --><head></head>`
+		);
+	});
+
+	it('skips an XML prolog and other bogus comments before <head> as browsers do', () => {
+		expect(
+			injectPreviewCsp('<?xml version="1.0"?><!DOCTYPE html><html><body>x</body></html>')
+		).toBe(
+			`<?xml version="1.0"?><!DOCTYPE html><html><head>${CSP_META}</head><body>x</body></html>`
+		);
+		expect(injectPreviewCsp('<!x><html><head></head>')).toBe(
+			`<!x><html><head>${CSP_META}</head>`
+		);
+	});
+
+	it('does not read an unterminated comment as a bogus one', () => {
+		expect(injectPreviewCsp('<!-- x <head></head>')).toBe(
+			`<head>${CSP_META}</head><!-- x <head></head>`
 		);
 	});
 
