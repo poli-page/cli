@@ -88,6 +88,27 @@ describe('executeDocumentsThumbnails', () => {
 		expect(await readFile(victim, 'utf-8')).toBe('original');
 	});
 
+	it('refuses a symlink on a later page before writing any page', async () => {
+		const victim = join(tempDir, 'victim');
+		await writeFile(victim, 'original');
+		const dir = join(tempDir, 'output', 'thumbnails', 'doc_abc');
+		await mkdir(dir, { recursive: true });
+		await symlink(victim, join(dir, 'page-2.png'));
+		const client = createFakeApiClient({
+			documentThumbnails: async () => [fakeThumb(1), fakeThumb(2)],
+		});
+
+		await expect(
+			executeDocumentsThumbnails('doc_abc', {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				apiClient: client,
+			})
+		).rejects.toThrow(/symlink/);
+		expect(await readdir(dir)).toEqual(['page-2.png']);
+		expect(await readFile(victim, 'utf-8')).toBe('original');
+	});
+
 	it('refuses a symlinked output folder that leaves the working directory before any request', async () => {
 		await symlink(fakeHome, join(tempDir, 'output'));
 		const documentThumbnails = vi.fn(async () => [fakeThumb(1)]);

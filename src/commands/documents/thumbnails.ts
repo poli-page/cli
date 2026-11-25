@@ -10,7 +10,7 @@ import {
 } from '../../api-client.js';
 import { errorToExitCode } from '../../exit-codes.js';
 import { shouldEmitJson } from '../../output.js';
-import { resolveInside, safeWriteFile } from '../../security/paths.js';
+import { resolveInside, resolveWritable, safeWriteFile } from '../../security/paths.js';
 import { assertDocumentId } from './document-id.js';
 
 export interface DocumentsThumbnailsOptions {
@@ -82,6 +82,10 @@ export async function executeDocumentsThumbnails(
 	for (const thumb of thumbnails) {
 		if (!Number.isInteger(thumb.page) || thumb.page <= 0) {
 			throw new Error(`Refusing thumbnail with invalid page ${JSON.stringify(thumb.page)}.`);
+		}
+		if (!options.output) {
+			const name = `page-${thumb.page}.${extensionForContentType(thumb.contentType)}`;
+			await resolveWritable(cwd, join('output', 'thumbnails', id, name));
 		}
 	}
 
