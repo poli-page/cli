@@ -10,7 +10,8 @@ import { shouldEmitJson } from '../../output.js';
 const PREVIEW_CSP =
 	"default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; base-uri 'none'";
 
-// DNS prefetch is outside CSP: a <link rel="dns-prefetch"> could still leak
+// DNS prefetch is outside CSP, so the second meta turns it off for hyperlinks;
+// browsers do not apply it to a <link rel="dns-prefetch">, which can still leak
 // data in a hostname.
 const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${PREVIEW_CSP}"><meta http-equiv="x-dns-prefetch-control" content="off">`;
 
