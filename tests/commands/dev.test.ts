@@ -1033,6 +1033,32 @@ describe('poli dev', () => {
 			expect(draftCalls[0].payload.data).toEqual({ title: 'From override' });
 			expect(draftCalls[0].payload.locale).toBe('fr');
 		});
+
+		it('watches the override file and re-renders with its new data', async () => {
+			await setupTemplate(projectDir, 'invoice');
+			await mkdir(join(projectDir, 'fixtures'), { recursive: true });
+			const dataPath = join(projectDir, 'fixtures', 'acme.json');
+			await writeFile(dataPath, JSON.stringify({ data: { title: 'v1' } }));
+
+			const { factory, getController } = createManualWatcherFactory();
+			let watcherOptions: FileWatcherOptions | undefined;
+			const draftCalls: RenderCall[] = [];
+			await start(undefined, {
+				apiClient: makeStubClient({ draftCalls }),
+				data: 'fixtures/acme.json',
+				watcherFactory: (opts) => {
+					watcherOptions = opts;
+					return factory(opts);
+				},
+			});
+			expect(watcherOptions?.extraPaths).toEqual([dataPath]);
+
+			await writeFile(dataPath, JSON.stringify({ data: { title: 'v2' } }));
+			getController().emit(['fixtures/acme.json']);
+
+			await waitFor(() => draftCalls.length === 2, 'a second draft render');
+			expect(draftCalls[1].payload.data).toEqual({ title: 'v2' });
+		});
 	});
 
 	describe('manifest changes mid-session', () => {

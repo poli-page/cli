@@ -531,6 +531,8 @@ export async function startDevSession(
 	const watcher = (options.watcherFactory ?? createFileWatcher)({
 		cwd,
 		debounceMs: options.debounceMs ?? DEFAULT_DEBOUNCE_MS,
+		// The override is outside the file set, yet a save must re-render.
+		extraPaths: options.data ? [resolve(cwd, options.data)] : [],
 		onBatch: () => {
 			// Chained rather than fire-and-forget so `close()` can await
 			// the batch already in flight. `onBatch` handles its own

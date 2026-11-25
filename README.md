@@ -292,7 +292,7 @@ poli dev -d ./big.json   # render every template against your own data
 | Flag                 | Default            | Meaning                                                    |
 | -------------------- | ------------------ | ---------------------------------------------------------- |
 | `-p, --port <n>`     | `7654`             | Port to bind on `127.0.0.1`. Walks upwards when it is busy. |
-| `-d, --data <path>`  | the template mock  | JSON data file, same shape as `poli render -d`.             |
+| `-d, --data <path>`  | the template mock  | JSON data file, same shape as `poli render -d`; saving it re-renders when it is inside the project. |
 | `--no-open`          | opens the browser  | Skip launching a browser on start.                          |
 | `[template]`         | first in manifest  | Which template to show first.                               |
 
@@ -357,7 +357,7 @@ poli publish --env live --yes      # protected environment, no prompt (scripts)
 | `--json`               | Print the API response as JSON (also the default when stdout is not a TTY).                |
 
 - **Environment names** are 1-20 characters: lowercase letters, digits and single inner hyphens, starting with a letter. A name that breaks this rule is refused before any call (exit `2`). An environment that does not exist in the organization is refused with the list of the ones that do (exit `2`).
-- **The bundle** is the project file set: `poli-page.json`, `tailwind.css`, the `.html`, `.json` and `.css` files under `templates/<slug>/`, the `.html` files under `partials/`, everything under `assets/images/` and `assets/icons/`, and the `.woff2`, `.woff`, `.ttf` and `.otf` files under `assets/fonts/`. Anything else (`.gitignore`, `README.md`, `output/`, `node_modules/`) is left out. Assets are sent base64-encoded, every other file as UTF-8. A bundle over 5 MiB, or a message over 500 characters, is refused before any call (exit `2`).
+- **The bundle** is the project file set: `poli-page.json`, `tailwind.css`, the `.html`, `.json` and `.css` files under `templates/<slug>/`, the `.html` files under `partials/`, everything under `assets/images/` and `assets/icons/`, and the `.woff2`, `.woff`, `.ttf` and `.otf` files under `assets/fonts/`. Anything else (`.gitignore`, `README.md`, `*.log`, `.DS_Store`) is left out, and so is every `node_modules/`, `.git/`, `output/`, `dist/` and `.poli/` directory at any depth. Assets are sent base64-encoded, every other file as UTF-8. A bundle over 5 MiB, or a message over 500 characters, is refused before any call (exit `2`).
 - **Protected environments** (`live` by default) accept a publish from an owner or an admin only. In a terminal, `poli publish` asks for confirmation first; without a TTY it needs `--yes`. `CI=true` does not stand in for `--yes`. Without the role, the API refuses with `ENVIRONMENT_PROTECTED` (exit `5`).
 - **With a service key** (`POLI_PAGE_API_KEY`; the key wins over a `poli login` session when both are there): the CLI calls `GET /v1/me`, then publishes to the manifest's `cloud.projectSlug` with no organization header, since the key carries its organization. `--env` must name the key's own environment, or the publish is refused before any upload, naming it (exit `2`). A standard key is refused with "Standard API keys can only render. Use a service key or `poli login`." (exit `5`); with a session stored, both messages say to unset `POLI_PAGE_API_KEY` to use the session instead. There is no prompt and no environment check on the CLI side: the API applies the protected-environment rule, and a service key without the `admin` role gets `ENVIRONMENT_PROTECTED` (exit `5`).
 - **One publish at a time** per project and environment: while one runs, a second gets `PUBLISH_IN_PROGRESS` (exit `3`). It is not retried; run it again once the first one is done.
@@ -749,7 +749,7 @@ Your org is being migrated to a new tier. `poli watch` retries automatically aft
 
 ### `poli watch` doesn't fire on save
 
-Make sure you're not editing inside an ignored directory. Default ignores: `node_modules/`, `.git/`, `output/`, `dist/`, `*.log`, `.DS_Store`. The watcher uses `chokidar` v5; if your editor saves via "atomic write + rename" (some Vim setups), the rename event fires within the debounce window and triggers a sync.
+Make sure the file is in the project file set, as [`poli publish`](#poli-publish) defines the bundle (only some file types count under each folder, e.g. `templates/<slug>/logo.svg` does not): no other file triggers a sync, except the `poli dev --data` file. The watcher does not follow symlinks: a file reached through a symlinked directory is not watched. The watcher uses `chokidar` v5; if your editor saves via "atomic write + rename" (some Vim setups), the rename event fires within the debounce window and triggers a sync.
 
 ---
 
