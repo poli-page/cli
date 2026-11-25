@@ -2,10 +2,16 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { executeDocumentsPreview } from '../../../src/commands/documents/preview.js';
+import {
+	executeDocumentsPreview,
+	injectPreviewCsp,
+} from '../../../src/commands/documents/preview.js';
 import { DocumentNotFoundError, type ApiClient } from '../../../src/api-client.js';
 import { createFakeApiClient } from '../../helpers/fake-api-client.js';
 import { testApiKey } from '../../helpers/api-key.js';
+
+const CSP_META =
+	`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:">`;
 
 function makeStubClient(overrides: Partial<ApiClient> = {}): ApiClient {
 	return createFakeApiClient({
@@ -51,7 +57,7 @@ describe('executeDocumentsPreview', () => {
 		expect(result.html).toBe('<html>fake preview</html>');
 		expect(result.pageCount).toBe(4);
 		const written = await readFile(result.path!, 'utf-8');
-		expect(written).toBe('<html>fake preview</html>');
+		expect(written).toBe(`<html><head>${CSP_META}</head>fake preview</html>`);
 	});
 
 	it('writes HTML to a custom path when -o is provided', async () => {
@@ -66,7 +72,26 @@ describe('executeDocumentsPreview', () => {
 
 		expect(result.path).toBe(customPath);
 		const written = await readFile(customPath, 'utf-8');
-		expect(written).toBe('<html>fake preview</html>');
+		expect(written).toBe(`<html><head>${CSP_META}</head>fake preview</html>`);
+	});
+
+	it('writes the CSP meta as the first child of an existing <head>', async () => {
+		const html =
+			'<!DOCTYPE html><html lang="en"><head><title>t</title><script>alert(1)</script></head><body></body></html>';
+		const result = await executeDocumentsPreview('doc_abc', {
+			cwd: tempDir,
+			homeDir: fakeHome,
+			apiClient: makeStubClient({
+				documentPreview: async () => ({ html, pageCount: 1 }),
+			}),
+			noOpen: true,
+		});
+
+		const written = await readFile(result.path!, 'utf-8');
+		expect(written).toBe(
+			`<!DOCTYPE html><html lang="en"><head>${CSP_META}<title>t</title><script>alert(1)</script></head><body></body></html>`
+		);
+		expect(result.html).toBe(html);
 	});
 
 	it('returns html + pageCount without writing when json mode is set', async () => {
@@ -122,5 +147,47 @@ describe('executeDocumentsPreview', () => {
 				noOpen: true,
 			})
 		).rejects.toBeInstanceOf(DocumentNotFoundError);
+	});
+});
+
+describe('injectPreviewCsp', () => {
+	it('creates a <head> when the input has none', () => {
+		expect(injectPreviewCsp('<!doctype html><html><body>x</body></html>')).toBe(
+			`<!doctype html><html><head>${CSP_META}</head><body>x</body></html>`
+		);
+		expect(injectPreviewCsp('<p>x</p>')).toBe(`<head>${CSP_META}</head><p>x</p>`);
+	});
+
+	it('matches <head> with attributes, any case, after BOM, whitespace and comments', () => {
+		expect(
+			injectPreviewCsp('\uFEFF<!-- c -->\n<HTML data-x="a>b">\n  <HEAD id="h">x</HEAD>')
+		).toBe(`\uFEFF<!-- c -->\n<HTML data-x="a>b">\n  <HEAD id="h">${CSP_META}x</HEAD>`);
+	});
+
+	it('ignores a <head> inside a comment', () => {
+		expect(injectPreviewCsp('<html><!-- <head> --><head></head></html>')).toBe(
+			`<html><!-- <head> --><head>${CSP_META}</head></html>`
+		);
+	});
+
+	it('treats <!--> as an empty comment, not as the start of one', () => {
+		expect(injectPreviewCsp('<!--><script>alert(1)</script>--><head></head>')).toBe(
+			`<!--><head>${CSP_META}</head><script>alert(1)</script>--><head></head>`
+		);
+	});
+
+	it('ends a comment at --!> as browsers do', () => {
+		expect(injectPreviewCsp('<!-- a --!><script>x</script><!-- --><head></head>')).toBe(
+			`<!-- a --!><head>${CSP_META}</head><script>x</script><!-- --><head></head>`
+		);
+	});
+
+	it('does not take <header> or a later <head> for the document head', () => {
+		expect(injectPreviewCsp('<html><header></header>')).toBe(
+			`<html><head>${CSP_META}</head><header></header>`
+		);
+		expect(injectPreviewCsp('<html><script>x</script><head></head>')).toBe(
+			`<html><head>${CSP_META}</head><script>x</script><head></head>`
+		);
 	});
 });

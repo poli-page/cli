@@ -7,6 +7,33 @@ import { createApiClient, type ApiClient } from '../../api-client.js';
 import { errorToExitCode } from '../../exit-codes.js';
 import { shouldEmitJson } from '../../output.js';
 
+const PREVIEW_CSP =
+	"default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:";
+
+const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${PREVIEW_CSP}">`;
+
+const TAG_ATTRS = String.raw`(?:[^>"']|"[^"]*"|'[^']*')*`;
+// What a browser parses before it opens <head>: BOM, whitespace, doctype,
+// comments (including the `<!-->` and `--!>` forms) and the <html> tag.
+// Anything past it would already run before a meta placed later.
+const BEFORE_HEAD = new RegExp(
+	String.raw`^\uFEFF?(?:\s+|<!--(?:>|->|[\s\S]*?--!?>)|<!doctype[^>]*>|<html\b${TAG_ATTRS}>)*`,
+	'i'
+);
+const HEAD_OPEN = new RegExp(String.raw`^<head\b${TAG_ATTRS}>`, 'i');
+
+// The preview is opened as file://, so its template markup and customer data
+// must not load or run anything.
+export function injectPreviewCsp(html: string): string {
+	const at = BEFORE_HEAD.exec(html)![0].length;
+	const head = HEAD_OPEN.exec(html.slice(at));
+	if (head) {
+		const end = at + head[0].length;
+		return html.slice(0, end) + CSP_META + html.slice(end);
+	}
+	return html.slice(0, at) + `<head>${CSP_META}</head>` + html.slice(at);
+}
+
 export interface DocumentsPreviewOptions {
 	cwd?: string;
 	homeDir?: string;
@@ -64,7 +91,7 @@ export async function executeDocumentsPreview(
 		? resolve(cwd, options.output)
 		: join(cwd, 'output', 'documents', `${id}.preview.html`);
 	await mkdir(dirname(outputPath), { recursive: true });
-	await writeFile(outputPath, html, 'utf-8');
+	await writeFile(outputPath, injectPreviewCsp(html), 'utf-8');
 
 	if (!options.noOpen && options.openFn) {
 		await options.openFn(outputPath);
