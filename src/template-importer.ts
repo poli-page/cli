@@ -5,6 +5,12 @@ import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { readManifest, writeManifest } from './manifest.js';
 import { MANIFEST_FILENAME } from './constants.js';
+import {
+	assertSafeRelativePath,
+	isSafeDottedSegment,
+	isSafeSegment,
+	resolveInside,
+} from './security/paths.js';
 
 export interface TemplateSource {
 	owner: string;
@@ -88,7 +94,8 @@ const TEMPLATE_REF_RE = /^([^/]+)\/([^/]+)$/;
 
 export function parseSource(spec: string): TemplateSource {
 	const m = spec.match(SOURCE_RE);
-	if (!m) {
+	// Owner and repo are segments of the fetch URLs and of the cache path.
+	if (!m || !isSafeDottedSegment(m[1]) || !isSafeDottedSegment(m[2])) {
 		throw new Error(`Invalid source format. Expected github:<owner>/<repo>, got "${spec}".`);
 	}
 	return { owner: m[1], repo: m[2] };
@@ -119,38 +126,92 @@ export async function fetchTemplateIndex(
 	source: TemplateSource = DEFAULT_SOURCE,
 	options: FetchOptions = {}
 ): Promise<TemplateIndex> {
-	const buf = await fetchRaw(source, 'index.json', options);
-	return JSON.parse(buf.toString('utf-8')) as TemplateIndex;
+	return fetchJson(source, 'index.json', options, parseTemplateIndex);
 }
 
+// Collection keys and template names become path segments of the fetch URLs,
+// the cache and the project: refuse the whole index on the first bad one.
+function parseTemplateIndex(data: unknown): TemplateIndex {
+	const index = data as TemplateIndex;
+	for (const [key, coll] of Object.entries(index.collections ?? {})) {
+		if (!isSafeSegment(key)) {
+			throw new Error(
+				`Unsafe collection name ${JSON.stringify(key)} in the source index.json.`
+			);
+		}
+		for (const t of coll.templates ?? []) {
+			if (!isSafeSegment(t.name)) {
+				throw new Error(
+					`Unsafe template name ${JSON.stringify(t.name)} in collection "${key}" of the source index.json.`
+				);
+			}
+		}
+	}
+	return index;
+}
+
+function parseTemplateManifest(data: unknown): TemplateManifest {
+	const manifest = data as TemplateManifest;
+	assertSafeRelativePath(manifest.template?.template, 'template.template');
+	assertSafeRelativePath(manifest.template?.mock, 'template.mock');
+	for (const field of ['fonts', 'images'] as const) {
+		if (manifest[field] !== undefined && !Array.isArray(manifest[field])) {
+			throw new Error(
+				`Unsafe ${field}[]: expected an array, got ${JSON.stringify(manifest[field])}.`
+			);
+		}
+	}
+	for (const font of manifest.fonts ?? []) assertSafeRelativePath(font?.src, 'fonts[].src');
+	for (const img of manifest.images ?? []) assertSafeRelativePath(img, 'images[]');
+	return manifest;
+}
+
+async function fetchJson<T>(
+	source: TemplateSource,
+	relativePath: string,
+	options: FetchOptions,
+	parse: (data: unknown) => T
+): Promise<T> {
+	let parsed: T | undefined;
+	await fetchRaw(source, relativePath, options, (buf) => {
+		parsed = parse(JSON.parse(buf.toString('utf-8')));
+	});
+	return parsed as T;
+}
+
+/**
+ * `accept` runs on the content, cached or fetched, and throws to refuse it;
+ * refused content is never written to the cache.
+ */
 async function fetchRaw(
 	source: TemplateSource,
 	relativePath: string,
-	options: FetchOptions
+	options: FetchOptions,
+	accept?: (buf: Buffer) => void
 ): Promise<Buffer> {
 	const fetcher = options.fetcher ?? ((url: string) => fetch(url));
-	const cacheRoot = join(
-		options.homeDir ?? homedir(),
-		'.polipage',
-		'cache',
-		source.owner,
-		source.repo,
-		'main'
+	const cachePath = await resolveInside(
+		join(options.homeDir ?? homedir(), '.polipage', 'cache'),
+		join(source.owner, source.repo, 'main', relativePath)
 	);
-	const cachePath = join(cacheRoot, relativePath);
 
 	if (!options.noCache) {
+		let cached: Buffer | undefined;
 		try {
 			const s = await stat(cachePath);
 			if (Date.now() - s.mtimeMs < CACHE_TTL_MS) {
-				return readFile(cachePath);
+				cached = await readFile(cachePath);
 			}
 		} catch {
 			// cache miss
 		}
+		if (cached) {
+			accept?.(cached);
+			return cached;
+		}
 	}
 
-	const url = `${RAW_GITHUB}/${source.owner}/${source.repo}/main/${relativePath}`;
+	const url = `${RAW_GITHUB}/${encodePath(`${source.owner}/${source.repo}/main/${relativePath}`)}`;
 	const response = await fetcher(url);
 	if (!response.ok) {
 		throw new Error(
@@ -159,6 +220,7 @@ async function fetchRaw(
 	}
 
 	const buffer = Buffer.from(await response.arrayBuffer());
+	accept?.(buffer);
 
 	try {
 		await mkdir(dirname(cachePath), { recursive: true });
@@ -168,6 +230,10 @@ async function fetchRaw(
 	}
 
 	return buffer;
+}
+
+function encodePath(p: string): string {
+	return p.split('/').map(encodeURIComponent).join('/');
 }
 
 export async function importTemplate(
@@ -183,9 +249,10 @@ export async function importTemplate(
 	};
 
 	// 1. Fetch + validate index
-	const indexBuf = await fetchRaw(source, 'index.json', fetchOpts);
-	const index = JSON.parse(indexBuf.toString('utf-8')) as TemplateIndex;
-	const coll = index.collections?.[ref.collection];
+	const index = await fetchJson(source, 'index.json', fetchOpts, parseTemplateIndex);
+	const coll = Object.hasOwn(index.collections ?? {}, ref.collection)
+		? index.collections[ref.collection]
+		: undefined;
 	if (!coll) {
 		throw new Error(
 			`Unknown collection "${ref.collection}" in source ${source.owner}/${source.repo}.`
@@ -198,7 +265,11 @@ export async function importTemplate(
 	}
 
 	// 2. Check destination doesn't already exist in the project
-	const destDir = join(options.projectDir, 'templates', destName);
+	const destDir = await resolveInside(options.projectDir, join('templates', destName));
+	// The import rewrites these two root files: refuse a symlink out of the
+	// project before anything is written.
+	const tailwindPath = await resolveInside(options.projectDir, 'tailwind.css');
+	await resolveInside(options.projectDir, MANIFEST_FILENAME);
 	if (existsSync(destDir)) {
 		throw new Error(
 			`Template "${destName}" already exists in this project. Pick a different --template-name or remove the existing folder.`
@@ -207,8 +278,23 @@ export async function importTemplate(
 
 	// 3. Fetch the per-template manifest + body files + tailwind block
 	const tplBase = `${ref.collection}/templates/${ref.name}`;
-	const manifestBuf = await fetchRaw(source, `${tplBase}/manifest.json`, fetchOpts);
-	const tplManifest = JSON.parse(manifestBuf.toString('utf-8')) as TemplateManifest;
+	const tplManifest = await fetchJson(
+		source,
+		`${tplBase}/manifest.json`,
+		fetchOpts,
+		parseTemplateManifest
+	);
+	// Resolve every asset destination before the first write, so a symlink
+	// out of the project refuses the import with nothing written.
+	const assetsDir = await resolveInside(options.projectDir, 'assets');
+	const destFontPaths: string[] = [];
+	for (const font of tplManifest.fonts ?? []) {
+		destFontPaths.push(await resolveInside(assetsDir, font.src));
+	}
+	const destImgPaths: string[] = [];
+	for (const imgFile of tplManifest.images ?? []) {
+		destImgPaths.push(await resolveInside(assetsDir, join('images', imgFile)));
+	}
 
 	const htmlBuf = await fetchRaw(
 		source,
@@ -219,46 +305,52 @@ export async function importTemplate(
 	const taBuf = await fetchRaw(source, `${tplBase}/tailwind-additions.css`, fetchOpts);
 	const tailwindAdditions = taBuf.toString('utf-8');
 
-	// 4. Copy fonts (with conflict handling)
-	const copiedFonts: string[] = [];
-	const projectedFonts: TemplateManifestFontEntry[] = [];
-	for (const font of tplManifest.fonts ?? []) {
-		const sourceFontPath = `${ref.collection}/assets/${font.src}`;
-		const fontBuf = await fetchRaw(source, sourceFontPath, fetchOpts);
-		const destFontPath = join(options.projectDir, 'assets', font.src);
-		const result = await writeAssetWithConflict(
-			'font',
-			basename(font.src),
-			destFontPath,
-			fontBuf,
-			options.onConflict
+	// 4. Fetch the fonts and images, then settle every conflict (prompt,
+	// numbered duplicate) before the first write into the project.
+	const pending = new Map<string, Buffer>();
+	const fontPlans: AssetPlan[] = [];
+	for (const [i, font] of (tplManifest.fonts ?? []).entries()) {
+		const fontBuf = await fetchRaw(source, `${ref.collection}/assets/${font.src}`, fetchOpts);
+		fontPlans.push(
+			await planAsset(
+				pending,
+				'font',
+				basename(font.src),
+				destFontPaths[i],
+				fontBuf,
+				options.onConflict
+			)
 		);
-		const projected = { ...font };
-		if (result.path !== destFontPath) {
-			const newName = basename(result.path);
-			projected.src = font.src.replace(basename(font.src), newName);
-		}
-		projectedFonts.push(projected);
-		if (result.copied) copiedFonts.push(basename(result.path));
 	}
-
-	// 5. Copy images
-	const copiedImages: string[] = [];
-	for (const imgFile of tplManifest.images ?? []) {
+	const imgPlans: AssetPlan[] = [];
+	for (const [i, imgFile] of (tplManifest.images ?? []).entries()) {
 		const imgBuf = await fetchRaw(
 			source,
 			`${ref.collection}/assets/images/${imgFile}`,
 			fetchOpts
 		);
-		const destImgPath = join(options.projectDir, 'assets', 'images', imgFile);
-		const result = await writeAssetWithConflict(
-			'image',
-			imgFile,
-			destImgPath,
-			imgBuf,
-			options.onConflict
+		imgPlans.push(
+			await planAsset(pending, 'image', imgFile, destImgPaths[i], imgBuf, options.onConflict)
 		);
-		if (result.copied) copiedImages.push(basename(result.path));
+	}
+
+	// 5. Copy fonts and images
+	const copiedFonts: string[] = [];
+	const projectedFonts: TemplateManifestFontEntry[] = [];
+	for (const [i, font] of (tplManifest.fonts ?? []).entries()) {
+		const plan = fontPlans[i];
+		await writeAsset(plan);
+		const projected = { ...font };
+		if (plan.path !== destFontPaths[i]) {
+			projected.src = font.src.replace(basename(font.src), basename(plan.path));
+		}
+		projectedFonts.push(projected);
+		if (plan.content) copiedFonts.push(basename(plan.path));
+	}
+	const copiedImages: string[] = [];
+	for (const plan of imgPlans) {
+		await writeAsset(plan);
+		if (plan.content) copiedImages.push(basename(plan.path));
 	}
 
 	// 6. Copy template body files, renamed to match destName so the
@@ -274,7 +366,6 @@ export async function importTemplate(
 	const markerKey = `${ref.collection}/${ref.name}`;
 	const startMarker = `/* === poli-page-additions: ${markerKey} — start === */`;
 	const endMarker = `/* === poli-page-additions: ${markerKey} — end === */`;
-	const tailwindPath = join(options.projectDir, 'tailwind.css');
 	const existingTailwind = await readFile(tailwindPath, 'utf-8');
 	let appendedTailwind = false;
 	if (!existingTailwind.includes(startMarker)) {
@@ -328,9 +419,6 @@ interface GitTreeResponse {
 // imports. A project never carries them (the API seeds without them too).
 const STARTER_IMPORT_ONLY_RE = /^templates\/[^/]+\/(?:manifest\.json|tailwind-additions\.css)$/;
 
-// A starter is one top-level folder of the source: no `/`, no `.` or `..`.
-const STARTER_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-
 /**
  * Fetch every file of a starter project — a top-level folder of the
  * source repo holding a `poli-page.json` (e.g. `getting-started/`).
@@ -345,13 +433,14 @@ export async function fetchStarter(
 	source: TemplateSource = DEFAULT_SOURCE,
 	options: FetchOptions = {}
 ): Promise<StarterFile[]> {
-	if (!STARTER_NAME_RE.test(starter)) {
+	// A starter is one top-level folder of the source.
+	if (!isSafeSegment(starter)) {
 		throw new Error(
 			`Invalid starter name "${starter}": a starter is a top-level folder of the source (e.g. getting-started).`
 		);
 	}
 	const fetcher = options.fetcher ?? ((url: string) => fetch(url));
-	const treeUrl = `${GITHUB_API}/repos/${source.owner}/${source.repo}/git/trees/main?recursive=1`;
+	const treeUrl = `${GITHUB_API}/repos/${encodePath(`${source.owner}/${source.repo}`)}/git/trees/main?recursive=1`;
 	const response = await fetcher(treeUrl);
 	if (!response.ok) {
 		throw new Error(`Failed to list ${source.owner}/${source.repo} (HTTP ${response.status}).`);
@@ -370,6 +459,15 @@ export async function fetchStarter(
 	if (!paths.includes(MANIFEST_FILENAME)) {
 		throw new Error(`Unknown starter "${starter}" in source ${source.owner}/${source.repo}.`);
 	}
+	// Tree paths become fetch URLs, cache paths and project paths: refuse the
+	// whole starter on the first bad one, before fetching any file.
+	for (const path of paths) {
+		if (!path.split('/').every(isSafeDottedSegment)) {
+			throw new Error(
+				`Unsafe path ${JSON.stringify(path)} in starter "${starter}" of source ${source.owner}/${source.repo}.`
+			);
+		}
+	}
 
 	const files: StarterFile[] = [];
 	for (const path of paths) {
@@ -378,28 +476,51 @@ export async function fetchStarter(
 	return files;
 }
 
-async function writeAssetWithConflict(
+// Where an asset goes, and the bytes to write there (null: nothing to write).
+interface AssetPlan {
+	path: string;
+	content: Buffer | null;
+}
+
+// `pending` holds the writes planned so far in this import (path → bytes),
+// and stands for files on disk: an asset planned for a path another one of the
+// import already takes conflicts with it, as if that one were written.
+async function planAsset(
+	pending: Map<string, Buffer>,
 	type: 'font' | 'image',
 	filename: string,
 	destPath: string,
 	sourceContent: Buffer,
 	onConflict?: ConflictHandler
-): Promise<{ path: string; copied: boolean }> {
-	let destContent: Buffer | undefined;
-	try {
-		destContent = await readFile(destPath);
-	} catch {
-		// destination doesn't exist
+): Promise<AssetPlan> {
+	const plan = await decideAsset(pending, type, filename, destPath, sourceContent, onConflict);
+	if (plan.content) pending.set(plan.path, plan.content);
+	return plan;
+}
+
+async function decideAsset(
+	pending: Map<string, Buffer>,
+	type: 'font' | 'image',
+	filename: string,
+	destPath: string,
+	sourceContent: Buffer,
+	onConflict?: ConflictHandler
+): Promise<AssetPlan> {
+	let destContent = pending.get(destPath);
+	if (!destContent) {
+		try {
+			destContent = await readFile(destPath);
+		} catch {
+			// destination doesn't exist
+		}
 	}
 
 	if (!destContent) {
-		await mkdir(dirname(destPath), { recursive: true });
-		await writeFile(destPath, sourceContent);
-		return { path: destPath, copied: true };
+		return { path: destPath, content: sourceContent };
 	}
 
 	if (sha256(destContent) === sha256(sourceContent)) {
-		return { path: destPath, copied: false };
+		return { path: destPath, content: null };
 	}
 
 	const handler = onConflict ?? defaultSkipHandler;
@@ -412,23 +533,30 @@ async function writeAssetWithConflict(
 	});
 
 	if (resolution === 'overwrite') {
-		await writeFile(destPath, sourceContent);
-		return { path: destPath, copied: true };
+		return { path: destPath, content: sourceContent };
 	}
 	if (resolution === 'skip') {
-		return { path: destPath, copied: false };
+		return { path: destPath, content: null };
 	}
 	// duplicate
 	const ext = extname(destPath);
 	const stem = destPath.slice(0, destPath.length - ext.length);
 	let counter = 2;
 	let candidate = `${stem}-${counter}${ext}`;
-	while (existsSync(candidate)) {
+	while (existsSync(candidate) || pending.has(candidate)) {
 		counter++;
 		candidate = `${stem}-${counter}${ext}`;
 	}
-	await writeFile(candidate, sourceContent);
-	return { path: candidate, copied: true };
+	return {
+		path: await resolveInside(dirname(destPath), basename(candidate)),
+		content: sourceContent,
+	};
+}
+
+async function writeAsset(plan: AssetPlan): Promise<void> {
+	if (!plan.content) return;
+	await mkdir(dirname(plan.path), { recursive: true });
+	await writeFile(plan.path, plan.content);
 }
 
 const defaultSkipHandler: ConflictHandler = async (info) => {

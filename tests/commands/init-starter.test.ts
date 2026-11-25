@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describeUnlinked, executeInitStarter } from '../../src/commands/init.js';
@@ -35,20 +35,21 @@ const SOURCE_FILES: Record<string, string> = {
 
 const TREE_URL = 'https://api.github.com/repos/poli-page/templates/git/trees/main?recursive=1';
 
-function makeFetcher(requested: string[]): Fetcher {
+function makeFetcher(requested: string[], extraFiles: Record<string, string> = {}): Fetcher {
+	const files = { ...SOURCE_FILES, ...extraFiles };
 	return async (url: string) => {
 		requested.push(url);
 		if (url === TREE_URL) {
 			const tree = [
 				{ path: 'getting-started', type: 'tree' },
-				...Object.keys(SOURCE_FILES).map((path) => ({ path, type: 'blob' })),
+				...Object.keys(files).map((path) => ({ path, type: 'blob' })),
 			];
 			return new Response(JSON.stringify({ tree, truncated: false }), { status: 200 });
 		}
 		const m = url.match(
 			/^https:\/\/raw\.githubusercontent\.com\/poli-page\/templates\/main\/(.+)$/
 		);
-		const content = m ? SOURCE_FILES[m[1]] : undefined;
+		const content = m ? files[m[1]] : undefined;
 		if (content === undefined) return new Response('not found', { status: 404 });
 		return new Response(content, { status: 200 });
 	};
@@ -365,6 +366,52 @@ describe('poli init --starter', () => {
 			})
 		).rejects.toThrow(/Unknown starter "nope"/);
 		await expect(stat(join(tempDir, 'nope'))).rejects.toThrow();
+	});
+
+	// A backslash is a separator on Windows only: there the cache path could
+	// climb into another source's cache while the URL stays in this repo.
+	it.each([
+		'assets/../../escaped.txt',
+		'a\\..\\..\\..\\..\\..\\poli-page\\templates\\main\\index.json',
+		'assets//x.svg',
+		'assets/./x.svg',
+		'assets/x?.svg',
+	])(
+		'refuses the source tree path %s before fetching any file, writing nothing',
+		async (badPath) => {
+			const target = join(tempDir, 'out');
+			const requested: string[] = [];
+			await expect(
+				executeInitStarter('getting-started', target, {
+					cwd: tempDir,
+					homeDir: fakeHome,
+					fetcher: makeFetcher(requested, { [`getting-started/${badPath}`]: 'PWNED' }),
+					apiClient: makeClient([]),
+				})
+			).rejects.toThrow(/Unsafe path .* in starter "getting-started"/);
+			expect(requested).toEqual([TREE_URL]);
+			expect(await readdir(fakeHome)).toEqual([]);
+			expect(await readdir(tempDir)).toEqual([]);
+		}
+	);
+
+	it('refuses, with --force, a poli-page.json symlinked out of the project, writing nothing', async () => {
+		const target = join(tempDir, 'out');
+		const outsideFile = join(tempDir, 'outside.json');
+		await writeFile(outsideFile, 'OUTSIDE');
+		await mkdir(target);
+		await symlink(outsideFile, join(target, MANIFEST_FILENAME));
+		await expect(
+			executeInitStarter('getting-started', target, {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				force: true,
+				fetcher: makeFetcher([]),
+				apiClient: makeClient([]),
+			})
+		).rejects.toThrow(/outside/);
+		expect(await readFile(outsideFile, 'utf-8')).toBe('OUTSIDE');
+		expect(await readdir(target)).toEqual([MANIFEST_FILENAME]);
 	});
 
 	it.each(['../getting-started', 'getting-started/templates', '.', ''])(
