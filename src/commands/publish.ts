@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { readProjectManifest } from '../manifest.js';
-import { resolveAuth, type AuthContext } from '../auth.js';
+import { resolveAuth, SESSION_IGNORED_HINT, type AuthContext } from '../auth.js';
 import {
 	ApiError,
 	createApiClient,
@@ -27,6 +27,11 @@ export interface PublishOptions {
 	homeDir?: string;
 	/** Asks before publishing to a protected environment; absent without a TTY. */
 	confirmFn?: (environment: string) => Promise<boolean>;
+}
+
+/** The API's result, plus which credential made the call. */
+export interface PublishOutcome extends PublishResult {
+	credential: AuthContext['mode'];
 }
 
 const MESSAGE_MAX_LENGTH = 500;
@@ -79,7 +84,7 @@ async function buildPublishBody(
 }
 
 async function confirmProtected(target: EnvironmentInfo, options: PublishOptions): Promise<void> {
-	if (!target.protected || options.yes === true || process.env.CI === 'true') return;
+	if (!target.protected || options.yes === true) return;
 	if (!options.confirmFn) {
 		throw new UsageError(
 			`Environment "${target.name}" is protected. Pass --yes to publish to it without a prompt.`
@@ -120,7 +125,7 @@ function explainPublishError(
 	return err;
 }
 
-export async function executePublish(options: PublishOptions): Promise<PublishResult> {
+export async function executePublish(options: PublishOptions): Promise<PublishOutcome> {
 	const cwd = options.cwd ?? process.cwd();
 	const environment = validateEnvironmentName(options.env);
 	if (options.message !== undefined && options.message.length > MESSAGE_MAX_LENGTH) {
@@ -141,7 +146,8 @@ export async function executePublish(options: PublishOptions): Promise<PublishRe
 	});
 	const client = options.apiClient ?? createApiClient();
 	if (auth.mode === 'api-key') {
-		return publishWithApiKey(cwd, environment, options, client, auth, project);
+		const result = await publishWithApiKey(cwd, environment, options, client, auth, project);
+		return { ...result, credential: auth.mode };
 	}
 
 	const body = await buildPublishBody(cwd, environment, options.message);
@@ -154,7 +160,8 @@ export async function executePublish(options: PublishOptions): Promise<PublishRe
 	await confirmProtected(target, options);
 
 	try {
-		return await client.publish(auth.authorization, auth.orgIdHeader, project, body);
+		const result = await client.publish(auth.authorization, auth.orgIdHeader, project, body);
+		return { ...result, credential: auth.mode };
 	} catch (err) {
 		throw explainPublishError(err, project, environment, environments);
 	}
@@ -182,12 +189,14 @@ async function publishWithApiKey(
 	const { auth } = await client.getMe(authorization);
 	if (auth.keyType !== 'service') {
 		throw new PublishNotAuthorizedError(
-			'Standard API keys can only render. Use a service key or `poli login`.'
+			key.sessionIgnored
+				? `Standard API keys can only render. Use a service key. ${SESSION_IGNORED_HINT}`
+				: 'Standard API keys can only render. Use a service key or `poli login`.'
 		);
 	}
 	if (key.environment !== environment) {
 		throw new UsageError(
-			`This service key publishes to "${key.environment}" only, not "${environment}". Run \`poli publish --env ${key.environment}\`, or use a key for "${environment}".`
+			`This service key publishes to "${key.environment}" only, not "${environment}". Run \`poli publish --env ${key.environment}\`, or use a key for "${environment}".${key.sessionIgnored ? ` ${SESSION_IGNORED_HINT}` : ''}`
 		);
 	}
 
@@ -242,6 +251,9 @@ export function registerPublishCommand(program: Command) {
 					`  ${chalk.dim('Bundle:')}  ${shortBundleHash(result.bundleHash)} (${result.fileCount} files)`
 				);
 				console.log(`  ${chalk.dim('Log id:')}  ${result.logId}`);
+				console.log(
+					`  ${chalk.dim('Auth:')}    ${result.credential === 'api-key' ? 'POLI_PAGE_API_KEY' : 'session (poli login)'}`
+				);
 			} catch (err) {
 				console.error(chalk.red(err instanceof Error ? err.message : 'Publish failed'));
 				process.exitCode = errorToExitCode(err);
