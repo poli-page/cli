@@ -325,6 +325,9 @@ Notes:
 
 - It binds to `127.0.0.1` only — the rendered draft is never exposed to the
   local network.
+- Only its own page can change the view: a `POST` from another site (or from
+  any client that sends neither `Sec-Fetch-Site: same-origin` nor the server's
+  own `Origin`) gets a `403`, and no other site can frame the page.
 - On start it pushes the whole working tree to the draft, so the first render
   reflects your local files rather than whatever the draft last contained.
 - Failures are surfaced, not fatal: a render that errors, a rejected sync, a

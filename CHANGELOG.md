@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **`poli dev` rejects cross-site requests and framing.** Any web page could send a `POST` to `http://127.0.0.1:7654/api/select` or `/api/pin` with a valid Host header and no preflight, switching the view and triggering a draft render on your session. Every request other than `GET` or `HEAD` now gets a `403` unless it carries `Sec-Fetch-Site: same-origin`, or no `Sec-Fetch-Site` and an `Origin` equal to the server's own; a request with neither header is refused. Every response carries `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and `Content-Security-Policy: default-src 'self'; frame-src 'self'; frame-ancestors 'none'`. The page's inline script and style are allowed by hash, and `/pdf` (which the page shows in its own frame) allows same-origin framing (`SAMEORIGIN`, `frame-ancestors 'self'`). The error overlay no longer repeats the template name a request asked for: it says "Unknown template".
+
 ## [0.10.0] — 2026-10-27
 
 ### Changed (BREAKING)
