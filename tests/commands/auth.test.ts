@@ -84,6 +84,7 @@ describe('auth commands', () => {
 	});
 
 	afterEach(async () => {
+		vi.unstubAllEnvs();
 		await rm(fakeHome, { recursive: true, force: true });
 	});
 
@@ -201,6 +202,7 @@ describe('auth commands', () => {
 		});
 
 		it('persists the explicit apiUrl in credentials when provided', async () => {
+			vi.stubEnv('POLI_API_URL', 'https://api-develop.poli.page');
 			const credentials = await executeDeviceLogin({
 				apiClient: createMockApiClient(),
 				homeDir: fakeHome,
@@ -230,6 +232,7 @@ describe('auth commands', () => {
 		});
 
 		it('stores the apiUrl as its validated origin', async () => {
+			vi.stubEnv('POLI_API_URL', 'https://api-develop.poli.page');
 			const credentials = await executeDeviceLogin({
 				apiClient: createMockApiClient(),
 				homeDir: fakeHome,
@@ -237,6 +240,21 @@ describe('auth commands', () => {
 				openUrl: async () => {},
 			});
 			expect(credentials.apiUrl).toBe('https://api-develop.poli.page');
+		});
+
+		it('refuses an apiUrl that is not the API this login talks to, before the device flow starts', async () => {
+			vi.stubEnv('POLI_API_URL', 'https://api.poli.page');
+			const deviceRequest = vi.fn();
+			await expect(
+				executeDeviceLogin({
+					apiClient: createMockApiClient({ deviceRequest }),
+					homeDir: fakeHome,
+					apiUrl: 'https://api-develop.poli.page',
+					openUrl: async () => {},
+				})
+			).rejects.toMatchObject({ exitCode: ExitCode.INVALID_USAGE });
+			expect(deviceRequest).not.toHaveBeenCalled();
+			expect(await readCredentials(fakeHome)).toBeNull();
 		});
 
 		it('refuses an untrusted apiUrl before the device flow starts', async () => {

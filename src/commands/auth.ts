@@ -11,7 +11,7 @@ import { readManifest } from '../manifest.js';
 import { resolveAuth } from '../auth.js';
 import { createApiClient, type ApiClient, type MeResponse } from '../api-client.js';
 import { apiOrigin, assertTrustedApiOrigin, assertVerificationUrl, getLoginApiUrl } from '../api-origin.js';
-import { errorToExitCode, ExitCode } from '../exit-codes.js';
+import { errorToExitCode, ExitCode, UsageError } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 
 export interface DeviceLoginOptions {
@@ -35,7 +35,8 @@ export interface DeviceLoginOptions {
 	 * The API URL to store in credentials after a successful login, so later
 	 * runs target it without `--api-url` (develop relies on this). Only one
 	 * the user chose: a URL taken from a manifest must never become the
-	 * default for every later command.
+	 * default for every later command. It must be the API this login talks
+	 * to (POLI_API_URL), or the stored apiUrl and origin would disagree.
 	 */
 	apiUrl?: string;
 }
@@ -44,6 +45,9 @@ export async function executeDeviceLogin(
 	options: DeviceLoginOptions = {},
 ): Promise<StoredCredentials> {
 	const apiUrl = options.apiUrl === undefined ? undefined : assertTrustedApiOrigin(options.apiUrl);
+	if (apiUrl !== undefined && apiUrl !== apiOrigin()) {
+		throw new UsageError(`Cannot store ${apiUrl}: this login talks to ${apiOrigin()}.`);
+	}
 	const client = options.apiClient ?? createApiClient();
 
 	// Step 0: friendly info-message when an api-key env var is set.
