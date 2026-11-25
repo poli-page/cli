@@ -2,6 +2,8 @@ import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { CREDENTIALS_DIR, CREDENTIALS_FILENAME } from './constants.js';
+import { apiOrigin, DEFAULT_API_URL } from './api-origin.js';
+import { ExitCode } from './exit-codes.js';
 
 export interface UserInfo {
 	id: string;
@@ -16,6 +18,8 @@ export interface OrgCredentials {
 
 export interface StoredCredentials {
 	apiUrl?: string;
+	/** The API origin that issued `session`; a file without it means the default origin. */
+	origin?: string;
 	session: string;
 	user: UserInfo;
 	orgs: Record<string, OrgCredentials>;
@@ -85,12 +89,27 @@ export async function updateOrgKeys(
 	await writeCredentials(credentials, homeDir);
 }
 
+export class SessionOriginError extends Error {
+	readonly exitCode = ExitCode.NOT_AUTHENTICATED;
+}
+
+/** The stored session, refused for any API origin other than the one that issued it. */
+export function sessionFor(credentials: StoredCredentials, origin = apiOrigin()): string {
+	const issuer = credentials.origin ?? DEFAULT_API_URL;
+	if (issuer !== origin) {
+		throw new SessionOriginError(
+			`Your session was issued by ${issuer}, not ${origin}. Run \`poli login\` against ${origin}.`
+		);
+	}
+	return credentials.session;
+}
+
 export async function getSessionToken(homeDir?: string): Promise<string> {
 	const credentials = await readCredentials(homeDir);
 	if (!credentials?.session) {
 		throw new Error('Not logged in. Run "poli login" first.');
 	}
-	return credentials.session;
+	return sessionFor(credentials);
 }
 
 export async function getApiKey(

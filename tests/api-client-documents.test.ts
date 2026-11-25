@@ -43,7 +43,7 @@ describe('api-client documents', () => {
 			};
 			const fetchMock = mockFetchOnce(200, fakeDoc);
 
-			const client = createApiClient('https://api.test');
+			const client = createApiClient('https://api.poli.page');
 			const result = await client.getDocument(
 				'Bearer pp_live_xyz',
 				'org_1',
@@ -52,7 +52,7 @@ describe('api-client documents', () => {
 
 			expect(result).toEqual(fakeDoc);
 			const [url, init] = fetchMock.mock.calls[0];
-			expect(url).toBe('https://api.test/v1/documents/doc_abc');
+			expect(url).toBe('https://api.poli.page/v1/documents/doc_abc');
 			expect((init as RequestInit).method).toBe('GET');
 			const headers = (init as RequestInit).headers as Record<string, string>;
 			expect(headers.Authorization).toBe('Bearer pp_live_xyz');
@@ -79,10 +79,10 @@ describe('api-client documents', () => {
 				presignedPdfUrl: 'https://s3.example/doc.pdf',
 				expiresAt: '2026-04-15T14:47:18.000Z',
 			});
-			const client = createApiClient('https://api.test');
+			const client = createApiClient('https://api.poli.page');
 			await client.getDocument('Bearer x', 'org_1', 'doc/with/slash');
 			expect(fetchMock.mock.calls[0][0]).toBe(
-				'https://api.test/v1/documents/doc%2Fwith%2Fslash'
+				'https://api.poli.page/v1/documents/doc%2Fwith%2Fslash'
 			);
 		});
 
@@ -107,7 +107,7 @@ describe('api-client documents', () => {
 				expiresAt: '2026-04-15T14:47:18.000Z',
 			});
 
-			const client = createApiClient('https://api.test');
+			const client = createApiClient('https://api.poli.page');
 			await client.getDocument('Bearer pp_test_xyz', undefined, 'doc_abc');
 
 			const [, init] = fetchMock.mock.calls[0];
@@ -123,7 +123,7 @@ describe('api-client documents', () => {
 			);
 			vi.stubGlobal('fetch', fetchMock);
 
-			const client = createApiClient('https://api.test');
+			const client = createApiClient('https://api.poli.page');
 			const result = await client.deleteDocument(
 				'Bearer pp_live_x',
 				'org_1',
@@ -132,7 +132,7 @@ describe('api-client documents', () => {
 
 			expect(result).toBeUndefined();
 			const [url, init] = fetchMock.mock.calls[0];
-			expect(url).toBe('https://api.test/v1/documents/doc_abc');
+			expect(url).toBe('https://api.poli.page/v1/documents/doc_abc');
 			expect((init as RequestInit).method).toBe('DELETE');
 			const headers = (init as RequestInit).headers as Record<string, string>;
 			expect(headers.Authorization).toBe('Bearer pp_live_x');
@@ -145,7 +145,7 @@ describe('api-client documents', () => {
 			);
 			vi.stubGlobal('fetch', fetchMock);
 
-			const client = createApiClient('https://api.test');
+			const client = createApiClient('https://api.poli.page');
 			await client.deleteDocument('Bearer pp_live_x', undefined, 'doc_abc');
 
 			const [, init] = fetchMock.mock.calls[0];
@@ -165,7 +165,7 @@ describe('api-client documents', () => {
 			};
 			const fetchMock = mockFetchOnce(200, { thumbnails: [fakeThumb] });
 
-			const client = createApiClient('https://api.test');
+			const client = createApiClient('https://api.poli.page');
 			const result = await client.documentThumbnails(
 				'Bearer pp_live_x',
 				'org_1',
@@ -175,7 +175,7 @@ describe('api-client documents', () => {
 
 			expect(result).toEqual([fakeThumb]);
 			const [url, init] = fetchMock.mock.calls[0];
-			expect(url).toBe('https://api.test/v1/documents/doc_abc/thumbnails');
+			expect(url).toBe('https://api.poli.page/v1/documents/doc_abc/thumbnails');
 			expect((init as RequestInit).method).toBe('POST');
 			const body = JSON.parse((init as RequestInit).body as string);
 			expect(body).toEqual({
@@ -189,7 +189,7 @@ describe('api-client documents', () => {
 		it('omits undefined thumbnail fields from the body', async () => {
 			const fetchMock = mockFetchOnce(200, { thumbnails: [] });
 
-			const client = createApiClient('https://api.test');
+			const client = createApiClient('https://api.poli.page');
 			await client.documentThumbnails('Bearer pp_test_x', undefined, 'doc_abc', {
 				width: 200,
 			});
@@ -214,7 +214,7 @@ describe('api-client documents', () => {
 			);
 			vi.stubGlobal('fetch', fetchMock);
 
-			const client = createApiClient('https://api.test');
+			const client = createApiClient('https://api.poli.page');
 			const result = await client.documentPreview(
 				'Bearer pp_live_x',
 				'org_1',
@@ -223,7 +223,7 @@ describe('api-client documents', () => {
 
 			expect(result).toEqual({ html: '<html>preview</html>', pageCount: 4 });
 			const [url, init] = fetchMock.mock.calls[0];
-			expect(url).toBe('https://api.test/v1/documents/doc_abc/preview');
+			expect(url).toBe('https://api.poli.page/v1/documents/doc_abc/preview');
 			expect((init as RequestInit).method).toBe('GET');
 			const headers = (init as RequestInit).headers as Record<string, string>;
 			expect(headers.Authorization).toBe('Bearer pp_live_x');
@@ -239,7 +239,7 @@ describe('api-client documents', () => {
 			);
 			vi.stubGlobal('fetch', fetchMock);
 
-			const client = createApiClient('https://api.test');
+			const client = createApiClient('https://api.poli.page');
 			const result = await client.documentPreview(
 				'Bearer pp_test_x',
 				undefined,

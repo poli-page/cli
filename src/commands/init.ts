@@ -3,7 +3,7 @@ import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { writeManifest } from '../manifest.js';
 import { parseManifest, type PoliPageManifest } from '../manifest.schema.js';
-import { readCredentials } from '../credentials.js';
+import { readCredentials, sessionFor } from '../credentials.js';
 import { createApiClient, type ApiClient } from '../api-client.js';
 import { MANIFEST_FILENAME } from '../constants.js';
 import { findOrganization, promptForOrganization, type Organization } from './link.js';
@@ -248,8 +248,9 @@ async function linkStarter(
 		return { link: { status: 'unlinked', reason: 'not-logged-in' } };
 	}
 
+	const session = sessionFor(credentials);
 	const client = options.apiClient ?? createApiClient();
-	const orgs = await client.getOrganizations(credentials.session);
+	const orgs = await client.getOrganizations(session);
 
 	let orgSlug = options.org;
 	if (!orgSlug) {
@@ -260,7 +261,7 @@ async function linkStarter(
 	}
 	const org = findOrganization(orgs, orgSlug);
 
-	const projects = await client.listProjects(credentials.session, org.id);
+	const projects = await client.listProjects(session, org.id);
 	const project = projects.find((p) => p.slug === projectSlug);
 	if (!project) {
 		return { link: { status: 'unlinked', reason: 'no-project', orgSlug: org.slug } };

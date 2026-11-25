@@ -12,6 +12,8 @@ import { registerWatchCommand } from './commands/watch.js';
 import { registerDevCommand } from './commands/dev.js';
 import { readCredentials } from './credentials.js';
 import { readManifest } from './manifest.js';
+import { apiOrigin, DEFAULT_API_URL } from './api-origin.js';
+import { ExitCode } from './exit-codes.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
@@ -23,34 +25,33 @@ export function createProgram() {
 		.name('poli')
 		.description('Poli Page CLI — scaffold, generate, and manage PDF templates')
 		.version(version, '-v, --version')
-		.option('--api-url <url>', 'API base URL (default: https://api.poli.page)');
+		.option('--api-url <url>', 'API base URL (default: https://api.poli.page)')
+		.option(
+			'--allow-insecure-api',
+			'Allow a local API URL (localhost, 127.0.0.1); same as POLI_ALLOW_INSECURE_API=1'
+		);
 
 	// Resolve API URL via cascade:
-	//   --api-url flag → POLI_API_URL env → poli-page.json cloud.apiUrl
-	//   → ~/.polipage/credentials apiUrl → prod default
+	//   --api-url flag → POLI_API_URL env → poli-page.json cloud.apiUrl (only
+	//   when it equals the stored or default URL) → ~/.polipage/credentials
+	//   apiUrl → prod default. Credentials go there: an untrusted URL exits 2
+	//   before any command runs.
 	program.hook('preAction', async (thisCommand) => {
 		const opts = thisCommand.optsWithGlobals();
+		if (opts.allowInsecureApi) process.env.POLI_ALLOW_INSECURE_API = '1';
 		if (opts.apiUrl) {
 			process.env.POLI_API_URL = opts.apiUrl;
-			return;
+		} else if (!process.env.POLI_API_URL) {
+			const apiUrl = await storedApiUrl();
+			if (apiUrl) process.env.POLI_API_URL = apiUrl;
 		}
-		if (process.env.POLI_API_URL) return;
-
-		// Try project-level: poli-page.json cloud.apiUrl
 		try {
-			const manifest = await readManifest(process.cwd());
-			if (manifest.cloud?.apiUrl) {
-				process.env.POLI_API_URL = manifest.cloud.apiUrl;
-				return;
-			}
-		} catch {
-			// Not in a project directory — that's fine
-		}
-
-		// Try user-level: ~/.polipage/credentials apiUrl
-		const credentials = await readCredentials();
-		if (credentials?.apiUrl) {
-			process.env.POLI_API_URL = credentials.apiUrl;
+			apiOrigin();
+		} catch (err) {
+			thisCommand.error(err instanceof Error ? err.message : String(err), {
+				exitCode: ExitCode.INVALID_USAGE,
+				code: 'poli.untrustedApiUrl',
+			});
 		}
 	});
 
@@ -66,4 +67,25 @@ export function createProgram() {
 	registerDevCommand(program);
 
 	return program;
+}
+
+/**
+ * The URL from the credentials file, or the manifest's `cloud.apiUrl` when it
+ * names that URL or the default: a cloned folder must not pick the host the
+ * CLI sends the session or the API key to.
+ */
+async function storedApiUrl(): Promise<string | undefined> {
+	const credentials = await readCredentials();
+	let manifestUrl: string | undefined;
+	try {
+		manifestUrl = (await readManifest(process.cwd())).cloud?.apiUrl;
+	} catch {
+		// Not in a project directory — that's fine
+	}
+	if (manifestUrl === undefined) return credentials?.apiUrl;
+	if (manifestUrl === DEFAULT_API_URL || manifestUrl === credentials?.apiUrl) return manifestUrl;
+	console.error(
+		`Ignoring cloud.apiUrl "${manifestUrl}" in poli-page.json: pass --api-url or set POLI_API_URL to use another API.`
+	);
+	return credentials?.apiUrl;
 }

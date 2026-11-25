@@ -166,6 +166,30 @@ describe('poli init --starter', () => {
 		expect(new Set(calls)).toEqual(new Set(['getOrganizations', 'listProjects']));
 	});
 
+	it('refuses a session issued by another API origin, before any call', async () => {
+		vi.stubEnv('POLI_API_URL', '');
+		await writeCredentials(
+			{
+				origin: 'https://api-develop.poli.page',
+				session: 'sess',
+				user: { id: 'u', name: 'X', email: 'x@x.com' },
+				orgs: {},
+			},
+			fakeHome
+		);
+		const calls: string[] = [];
+		await expect(
+			executeInitStarter('getting-started', undefined, {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher([]),
+				apiClient: makeClient([], undefined, calls),
+			})
+		).rejects.toThrow(/issued by https:\/\/api-develop\.poli\.page/);
+		expect(calls).toEqual([]);
+		vi.unstubAllEnvs();
+	});
+
 	it('writes the starter unlinked when logged out', async () => {
 		const calls: string[] = [];
 		const result = await executeInitStarter('getting-started', undefined, {

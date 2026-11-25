@@ -1,6 +1,5 @@
 import type { UserInfo } from './credentials.js';
-
-const DEFAULT_API_URL = 'https://api.poli.page';
+import { apiOrigin, assertTrustedApiOrigin } from './api-origin.js';
 
 export class ApiError extends Error {
 	constructor(
@@ -378,19 +377,22 @@ export interface ApiClient {
 }
 
 export function createApiClient(baseUrl?: string): ApiClient {
-	const url = baseUrl ?? process.env.POLI_API_URL ?? DEFAULT_API_URL;
+	const origin = baseUrl === undefined ? apiOrigin() : assertTrustedApiOrigin(baseUrl);
 
 	async function request(path: string, options: RequestInit = {}): Promise<Response> {
-		const fullUrl = `${url}${path}`;
+		const fullUrl = new URL(path, origin).href;
 		let response: Response;
 		try {
 			response = await fetch(fullUrl, {
 				...options,
 				headers: {
 					'Content-Type': 'application/json',
-					Origin: url,
+					Origin: origin,
 					...options.headers,
 				},
+				// A 307/308 would re-send the body (project files, the password)
+				// to wherever the API points it.
+				redirect: 'error',
 			});
 		} catch (err) {
 			// Node's fetch surfaces low-level network failures as
