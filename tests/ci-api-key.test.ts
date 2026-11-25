@@ -62,7 +62,7 @@ describe('CI integration with POLI_PAGE_API_KEY', () => {
 		vi.stubGlobal('fetch', fetchMock);
 
 		const ctx = await resolveAuth({ homeDir: fakeHome });
-		const client = createApiClient('https://api.test');
+		const client = createApiClient('https://api.poli.page');
 		await client.documentThumbnails(ctx.authorization, ctx.orgIdHeader, 'doc_x', {
 			width: 200,
 		});

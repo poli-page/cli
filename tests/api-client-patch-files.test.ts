@@ -23,7 +23,7 @@ describe('api-client patchFiles', () => {
 	it('PATCHes /api/organizations/:orgId/projects/:projectId/files with the delta payload', async () => {
 		const fetchMock = mockFetchOnce(200, { syncedAt: '2026-05-06T10:00:00.000Z' });
 
-		const client = createApiClient('https://api.test');
+		const client = createApiClient('https://api.poli.page');
 		const result = await client.patchFiles('sess-tok', 'org_1', 'proj_1', {
 			added: [{ path: 'templates/new/new.html', encoding: 'utf8', content: '<h1>new</h1>' }],
 			modified: [{ path: 'assets/images/logo.png', encoding: 'base64', content: 'iVBORw==' }],
@@ -33,7 +33,7 @@ describe('api-client patchFiles', () => {
 		expect(result).toEqual({ syncedAt: '2026-05-06T10:00:00.000Z' });
 
 		const [url, init] = fetchMock.mock.calls[0];
-		expect(url).toBe('https://api.test/api/organizations/org_1/projects/proj_1/files');
+		expect(url).toBe('https://api.poli.page/api/organizations/org_1/projects/proj_1/files');
 		expect((init as RequestInit).method).toBe('PATCH');
 
 		const headers = (init as RequestInit).headers as Record<string, string>;
@@ -50,7 +50,7 @@ describe('api-client patchFiles', () => {
 	it('sends empty arrays when the delta has no changes in a category', async () => {
 		const fetchMock = mockFetchOnce(200, { syncedAt: '2026-05-06T10:00:00.000Z' });
 
-		const client = createApiClient('https://api.test');
+		const client = createApiClient('https://api.poli.page');
 		await client.patchFiles('sess-tok', 'org_1', 'proj_1', {
 			added: [],
 			modified: [{ path: 'templates/inv/inv.html', encoding: 'utf8', content: 'x' }],

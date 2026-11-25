@@ -3,12 +3,14 @@ import {
 	writeCredentials,
 	clearCredentials,
 	readCredentials,
+	sessionFor,
 	type StoredCredentials,
 	type UserInfo,
 } from '../credentials.js';
 import { readManifest } from '../manifest.js';
 import { resolveAuth } from '../auth.js';
 import { createApiClient, type ApiClient, type MeResponse } from '../api-client.js';
+import { apiOrigin } from '../api-origin.js';
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 
@@ -104,6 +106,7 @@ export async function executeDeviceLogin(
 				const apiUrl = options.apiUrl ?? process.env.POLI_API_URL;
 				const credentials: StoredCredentials = {
 					...(apiUrl ? { apiUrl } : {}),
+					origin: apiOrigin(),
 					session: result.sessionToken,
 					user: result.user,
 					orgs: {},
@@ -182,7 +185,7 @@ export async function executeWhoami(
 			if (credentials?.session) {
 				let orgs: Array<{ id: string; slug: string; name: string }>;
 				try {
-					orgs = await client.getOrganizations(credentials.session);
+					orgs = await client.getOrganizations(sessionFor(credentials));
 				} catch {
 					// 401 / network / API issue — the session is no longer usable.
 					throw new Error(
