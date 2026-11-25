@@ -654,6 +654,27 @@ describe('poli render', () => {
 			expect(calls).toEqual([]);
 		});
 
+		it('refuses an in-project symlink at the default path before the billed render, leaving its target untouched', async () => {
+			const manifestPath = join(projectDir, 'poli-page.json');
+			const manifest = await readFile(manifestPath, 'utf-8');
+			const dir = join(projectDir, 'output', 'invoice', 'a4-portrait');
+			await mkdir(dir, { recursive: true });
+			await symlink('../../../poli-page.json', join(dir, 'invoice.pdf'));
+			const calls: RenderCall[] = [];
+
+			await expect(
+				executeRender('invoice', {
+					cwd: projectDir,
+					target: 'sandbox',
+					apiClient: createMockApiClient({ calls }),
+					homeDir: fakeHome,
+					fetchPdf: fakeFetchPdf,
+				})
+			).rejects.toThrow(/symlink/);
+			expect(await readFile(manifestPath, 'utf-8')).toBe(manifest);
+			expect(calls).toEqual([]);
+		});
+
 		it('uses the manifest format/orientation in the path slug', async () => {
 			await setupTemplate(projectDir, 'certificate', {
 				format: 'A5',
