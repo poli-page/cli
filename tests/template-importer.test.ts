@@ -400,6 +400,66 @@ describe('importTemplate — asset conflicts', () => {
 		expect(duplicated.toString()).toBe('FAKE_PNG_BYTES');
 	});
 
+	it('does not give a numbered duplicate the name of another image of the same import', async () => {
+		await writeFile(
+			join(projectDir, 'assets', 'images', 'logo.png'),
+			Buffer.from('OLD_LOGO_BYTES')
+		);
+		const files = fullSource();
+		files['showcase/templates/invoice/manifest.json'] = JSON.stringify({
+			...INVOICE_MANIFEST,
+			images: ['logo.png', 'logo-2.png'],
+		});
+		files['showcase/assets/images/logo-2.png'] = Buffer.from('SECOND_PNG_BYTES');
+		const conflicts: string[] = [];
+		const onConflict: ConflictHandler = async (info) => {
+			conflicts.push(info.filename);
+			return 'duplicate';
+		};
+
+		const result = await importTemplate({
+			templateRef: { collection: 'showcase', name: 'invoice' },
+			projectDir,
+			homeDir: fakeHome,
+			fetcher: makeFetcher(files),
+			onConflict,
+		});
+
+		const images = join(projectDir, 'assets', 'images');
+		expect((await readFile(join(images, 'logo.png'))).toString()).toBe('OLD_LOGO_BYTES');
+		expect((await readFile(join(images, 'logo-2.png'))).toString()).toBe('FAKE_PNG_BYTES');
+		expect((await readFile(join(images, 'logo-2-2.png'))).toString()).toBe('SECOND_PNG_BYTES');
+		expect(conflicts).toEqual(['logo.png', 'logo-2.png']);
+		expect(result.copiedImages).toEqual(['logo-2.png', 'logo-2-2.png']);
+	});
+
+	it('skips the name of an image planned earlier in the import when numbering a duplicate', async () => {
+		await writeFile(
+			join(projectDir, 'assets', 'images', 'logo.png'),
+			Buffer.from('OLD_LOGO_BYTES')
+		);
+		const files = fullSource();
+		files['showcase/templates/invoice/manifest.json'] = JSON.stringify({
+			...INVOICE_MANIFEST,
+			images: ['logo-2.png', 'logo.png'],
+		});
+		files['showcase/assets/images/logo-2.png'] = Buffer.from('SECOND_PNG_BYTES');
+
+		const result = await importTemplate({
+			templateRef: { collection: 'showcase', name: 'invoice' },
+			projectDir,
+			homeDir: fakeHome,
+			fetcher: makeFetcher(files),
+			onConflict: async () => 'duplicate',
+		});
+
+		const images = join(projectDir, 'assets', 'images');
+		expect((await readFile(join(images, 'logo.png'))).toString()).toBe('OLD_LOGO_BYTES');
+		expect((await readFile(join(images, 'logo-2.png'))).toString()).toBe('SECOND_PNG_BYTES');
+		expect((await readFile(join(images, 'logo-3.png'))).toString()).toBe('FAKE_PNG_BYTES');
+		expect(result.copiedImages).toEqual(['logo-2.png', 'logo-3.png']);
+	});
+
 	it('defaults to skip+warn when no onConflict handler is provided', async () => {
 		await writeFile(
 			join(projectDir, 'assets', 'images', 'logo.png'),

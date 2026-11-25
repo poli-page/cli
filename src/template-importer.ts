@@ -307,13 +307,13 @@ export async function importTemplate(
 
 	// 4. Fetch the fonts and images, then settle every conflict (prompt,
 	// numbered duplicate) before the first write into the project.
-	const planned = new Map<string, AssetPlan>();
+	const pending = new Map<string, Buffer>();
 	const fontPlans: AssetPlan[] = [];
 	for (const [i, font] of (tplManifest.fonts ?? []).entries()) {
 		const fontBuf = await fetchRaw(source, `${ref.collection}/assets/${font.src}`, fetchOpts);
 		fontPlans.push(
 			await planAsset(
-				planned,
+				pending,
 				'font',
 				basename(font.src),
 				destFontPaths[i],
@@ -330,7 +330,7 @@ export async function importTemplate(
 			fetchOpts
 		);
 		imgPlans.push(
-			await planAsset(planned, 'image', imgFile, destImgPaths[i], imgBuf, options.onConflict)
+			await planAsset(pending, 'image', imgFile, destImgPaths[i], imgBuf, options.onConflict)
 		);
 	}
 
@@ -482,35 +482,37 @@ interface AssetPlan {
 	content: Buffer | null;
 }
 
-// `planned` holds the plans made so far in this import, by destination: a
-// second entry for the same file (two weights of one font file) is written once.
+// `pending` holds the writes planned so far in this import (path → bytes),
+// and stands for files on disk: an asset planned for a path another one of the
+// import already takes conflicts with it, as if that one were written.
 async function planAsset(
-	planned: Map<string, AssetPlan>,
+	pending: Map<string, Buffer>,
 	type: 'font' | 'image',
 	filename: string,
 	destPath: string,
 	sourceContent: Buffer,
 	onConflict?: ConflictHandler
 ): Promise<AssetPlan> {
-	const earlier = planned.get(destPath);
-	if (earlier) return { path: earlier.path, content: null };
-	const plan = await decideAsset(type, filename, destPath, sourceContent, onConflict);
-	planned.set(destPath, plan);
+	const plan = await decideAsset(pending, type, filename, destPath, sourceContent, onConflict);
+	if (plan.content) pending.set(plan.path, plan.content);
 	return plan;
 }
 
 async function decideAsset(
+	pending: Map<string, Buffer>,
 	type: 'font' | 'image',
 	filename: string,
 	destPath: string,
 	sourceContent: Buffer,
 	onConflict?: ConflictHandler
 ): Promise<AssetPlan> {
-	let destContent: Buffer | undefined;
-	try {
-		destContent = await readFile(destPath);
-	} catch {
-		// destination doesn't exist
+	let destContent = pending.get(destPath);
+	if (!destContent) {
+		try {
+			destContent = await readFile(destPath);
+		} catch {
+			// destination doesn't exist
+		}
 	}
 
 	if (!destContent) {
@@ -541,7 +543,7 @@ async function decideAsset(
 	const stem = destPath.slice(0, destPath.length - ext.length);
 	let counter = 2;
 	let candidate = `${stem}-${counter}${ext}`;
-	while (existsSync(candidate)) {
+	while (existsSync(candidate) || pending.has(candidate)) {
 		counter++;
 		candidate = `${stem}-${counter}${ext}`;
 	}
