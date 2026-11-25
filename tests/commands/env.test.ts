@@ -21,7 +21,12 @@ const API_URL = 'https://api.poli.page';
 const LINKED_MANIFEST = {
 	project: { name: 'Invoices' },
 	templates: [],
-	cloud: { orgSlug: 'acme', orgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', projectSlug: 'invoices', projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268' },
+	cloud: {
+		orgSlug: 'acme',
+		orgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
+		projectSlug: 'invoices',
+		projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268',
+	},
 };
 
 const ACME = { id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme', slug: 'acme' };
@@ -152,13 +157,20 @@ beforeEach(async () => {
 	orgs = [ACME];
 	fetchMock = vi.fn(async (url: string) => {
 		if (url === `${API_URL}/api/organizations`) return jsonResponse(200, orgs);
-		if (url === `${API_URL}/api/organizations/0e89d99e-1516-4b48-baa1-f49e660ad1c1/environments`) {
+		if (
+			url === `${API_URL}/api/organizations/0e89d99e-1516-4b48-baa1-f49e660ad1c1/environments`
+		) {
 			return jsonResponse(200, ORG_ENVIRONMENTS);
 		}
-		if (url === `${API_URL}/api/organizations/a2c4e6f8-1b3d-4f5a-8c7e-9d0b2a4c6e81/environments`) {
+		if (
+			url === `${API_URL}/api/organizations/a2c4e6f8-1b3d-4f5a-8c7e-9d0b2a4c6e81/environments`
+		) {
 			return jsonResponse(200, [environment({ name: 'sandbox', kind: 'sandbox' })]);
 		}
-		if (url === `${API_URL}/api/organizations/0e89d99e-1516-4b48-baa1-f49e660ad1c1/projects/8274f64d-4ea2-4f96-b596-5727a7b17268/environments`) {
+		if (
+			url ===
+			`${API_URL}/api/organizations/0e89d99e-1516-4b48-baa1-f49e660ad1c1/projects/8274f64d-4ea2-4f96-b596-5727a7b17268/environments`
+		) {
 			return jsonResponse(200, PROJECT_ENVIRONMENTS);
 		}
 		return new Response('unexpected', { status: 500 });
@@ -265,7 +277,9 @@ describe('poli env list', () => {
 			const { projectSlug: _, ...cloud } = LINKED_MANIFEST.cloud;
 			await linkProject({ ...LINKED_MANIFEST, cloud });
 			await poli();
-			expect(logs[0]).toBe('Environments of acme, project 8274f64d-4ea2-4f96-b596-5727a7b17268:');
+			expect(logs[0]).toBe(
+				'Environments of acme, project 8274f64d-4ea2-4f96-b596-5727a7b17268:'
+			);
 		});
 
 		it("--org naming the linked organization keeps the project's columns", async () => {
@@ -336,7 +350,9 @@ describe('poli env list', () => {
 			orgs = [ACME, GLOBEX];
 			await poli('--org', 'acme');
 			expect(logs[0]).toBe('Environments of acme:');
-			expect(requestedUrls()).toContain(`${API_URL}/api/organizations/0e89d99e-1516-4b48-baa1-f49e660ad1c1/environments`);
+			expect(requestedUrls()).toContain(
+				`${API_URL}/api/organizations/0e89d99e-1516-4b48-baa1-f49e660ad1c1/environments`
+			);
 		});
 
 		it('several organizations without --org: exit 2, listing the slugs', async () => {
@@ -374,9 +390,16 @@ describe('poli env list', () => {
 	describe('an API failure', () => {
 		const requests = [
 			{ linked: false, failing: '/api/organizations' },
-			{ linked: false, failing: '/api/organizations/0e89d99e-1516-4b48-baa1-f49e660ad1c1/environments' },
+			{
+				linked: false,
+				failing: '/api/organizations/0e89d99e-1516-4b48-baa1-f49e660ad1c1/environments',
+			},
 			{ linked: true, failing: '/api/organizations' },
-			{ linked: true, failing: '/api/organizations/0e89d99e-1516-4b48-baa1-f49e660ad1c1/projects/8274f64d-4ea2-4f96-b596-5727a7b17268/environments' },
+			{
+				linked: true,
+				failing:
+					'/api/organizations/0e89d99e-1516-4b48-baa1-f49e660ad1c1/projects/8274f64d-4ea2-4f96-b596-5727a7b17268/environments',
+			},
 		];
 		const failures = [
 			{
@@ -444,7 +467,8 @@ describe('poli env list', () => {
 			},
 		];
 		fetchMock.mockImplementation(async (url: string) => {
-			if (url.endsWith('/projects/8274f64d-4ea2-4f96-b596-5727a7b17268/environments')) return jsonResponse(200, states);
+			if (url.endsWith('/projects/8274f64d-4ea2-4f96-b596-5727a7b17268/environments'))
+				return jsonResponse(200, states);
 			if (url.endsWith('/0e89d99e-1516-4b48-baa1-f49e660ad1c1/environments')) {
 				return jsonResponse(200, [environment({ name: 'sand\r\nbox' })]);
 			}
@@ -484,9 +508,20 @@ describe('poli env list', () => {
 	it('a poli-page.json that is not valid JSON is reported, not read as unlinked', async () => {
 		await writeFile(join(projectDir, MANIFEST_FILENAME), '{ not json');
 		await poli();
-		expect(process.exitCode).toBe(ExitCode.INCONSISTENT);
-		expect(errors.join('\n')).toMatch(/JSON/);
+		expect(process.exitCode).toBe(ExitCode.INVALID_LOCAL_STATE);
+		expect(errors.join('\n')).toMatch(/^Invalid poli-page\.json — .*JSON/);
 		expect(logs).toEqual([]);
+	});
+
+	it('a poli-page.json whose cloud.projectId is not a UUID: exit 6, nothing sent', async () => {
+		await linkProject({
+			...LINKED_MANIFEST,
+			cloud: { ...LINKED_MANIFEST.cloud, projectId: 'proj_1' },
+		});
+		await poli();
+		expect(process.exitCode).toBe(ExitCode.INVALID_LOCAL_STATE);
+		expect(errors).toEqual(['Invalid poli-page.json — cloud.projectId: must be a UUID']);
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
 	it('without a session: exit 4 with "Run poli login", and no API call', async () => {
@@ -620,7 +655,9 @@ describe('poli env remove-project', () => {
 		inputMock.mockResolvedValue('8274f64d-4ea2-4f96-b596-5727a7b17268');
 		await poli('live');
 
-		expect(inputMock.mock.calls[0][0].message).toContain('Type the project slug (8274f64d-4ea2-4f96-b596-5727a7b17268)');
+		expect(inputMock.mock.calls[0][0].message).toContain(
+			'Type the project slug (8274f64d-4ea2-4f96-b596-5727a7b17268)'
+		);
 		expect(removeRequests()).toHaveLength(1);
 	});
 

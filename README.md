@@ -600,7 +600,7 @@ Imperative commands (`init` without `--starter`, `new`, `link`, `unlink`, `logou
 | `3`  | Network / API error (timeout, 5xx, unspecified 4xx)                                                    |
 | `4`  | Not authenticated — run `poli login` or set `POLI_PAGE_API_KEY`                                        |
 | `5`  | Not authorized (insufficient role, protected environment, `THUMBNAILS_NOT_AVAILABLE`)                  |
-| `6`  | Invalid local state (no project, project not linked, empty folder where required)                      |
+| `6`  | Invalid local state (no project, invalid `poli-page.json`, project not linked, empty folder where required) |
 
 These map to the centralised `ExitCode` constants in `src/exit-codes.ts`. Every handler routes errors through `errorToExitCode(err)`.
 

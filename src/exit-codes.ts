@@ -44,6 +44,7 @@ import {
 	UnsupportedFileTypeError,
 	InsufficientRoleError,
 } from './api-client.js';
+import { ManifestValidationError } from './manifest.schema.js';
 
 /**
  * Map a thrown value to a CLI exit code. Use this in command handlers'
@@ -73,8 +74,9 @@ export function errorToExitCode(err: unknown): ExitCodeValue {
 			return ExitCode.NOT_AUTHORIZED;
 		}
 
-		// Local state — manifest missing, project not linked, etc.
+		// Local state — manifest missing or invalid, project not linked, etc.
 		if (
+			err instanceof ManifestValidationError ||
 			/isn't linked|not linked|poli link first|No poli-page\.json|Are you in a Poli Page project/i.test(
 				err.message
 			)

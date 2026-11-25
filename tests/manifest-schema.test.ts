@@ -162,7 +162,7 @@ describe('manifest schema validation', () => {
 
 		it('throws when JSON is malformed', async () => {
 			await writeFile(join(dir, MANIFEST_FILENAME), '{ "project": invalid }', 'utf-8');
-			await expect(readManifest(dir)).rejects.toThrow();
+			await expect(readManifest(dir)).rejects.toThrow(/^Invalid poli-page\.json — /);
 		});
 	});
 

@@ -1,7 +1,11 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MANIFEST_FILENAME } from './constants.js';
-import { parseManifest, type PoliPageManifest } from './manifest.schema.js';
+import {
+	ManifestValidationError,
+	parseManifest,
+	type PoliPageManifest,
+} from './manifest.schema.js';
 
 export type { PoliPageManifest } from './manifest.schema.js';
 export { ManifestValidationError, type ManifestValidationIssue } from './manifest.schema.js';
@@ -25,7 +29,12 @@ export async function readManifestIfPresent(
 async function readManifestJson(projectDir: string): Promise<unknown> {
 	const manifestPath = join(projectDir, MANIFEST_FILENAME);
 	const content = await readFile(manifestPath, 'utf-8');
-	return JSON.parse(content);
+	try {
+		return JSON.parse(content);
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		throw new ManifestValidationError(`Invalid poli-page.json — ${message}`, []);
+	}
 }
 
 /** `readManifest`, reporting a missing file as "not in a Poli Page project". */
