@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { cp, mkdtemp, rm, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeInit } from '../src/commands/init.js';
@@ -31,6 +31,17 @@ describe('project-loader', () => {
 			await expect(loadProject(tempDir + '/nonexistent')).rejects.toThrow(
 				/poli-page\.json/
 			);
+		});
+	});
+
+	describe('loadProject validation', () => {
+		it('reports the manifest field that fails validation instead of a missing manifest', async () => {
+			const manifestPath = join(projectDir, 'poli-page.json');
+			const manifest = JSON.parse(await readFile(manifestPath, 'utf-8'));
+			manifest.templates[0].mock = '../../../.polipage/credentials';
+			await writeFile(manifestPath, JSON.stringify(manifest), 'utf-8');
+
+			await expect(loadProject(projectDir)).rejects.toThrow(/templates\[0\]\.mock/);
 		});
 	});
 
@@ -70,6 +81,33 @@ describe('project-loader', () => {
 			const loaded = await loadTemplate(projectDir, entry);
 
 			expect(loaded.locale).toBe('en');
+		});
+
+		it.each(['template', 'mock'] as const)(
+			'refuses a %s file symlinked outside the project',
+			async (field) => {
+				const outside = join(tempDir, 'secret.json');
+				await writeFile(outside, '{"token":"s3cret"}', 'utf-8');
+				const { manifest } = await loadProject(projectDir);
+				const entry = findTemplate(manifest, 'invoice');
+				const linked = join(projectDir, 'templates', 'invoice', entry[field]);
+				await rm(linked);
+				await symlink(outside, linked);
+
+				await expect(loadTemplate(projectDir, entry)).rejects.toThrow(/resolves outside/);
+			}
+		);
+
+		it('refuses a template folder symlinked outside the project', async () => {
+			const outside = join(tempDir, 'elsewhere');
+			await cp(join(projectDir, 'templates', 'invoice'), outside, { recursive: true });
+			await rm(join(projectDir, 'templates', 'invoice'), { recursive: true });
+			await symlink(outside, join(projectDir, 'templates', 'invoice'));
+			const { manifest } = await loadProject(projectDir);
+
+			await expect(loadTemplate(projectDir, findTemplate(manifest, 'invoice'))).rejects.toThrow(
+				/resolves outside/
+			);
 		});
 	});
 

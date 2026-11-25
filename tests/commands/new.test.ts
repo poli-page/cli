@@ -171,6 +171,22 @@ describe('poli new', () => {
 		expect(manifest.templates[0].orientation).toBe('landscape');
 	});
 
+	it.each([
+		[{ format: 'A4/../..' }, /Unknown page format/],
+		[{ orientation: 'sideways' }, /Unknown orientation/],
+	])('refuses %j before importing anything', async (override, message) => {
+		await expect(
+			executeNew('certificate', {
+				cwd: projectDir,
+				fromTemplate: 'showcase/invoice',
+				...override,
+				homeDir: fakeHome,
+				fetcher: makeFetcher(SOURCE_FILES),
+			})
+		).rejects.toThrow(message);
+		await expect(stat(join(projectDir, 'templates', 'certificate'))).rejects.toThrow(/ENOENT/);
+	});
+
 	it('falls back to structures/blank when --from-template is omitted (no prompt available)', async () => {
 		// In non-TTY contexts the prompt returns null and `poli new` defaults
 		// to the minimal blank template rather than erroring out. The user

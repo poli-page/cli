@@ -58,13 +58,26 @@ const FORMAT_MAP: Record<string, Record<string, PageFormat>> = {
 	},
 };
 
+export const PAGE_FORMATS = Object.keys(FORMAT_MAP);
+export const ORIENTATIONS: readonly Orientation[] = ['portrait', 'landscape'];
+
+/** Whether `resolveFormat` accepts `format`, in any letter case. */
+export function isPageFormat(format: string): boolean {
+	return Object.hasOwn(FORMAT_MAP, format.toUpperCase());
+}
+
+/** Whether `resolveFormat` accepts `orientation`, in any letter case. */
+export function isOrientation(orientation: string): boolean {
+	return (ORIENTATIONS as readonly string[]).includes(orientation.toLowerCase());
+}
+
 export function resolveFormat(format: string, orientation: string): PageFormat {
 	const formatKey = format.toUpperCase();
 	const orientationKey = orientation.toLowerCase();
 
 	const orientations = FORMAT_MAP[formatKey];
 	if (!orientations) {
-		const available = Object.keys(FORMAT_MAP).join(', ');
+		const available = PAGE_FORMATS.join(', ');
 		throw new Error(`Unknown page format "${format}". Available: ${available}`);
 	}
 

@@ -203,6 +203,7 @@ Flags:
 - `--from-template <ref>` — collection/template. Skips the interactive prompt.
 - `--source <repo>` — override the source
 - `--no-cache` — bypass cache
+- `--format <format>`, `--orientation <orientation>` — set the template's page format and orientation (see [Manifest format](#manifest-format)); an unknown value exits before anything is imported
 
 ### Authentication commands
 
@@ -529,8 +530,8 @@ poli documents preview doc_abc123 -o ./preview.html
   "templates": [
     {
       "name": "invoice",
-      "template": "templates/invoice/invoice.html",
-      "mock": "templates/invoice/invoice.json",
+      "template": "invoice.html",
+      "mock": "invoice.json",
       "format": "A4",
       "orientation": "portrait"
     }
@@ -543,6 +544,13 @@ poli documents preview doc_abc123 -o ./preview.html
   }
 }
 ```
+
+Each `templates[]` entry is checked when the manifest is read, and a bad value fails with the field it is in (`templates[0].mock: …`):
+
+- `name` — the template's folder under `templates/`: lowercase letters, digits and inner `-`.
+- `template`, `mock` — paths relative to `templates/<name>/`, made of segments of letters, digits, `.`, `_` and `-`, each starting with a letter or digit (no `..`, absolute path, `\`, `?`, `#` or `%`). The files are read only when they resolve inside the project, symlinks included.
+- `format` (default `A4`) — one of `A3`, `A4`, `A5`, `A6`, `B4`, `B5`, `Letter`, `Legal`, `Tabloid`, `Statement`, `Executive`, `Folio`, in any letter case.
+- `orientation` (default `portrait`) — `portrait` or `landscape`, in any letter case.
 
 The `cloud:` block is written by `poli link`, removed by `poli unlink`. **No API keys here** — the credentials file (or `POLI_PAGE_API_KEY`) carries the secret.
 
