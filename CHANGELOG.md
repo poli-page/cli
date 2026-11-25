@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **`poli documents preview` writes the preview with a Content-Security-Policy.** The HTML written to disk (`./output/documents/<id>.preview.html` or `-o`) gets a `<meta http-equiv="Content-Security-Policy">` as the first child of its `<head>` (a `<head>` is created where the browser would open one when the HTML has none), so template markup and customer data opened as `file://` no longer run scripts, load remote images, fonts or stylesheets, submit forms or change the `<base>`. Inline styles and `data:` images and fonts still render. A `<meta http-equiv="refresh">` can still navigate away: CSP cannot block it. `--json` and the returned `html` are unchanged.
+
 ## [0.10.0] — 2026-10-27
 
 ### Changed (BREAKING)

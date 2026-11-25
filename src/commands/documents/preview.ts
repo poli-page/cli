@@ -8,7 +8,7 @@ import { errorToExitCode } from '../../exit-codes.js';
 import { shouldEmitJson } from '../../output.js';
 
 const PREVIEW_CSP =
-	"default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:";
+	"default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; base-uri 'none'";
 
 const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${PREVIEW_CSP}">`;
 
@@ -54,7 +54,8 @@ function startTagEnd(html: string, at: number, name: string): number {
 }
 
 // The preview is opened as file://, so its template markup and customer data
-// must not load or run anything. Anything past the point where the browser
+// must not load, run or submit anything (a meta refresh still navigates: CSP
+// cannot block it). Anything past the point where the browser
 // opens <head> would already run before a meta placed later.
 export function injectPreviewCsp(html: string): string {
 	let at = html.startsWith('\uFEFF') ? 1 : 0;

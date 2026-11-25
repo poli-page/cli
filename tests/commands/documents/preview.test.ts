@@ -10,7 +10,7 @@ import { DocumentNotFoundError, type ApiClient } from '../../../src/api-client.j
 import { createFakeApiClient } from '../../helpers/fake-api-client.js';
 import { testApiKey } from '../../helpers/api-key.js';
 
-const CSP_META = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:">`;
+const CSP_META = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; base-uri 'none'">`;
 
 function makeStubClient(overrides: Partial<ApiClient> = {}): ApiClient {
 	return createFakeApiClient({
@@ -172,6 +172,12 @@ describe('injectPreviewCsp', () => {
 	it('treats <!--> as an empty comment, not as the start of one', () => {
 		expect(injectPreviewCsp('<!--><script>alert(1)</script>--><head></head>')).toBe(
 			`<!--><head>${CSP_META}</head><script>alert(1)</script>--><head></head>`
+		);
+	});
+
+	it('treats <!---> as an empty comment, not as the start of one', () => {
+		expect(injectPreviewCsp('<!---><script>alert(1)</script>--><head></head>')).toBe(
+			`<!---><head>${CSP_META}</head><script>alert(1)</script>--><head></head>`
 		);
 	});
 
