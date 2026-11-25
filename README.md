@@ -113,7 +113,7 @@ Set the `POLI_PAGE_API_KEY` environment variable. Every key is bound to one envi
 | `pp_live_…`             | `name@live` — counted in the monthly quota                       |
 | `pp_<environment>_…`    | `name@<environment>` — counted in the monthly quota              |
 
-A key renders only its own environment, and never the draft: the draft (`poli render name`) needs `poli login`.
+A key renders only its own environment, and never the draft: the draft (`poli render name`) needs `poli login`, with `POLI_PAGE_API_KEY` unset (see [Precedence](#precedence)).
 
 ```bash
 export POLI_PAGE_API_KEY=pp_live_xxx
