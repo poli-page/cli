@@ -494,7 +494,7 @@ Flags: `-w/--width`, `-f/--format png|jpeg`, `-q/--quality`, `--pages 1,3`, `-o/
 
 #### `poli documents preview <id>`
 
-Fetch the stored canonical HTML re-wrapped as preview-mode (free, no quota cost). Default writes the file at `./output/documents/<id>.preview.html` and opens the browser.
+Fetch the stored canonical HTML re-wrapped as preview-mode (free, no quota cost). Default writes the file at `./output/documents/<id>.preview.html` and opens the browser. The written file carries a Content-Security-Policy meta that blocks scripts, network loads, form submissions and `<base>` (inline styles and `data:` images and fonts still render; a `<meta http-equiv="refresh">` in the HTML can still navigate away, which CSP cannot block; a second meta turns off DNS prefetching of hyperlinks, which CSP does not cover, but a `<link rel="dns-prefetch">` can still resolve its hostname); `--json` prints the HTML as received.
 
 ```bash
 poli documents preview doc_abc123
