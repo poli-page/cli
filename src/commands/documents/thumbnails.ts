@@ -10,6 +10,8 @@ import {
 } from '../../api-client.js';
 import { errorToExitCode } from '../../exit-codes.js';
 import { shouldEmitJson } from '../../output.js';
+import { safeWriteFile } from '../../security/paths.js';
+import { assertDocumentId } from './document-id.js';
 
 export interface DocumentsThumbnailsOptions {
 	cwd?: string;
@@ -35,6 +37,7 @@ export async function executeDocumentsThumbnails(
 	options: DocumentsThumbnailsOptions = {}
 ): Promise<DocumentsThumbnailFile[]> {
 	const cwd = options.cwd ?? process.cwd();
+	assertDocumentId(id);
 
 	let manifestOrgId: string | undefined;
 	try {
@@ -71,16 +74,28 @@ export async function executeDocumentsThumbnails(
 		apiOptions
 	);
 
-	const outputDir = options.output
-		? resolve(cwd, options.output)
-		: join(cwd, 'output', 'thumbnails', id);
-	await mkdir(outputDir, { recursive: true });
+	// The page number from the API becomes a file name.
+	for (const thumb of thumbnails) {
+		if (!Number.isInteger(thumb.page) || thumb.page <= 0) {
+			throw new Error(`Refusing thumbnail with invalid page ${JSON.stringify(thumb.page)}.`);
+		}
+	}
+
+	const outputDir = options.output ? resolve(cwd, options.output) : undefined;
+	if (outputDir) await mkdir(outputDir, { recursive: true });
 
 	const results: DocumentsThumbnailFile[] = [];
 	for (const thumb of thumbnails) {
 		const ext = extensionForContentType(thumb.contentType);
-		const filePath = join(outputDir, `page-${thumb.page}.${ext}`);
-		await writeFile(filePath, Buffer.from(thumb.data, 'base64'));
+		const name = `page-${thumb.page}.${ext}`;
+		const data = Buffer.from(thumb.data, 'base64');
+		let filePath: string;
+		if (outputDir) {
+			filePath = join(outputDir, name);
+			await writeFile(filePath, data);
+		} else {
+			filePath = await safeWriteFile(cwd, join('output', 'thumbnails', id, name), data);
+		}
 		results.push({
 			page: thumb.page,
 			path: filePath,

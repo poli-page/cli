@@ -715,6 +715,38 @@ describe('importTemplate — paths from the source', () => {
 		expect(await listFiles(outsideDir)).toEqual([]);
 	});
 
+	it('refuses to overwrite an asset planted as a symlink inside the project', async () => {
+		const keep = join(projectDir, 'assets', 'keep.bin');
+		await writeFile(keep, 'KEEP');
+		await symlink(keep, join(projectDir, 'assets', 'images', 'logo.png'));
+		await expect(
+			importTemplate({
+				templateRef: { collection: 'showcase', name: 'invoice' },
+				projectDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher(fullSource()),
+				onConflict: async () => 'overwrite',
+			})
+		).rejects.toThrow(/symlink/);
+		expect(await readFile(keep, 'utf-8')).toBe('KEEP');
+	});
+
+	it('refuses to rewrite a tailwind.css planted as a symlink inside the project', async () => {
+		await writeFile(join(projectDir, 'keep.css'), await readFile(join(projectDir, 'tailwind.css')));
+		const before = await readFile(join(projectDir, 'keep.css'), 'utf-8');
+		await rm(join(projectDir, 'tailwind.css'));
+		await symlink(join(projectDir, 'keep.css'), join(projectDir, 'tailwind.css'));
+		await expect(
+			importTemplate({
+				templateRef: { collection: 'showcase', name: 'invoice' },
+				projectDir,
+				homeDir: fakeHome,
+				fetcher: makeFetcher(fullSource()),
+			})
+		).rejects.toThrow(/symlink/);
+		expect(await readFile(join(projectDir, 'keep.css'), 'utf-8')).toBe(before);
+	});
+
 	it('refuses a numbered duplicate that is a dangling symlink out of the project', async () => {
 		await writeFile(join(projectDir, 'assets', 'images', 'logo.png'), 'OLD');
 		await symlink(join(outsideDir, 'pwned'), join(projectDir, 'assets', 'images', 'logo-2.png'));

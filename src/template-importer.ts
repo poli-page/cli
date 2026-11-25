@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { basename, dirname, extname, join } from 'node:path';
+import { basename, dirname, extname, join, relative } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { readManifest, writeManifest } from './manifest.js';
@@ -10,6 +10,7 @@ import {
 	isSafeDottedSegment,
 	isSafeSegment,
 	resolveInside,
+	safeWriteFile,
 } from './security/paths.js';
 
 export interface TemplateSource {
@@ -339,7 +340,7 @@ export async function importTemplate(
 	const projectedFonts: TemplateManifestFontEntry[] = [];
 	for (const [i, font] of (tplManifest.fonts ?? []).entries()) {
 		const plan = fontPlans[i];
-		await writeAsset(plan);
+		await writeAsset(options.projectDir, plan);
 		const projected = { ...font };
 		if (plan.path !== destFontPaths[i]) {
 			projected.src = font.src.replace(basename(font.src), basename(plan.path));
@@ -349,7 +350,7 @@ export async function importTemplate(
 	}
 	const copiedImages: string[] = [];
 	for (const plan of imgPlans) {
-		await writeAsset(plan);
+		await writeAsset(options.projectDir, plan);
 		if (plan.content) copiedImages.push(basename(plan.path));
 	}
 
@@ -358,9 +359,8 @@ export async function importTemplate(
 	// (folder name = template name = filename stem).
 	const destHtmlName = `${destName}.html`;
 	const destMockName = `${destName}.json`;
-	await mkdir(destDir, { recursive: true });
-	await writeFile(join(destDir, destHtmlName), htmlBuf);
-	await writeFile(join(destDir, destMockName), mockBuf);
+	await safeWriteFile(options.projectDir, join('templates', destName, destHtmlName), htmlBuf);
+	await safeWriteFile(options.projectDir, join('templates', destName, destMockName), mockBuf);
 
 	// 7. Append tailwind block (idempotent — keyed by source <coll>/<tpl>)
 	const markerKey = `${ref.collection}/${ref.name}`;
@@ -370,7 +370,8 @@ export async function importTemplate(
 	let appendedTailwind = false;
 	if (!existingTailwind.includes(startMarker)) {
 		const newBlock = `\n${startMarker}\n${tailwindAdditions.trimEnd()}\n${endMarker}\n`;
-		await writeFile(tailwindPath, existingTailwind.trimEnd() + newBlock, 'utf-8');
+		const tailwind = existingTailwind.trimEnd() + newBlock;
+		await safeWriteFile(options.projectDir, 'tailwind.css', tailwind);
 		appendedTailwind = true;
 	}
 
@@ -553,10 +554,9 @@ async function decideAsset(
 	};
 }
 
-async function writeAsset(plan: AssetPlan): Promise<void> {
+async function writeAsset(projectDir: string, plan: AssetPlan): Promise<void> {
 	if (!plan.content) return;
-	await mkdir(dirname(plan.path), { recursive: true });
-	await writeFile(plan.path, plan.content);
+	await safeWriteFile(projectDir, relative(projectDir, plan.path), plan.content);
 }
 
 const defaultSkipHandler: ConflictHandler = async (info) => {

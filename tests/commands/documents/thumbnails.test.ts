@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import {
+	mkdir,
+	mkdtemp,
+	readdir,
+	readFile,
+	rm,
+	stat,
+	symlink,
+	writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeDocumentsThumbnails } from '../../../src/commands/documents/thumbnails.js';
@@ -69,6 +78,72 @@ describe('executeDocumentsThumbnails', () => {
 		expect(s.isFile()).toBe(true);
 		expect(s.size).toBeGreaterThan(0);
 	});
+
+	it('refuses a symlink planted at a default path and leaves its target untouched', async () => {
+		const victim = join(fakeHome, 'victim');
+		await writeFile(victim, 'original');
+		const dir = join(tempDir, 'output', 'thumbnails', 'doc_abc');
+		await mkdir(dir, { recursive: true });
+		await symlink(victim, join(dir, 'page-1.png'));
+		const client = createFakeApiClient({ documentThumbnails: async () => [fakeThumb(1)] });
+
+		await expect(
+			executeDocumentsThumbnails('doc_abc', {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				apiClient: client,
+			})
+		).rejects.toThrow(/Refusing/);
+		expect(await readFile(victim, 'utf-8')).toBe('original');
+	});
+
+	it('refuses a symlinked output folder that leaves the working directory', async () => {
+		await symlink(fakeHome, join(tempDir, 'output'));
+		const client = createFakeApiClient({ documentThumbnails: async () => [fakeThumb(1)] });
+
+		await expect(
+			executeDocumentsThumbnails('doc_abc', {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				apiClient: client,
+			})
+		).rejects.toThrow(/Refusing/);
+		expect(await readdir(fakeHome)).toEqual([]);
+	});
+
+	it.each([0, -1, 1.5, Number.NaN, '1/../../x'])(
+		'refuses a thumbnail whose page is %s and writes nothing',
+		async (page) => {
+			const client = createFakeApiClient({
+				documentThumbnails: async () => [fakeThumb(1), fakeThumb(page as number)],
+			});
+
+			await expect(
+				executeDocumentsThumbnails('doc_abc', {
+					cwd: tempDir,
+					homeDir: fakeHome,
+					apiClient: client,
+				})
+			).rejects.toThrow(/invalid page/);
+			expect(await readdir(tempDir)).toEqual([]);
+		}
+	);
+
+	it.each(['../../x', 'a/b', 'a\\b', '..', 'doc..x'])(
+		'refuses the id %s before any request and writes nothing',
+		async (id) => {
+			const documentThumbnails = vi.fn();
+			await expect(
+				executeDocumentsThumbnails(id, {
+					cwd: tempDir,
+					homeDir: fakeHome,
+					apiClient: createFakeApiClient({ documentThumbnails }),
+				})
+			).rejects.toThrow(/Invalid document ID/);
+			expect(documentThumbnails).not.toHaveBeenCalled();
+			expect(await readdir(tempDir)).toEqual([]);
+		}
+	);
 
 	it('writes JPEG when format=jpeg and uses .jpeg extension', async () => {
 		const client = createFakeApiClient({

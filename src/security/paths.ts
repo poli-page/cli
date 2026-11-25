@@ -1,4 +1,5 @@
-import { lstat, realpath } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { lstat, mkdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 // One path segment: no `.` or `..`, no separators, no `?`/`#`/`%` that would
@@ -78,4 +79,33 @@ async function realpathOfDeepestExisting(p: string): Promise<string | null> {
 			current = parent;
 		}
 	}
+}
+
+/**
+ * Write `data` to `rel` under `root` without following a symlink: the path
+ * must stay inside `root` (see `resolveInside`) and the file itself must not
+ * be a symlink. The bytes land in a fresh temp file in the same directory
+ * that is then renamed over the target, so a symlink planted after the check
+ * is replaced, never written through. Returns the absolute path written.
+ */
+export async function safeWriteFile(
+	root: string,
+	rel: string,
+	data: string | Uint8Array
+): Promise<string> {
+	const target = await resolveInside(root, rel);
+	const leaf = await lstat(target).catch(() => null);
+	if (leaf?.isSymbolicLink()) {
+		throw new Error(`Refusing path "${rel}": it is a symlink.`);
+	}
+	await mkdir(dirname(target), { recursive: true });
+	const temp = join(dirname(target), `.${basename(target)}.${randomUUID()}.tmp`);
+	try {
+		await writeFile(temp, data, { flag: 'wx' });
+		await rename(temp, target);
+	} catch (err) {
+		await rm(temp, { force: true });
+		throw err;
+	}
+	return target;
 }

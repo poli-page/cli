@@ -1,5 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import {
+	lstat,
+	mkdir,
+	mkdtemp,
+	readdir,
+	readFile,
+	realpath,
+	rm,
+	symlink,
+	writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -7,6 +17,7 @@ import {
 	isSafeDottedSegment,
 	isSafeSegment,
 	resolveInside,
+	safeWriteFile,
 } from '../src/security/paths.js';
 
 describe('isSafeSegment', () => {
@@ -140,5 +151,69 @@ describe('resolveInside', () => {
 		await mkdir(join(root, 'real'));
 		await symlink(join(root, 'real'), join(root, 'alias'));
 		expect(await resolveInside(root, 'alias/x')).toBe(join(root, 'alias', 'x'));
+	});
+});
+
+describe('safeWriteFile', () => {
+	let base: string;
+	let root: string;
+	let outside: string;
+
+	beforeEach(async () => {
+		base = await realpath(await mkdtemp(join(tmpdir(), 'poli-safe-write-')));
+		root = join(base, 'root');
+		outside = join(base, 'outside');
+		await mkdir(root);
+		await mkdir(outside);
+		await writeFile(join(outside, 'secret'), 'original');
+	});
+
+	afterEach(async () => {
+		await rm(base, { recursive: true, force: true });
+	});
+
+	it('creates the missing directories, writes the file and leaves no temp file', async () => {
+		expect(await safeWriteFile(root, 'output/a/b.pdf', 'pdf')).toBe(
+			join(root, 'output', 'a', 'b.pdf')
+		);
+		expect(await readFile(join(root, 'output', 'a', 'b.pdf'), 'utf-8')).toBe('pdf');
+		expect(await readdir(join(root, 'output', 'a'))).toEqual(['b.pdf']);
+	});
+
+	it('replaces an existing regular file', async () => {
+		await writeFile(join(root, 'x.txt'), 'old');
+		await safeWriteFile(root, 'x.txt', Buffer.from('new'));
+		expect(await readFile(join(root, 'x.txt'), 'utf-8')).toBe('new');
+	});
+
+	it('refuses a symlink leaf out of the root and leaves its target untouched', async () => {
+		await symlink(join(outside, 'secret'), join(root, 'x.pdf'));
+		await expect(safeWriteFile(root, 'x.pdf', 'evil')).rejects.toThrow(/Refusing/);
+		expect(await readFile(join(outside, 'secret'), 'utf-8')).toBe('original');
+	});
+
+	it('refuses a symlink leaf that stays inside the root', async () => {
+		await writeFile(join(root, 'poli-page.json'), '{}');
+		await symlink(join(root, 'poli-page.json'), join(root, 'x.pdf'));
+		await expect(safeWriteFile(root, 'x.pdf', 'evil')).rejects.toThrow(/symlink/);
+		expect(await readFile(join(root, 'poli-page.json'), 'utf-8')).toBe('{}');
+		expect((await lstat(join(root, 'x.pdf'))).isSymbolicLink()).toBe(true);
+	});
+
+	it('refuses a symlinked ancestor out of the root', async () => {
+		await symlink(outside, join(root, 'output'));
+		await expect(safeWriteFile(root, 'output/secret', 'evil')).rejects.toThrow(/outside/);
+		expect(await readFile(join(outside, 'secret'), 'utf-8')).toBe('original');
+	});
+
+	it('removes its temp file when the write fails', async () => {
+		await mkdir(join(root, 'x.pdf', 'inner'), { recursive: true });
+		await expect(safeWriteFile(root, 'x.pdf', 'pdf')).rejects.toThrow();
+		expect(await readdir(root)).toEqual(['x.pdf']);
+	});
+
+	it('refuses lexical traversal', async () => {
+		await expect(safeWriteFile(root, '../outside/secret', 'evil')).rejects.toThrow(/outside/);
+		expect(await readFile(join(outside, 'secret'), 'utf-8')).toBe('original');
 	});
 });
