@@ -61,6 +61,7 @@ describe('resolveAuth', () => {
 				mode: 'api-key',
 				authorization: `Bearer ${testApiKey('sandbox')}`,
 				environment: 'sandbox',
+				sessionIgnored: true,
 			});
 		});
 

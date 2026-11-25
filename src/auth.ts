@@ -8,7 +8,12 @@ export type AuthContext =
 			orgIdHeader?: undefined;
 			/** The environment the key is bound to, read from its prefix (K1). */
 			environment: string;
+			/** A `poli login` session is stored but set aside for the key. */
+			sessionIgnored?: true;
 	  };
+
+export const SESSION_IGNORED_HINT =
+	'Your `poli login` session is not used while POLI_PAGE_API_KEY is set: unset it to use the session.';
 
 export interface ResolveAuthOptions {
 	manifestOrgId?: string;
@@ -23,6 +28,7 @@ const API_KEY = /^pp_(?=[a-z][a-z0-9-]{0,19}_)[a-z][a-z0-9]*(?:-[a-z0-9]+)*_[0-9
 // session (e.g. a sandbox key exported to act with less than the full session).
 export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<AuthContext> {
 	const envKey = process.env.POLI_PAGE_API_KEY;
+	const credentials = await readCredentials(options.homeDir);
 	if (envKey) {
 		if (!API_KEY.test(envKey)) {
 			throw new Error(
@@ -33,10 +39,10 @@ export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<Aut
 			mode: 'api-key',
 			authorization: `Bearer ${envKey}`,
 			environment: envKey.slice('pp_'.length, envKey.indexOf('_', 'pp_'.length)),
+			...(credentials?.session ? { sessionIgnored: true as const } : {}),
 		};
 	}
 
-	const credentials = await readCredentials(options.homeDir);
 	if (credentials?.session) {
 		const session = sessionFor(credentials);
 		if (!options.manifestOrgId) {

@@ -399,6 +399,25 @@ describe('poli render', () => {
 				}),
 				/API keys render a published environment: use `invoice@<environment>`/
 			);
+			const err = await executeRender('invoice', {
+				cwd: projectDir,
+				apiClient: noCallClient(),
+				homeDir: emptyHome,
+			}).catch((e: Error) => e);
+			expect((err as Error).message).not.toMatch(/poli login/);
+		});
+
+		it('refuses the draft with a session stored, saying to unset the key to use the session', async () => {
+			process.env.POLI_PAGE_API_KEY = testApiKey('staging');
+
+			await expectUsageError(
+				executeRender('invoice', {
+					cwd: projectDir,
+					apiClient: noCallClient(),
+					homeDir: fakeHome,
+				}),
+				/`invoice@staging`\. Your `poli login` session is not used while POLI_PAGE_API_KEY is set: unset it to use the session\.$/
+			);
 		});
 
 		it('refuses an explicit @draft before any call', async () => {

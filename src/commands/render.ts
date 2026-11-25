@@ -9,7 +9,7 @@ import {
 	type ApiClient,
 	type RenderResult as ApiRenderResult,
 } from '../api-client.js';
-import { resolveAuth } from '../auth.js';
+import { resolveAuth, SESSION_IGNORED_HINT } from '../auth.js';
 import { isValidEnvironmentName } from '../environment-name.js';
 import { UsageError, errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
@@ -160,7 +160,7 @@ export async function executeRender(
 	if (target === DRAFT) {
 		if (auth.mode === 'api-key') {
 			throw new UsageError(
-				`API keys render a published environment: use \`${templateName}@<environment>\`. This key renders \`${auth.environment}\`: \`${templateName}@${auth.environment}\`.`
+				`API keys render a published environment: use \`${templateName}@<environment>\`. This key renders \`${auth.environment}\`: \`${templateName}@${auth.environment}\`.${auth.sessionIgnored ? ` ${SESSION_IGNORED_HINT}` : ''}`
 			);
 		}
 		const pdf = await client.renderDraft(auth.authorization, auth.orgIdHeader, payload);

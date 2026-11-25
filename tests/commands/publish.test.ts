@@ -533,6 +533,25 @@ describe('poli publish', () => {
 			expect(calls).toHaveLength(0);
 		});
 
+		it('refuses a standard key with a session stored, saying to unset the key to use the session', async () => {
+			await writeCredentials(
+				{
+					session: 'session-token',
+					user: { id: 'u1', name: 'X', email: 'x@x' },
+					orgs: { acme: {} },
+				},
+				fakeHome
+			);
+			const calls: PublishCall[] = [];
+			const me = keyMe({ keyType: 'standard', role: null });
+			const err = await run({ env: 'staging' }, keyClient(calls, me)).catch((e) => e);
+			expect(err.message).toBe(
+				'Standard API keys can only render. Use a service key. Your `poli login` session is not used while POLI_PAGE_API_KEY is set: unset it to use the session.'
+			);
+			expect(errorToExitCode(err)).toBe(ExitCode.NOT_AUTHORIZED);
+			expect(calls).toHaveLength(0);
+		});
+
 		it('never prompts: the API decides on a protected environment', async () => {
 			const calls: PublishCall[] = [];
 			const confirmFn = vi.fn(async () => false);

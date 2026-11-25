@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { readProjectManifest } from '../manifest.js';
-import { resolveAuth, type AuthContext } from '../auth.js';
+import { resolveAuth, SESSION_IGNORED_HINT, type AuthContext } from '../auth.js';
 import {
 	ApiError,
 	createApiClient,
@@ -189,7 +189,9 @@ async function publishWithApiKey(
 	const { auth } = await client.getMe(authorization);
 	if (auth.keyType !== 'service') {
 		throw new PublishNotAuthorizedError(
-			'Standard API keys can only render. Use a service key or `poli login`.'
+			key.sessionIgnored
+				? `Standard API keys can only render. Use a service key. ${SESSION_IGNORED_HINT}`
+				: 'Standard API keys can only render. Use a service key or `poli login`.'
 		);
 	}
 	if (key.environment !== environment) {
