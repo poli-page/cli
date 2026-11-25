@@ -19,12 +19,15 @@ const templateEntrySchema = z
 	})
 	.passthrough();
 
+// Both ids become path segments of the API calls made with the session.
+const cloudIdSchema = z.uuid({ error: 'must be a UUID' });
+
 const cloudSchema = z
 	.object({
 		orgSlug: z.string(),
-		orgId: z.string().optional(),
+		orgId: cloudIdSchema.optional(),
 		projectSlug: z.string().optional(),
-		projectId: z.string(),
+		projectId: cloudIdSchema,
 		apiUrl: z.string().optional(),
 	})
 	.passthrough();

@@ -12,11 +12,11 @@ import { createFakeApiClient } from '../helpers/fake-api-client.js';
 function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
 	return createFakeApiClient({
 		getOrganizations: async () => [
-			{ id: 'org_1', name: 'Acme Corp', slug: 'acme-corp' },
-			{ id: 'org_2', name: 'Beta Inc', slug: 'beta-inc' },
+			{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme Corp', slug: 'acme-corp' },
+			{ id: 'a2c4e6f8-1b3d-4f5a-8c7e-9d0b2a4c6e81', name: 'Beta Inc', slug: 'beta-inc' },
 		],
 		listProjects: async () => [],
-		createProject: async () => ({ id: 'proj_abc123' }),
+		createProject: async () => ({ id: '6fa459ea-ee8a-4ca4-894e-db77e160355e' }),
 		...overrides,
 	});
 }
@@ -62,9 +62,9 @@ describe('poli link / unlink', () => {
 
 			expect(manifest.cloud).toEqual({
 				orgSlug: 'acme-corp',
-				orgId: 'org_1',
+				orgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
 				projectSlug: 'test-project',
-				projectId: 'proj_abc123',
+				projectId: '6fa459ea-ee8a-4ca4-894e-db77e160355e',
 			});
 		});
 
@@ -87,7 +87,7 @@ describe('poli link / unlink', () => {
 			const client = createMockApiClient({
 				createProject: async (_session, _orgId, payload) => {
 					receivedPayload = payload as Record<string, unknown>;
-					return { id: 'proj_abc123' };
+					return { id: '6fa459ea-ee8a-4ca4-894e-db77e160355e' };
 				},
 			});
 
@@ -201,7 +201,7 @@ describe('poli link / unlink', () => {
 				join(projectDir, MANIFEST_FILENAME),
 				JSON.stringify({
 					project: { name: 'test-project', version: '1.2.0' },
-					cloud: { orgSlug: 'acme-corp', projectId: 'proj_abc123', track: '1.2' },
+					cloud: { orgSlug: 'acme-corp', projectId: '6fa459ea-ee8a-4ca4-894e-db77e160355e', track: '1.2' },
 				})
 			);
 			const log = vi.spyOn(console, 'log').mockImplementation(() => {});

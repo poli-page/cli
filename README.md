@@ -546,6 +546,8 @@ poli documents preview doc_abc123 -o ./preview.html
 
 The `cloud:` block is written by `poli link`, removed by `poli unlink`. **No API keys here** — the credentials file (or `POLI_PAGE_API_KEY`) carries the secret.
 
+`cloud.orgId` and `cloud.projectId` must be UUIDs: any other value makes the manifest invalid (`Invalid poli-page.json — cloud.projectId: must be a UUID`), so a hand-edited id cannot change the API path the CLI calls with your session.
+
 A manifest from before environments may still carry `project.version` or `cloud.track`. Both are ignored, and dropped the next time the CLI writes the file (`poli link`, `poli unlink`, `poli new`).
 
 ---

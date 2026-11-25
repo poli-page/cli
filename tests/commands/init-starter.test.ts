@@ -15,7 +15,7 @@ const STARTER_MANIFEST = {
 	engine: { paginationOptions: { orphanThreshold: 0.08 } },
 	templates: [{ name: 'welcome', template: 'welcome.html', mock: 'welcome.json' }],
 	fonts: [{ family: 'Inter', src: 'fonts/inter-400.woff2', weight: 400, style: 'normal' }],
-	cloud: { orgSlug: 'someone-else', projectId: 'proj_foreign' },
+	cloud: { orgSlug: 'someone-else', projectId: '16fd2706-8baf-433b-82eb-8c7fada847da' },
 };
 
 // Files of `getting-started/` in the source repo, keyed by repo path.
@@ -59,7 +59,7 @@ function makeFetcher(requested: string[], extraFiles: Record<string, string> = {
 // (pull, download, create…) fails the test.
 function makeClient(
 	projects: Array<{ id: string; name: string; slug: string }>,
-	orgs = [{ id: 'org_1', name: 'Acme', slug: 'acme' }],
+	orgs = [{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme', slug: 'acme' }],
 	calls: string[] = []
 ): ApiClient {
 	return createFakeApiClient({
@@ -144,8 +144,8 @@ describe('poli init --starter', () => {
 			fetcher: makeFetcher([]),
 			apiClient: makeClient(
 				[
-					{ id: 'proj_x', name: 'Invoices', slug: 'invoices' },
-					{ id: 'proj_gs', name: 'Getting started', slug: 'getting-started' },
+					{ id: 'c9bf9e57-1685-4c89-bafb-ff5af830be8a', name: 'Invoices', slug: 'invoices' },
+					{ id: '886313e1-3b8a-4372-9b90-0c9aee199e5d', name: 'Getting started', slug: 'getting-started' },
 				],
 				undefined,
 				calls
@@ -156,9 +156,9 @@ describe('poli init --starter', () => {
 		const manifest = await readWrittenManifest(result.projectDir);
 		expect(manifest.cloud).toEqual({
 			orgSlug: 'acme',
-			orgId: 'org_1',
+			orgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
 			projectSlug: 'getting-started',
-			projectId: 'proj_gs',
+			projectId: '886313e1-3b8a-4372-9b90-0c9aee199e5d',
 		});
 		expect(manifest.project).toEqual({ name: 'getting-started', description: 'The starter' });
 		expect(manifest.templates).toEqual(STARTER_MANIFEST.templates);
@@ -212,7 +212,7 @@ describe('poli init --starter', () => {
 			cwd: tempDir,
 			homeDir: fakeHome,
 			fetcher: makeFetcher([]),
-			apiClient: makeClient([{ id: 'proj_x', name: 'Invoices', slug: 'invoices' }]),
+			apiClient: makeClient([{ id: 'c9bf9e57-1685-4c89-bafb-ff5af830be8a', name: 'Invoices', slug: 'invoices' }]),
 		});
 
 		expect(result.link).toEqual({ status: 'unlinked', reason: 'no-project', orgSlug: 'acme' });
@@ -224,33 +224,33 @@ describe('poli init --starter', () => {
 	it('uses --org when the user belongs to several organizations', async () => {
 		await login();
 		const orgs = [
-			{ id: 'org_1', name: 'Acme', slug: 'acme' },
-			{ id: 'org_2', name: 'Beta', slug: 'beta' },
+			{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme', slug: 'acme' },
+			{ id: 'a2c4e6f8-1b3d-4f5a-8c7e-9d0b2a4c6e81', name: 'Beta', slug: 'beta' },
 		];
 		const result = await executeInitStarter('getting-started', undefined, {
 			cwd: tempDir,
 			homeDir: fakeHome,
 			org: 'beta',
 			fetcher: makeFetcher([]),
-			apiClient: makeClient([{ id: 'proj_gs', name: 'GS', slug: 'getting-started' }], orgs),
+			apiClient: makeClient([{ id: '886313e1-3b8a-4372-9b90-0c9aee199e5d', name: 'GS', slug: 'getting-started' }], orgs),
 		});
 
 		expect(result.link).toEqual({ status: 'linked', orgSlug: 'beta' });
-		expect((await readWrittenManifest(result.projectDir)).cloud.orgId).toBe('org_2');
+		expect((await readWrittenManifest(result.projectDir)).cloud.orgId).toBe('a2c4e6f8-1b3d-4f5a-8c7e-9d0b2a4c6e81');
 	});
 
 	it('asks which organization to use when there are several and no --org', async () => {
 		await login();
 		const orgs = [
-			{ id: 'org_1', name: 'Acme', slug: 'acme' },
-			{ id: 'org_2', name: 'Beta', slug: 'beta' },
+			{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme', slug: 'acme' },
+			{ id: 'a2c4e6f8-1b3d-4f5a-8c7e-9d0b2a4c6e81', name: 'Beta', slug: 'beta' },
 		];
 		const offered: string[] = [];
 		const result = await executeInitStarter('getting-started', undefined, {
 			cwd: tempDir,
 			homeDir: fakeHome,
 			fetcher: makeFetcher([]),
-			apiClient: makeClient([{ id: 'proj_gs', name: 'GS', slug: 'getting-started' }], orgs),
+			apiClient: makeClient([{ id: '886313e1-3b8a-4372-9b90-0c9aee199e5d', name: 'GS', slug: 'getting-started' }], orgs),
 			selectOrg: async (choices) => {
 				offered.push(...choices.map((o) => o.slug));
 				return 'beta';
@@ -264,14 +264,14 @@ describe('poli init --starter', () => {
 	it('stays unlinked when there are several organizations and nobody to ask', async () => {
 		await login();
 		const orgs = [
-			{ id: 'org_1', name: 'Acme', slug: 'acme' },
-			{ id: 'org_2', name: 'Beta', slug: 'beta' },
+			{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme', slug: 'acme' },
+			{ id: 'a2c4e6f8-1b3d-4f5a-8c7e-9d0b2a4c6e81', name: 'Beta', slug: 'beta' },
 		];
 		const result = await executeInitStarter('getting-started', undefined, {
 			cwd: tempDir,
 			homeDir: fakeHome,
 			fetcher: makeFetcher([]),
-			apiClient: makeClient([{ id: 'proj_gs', name: 'GS', slug: 'getting-started' }], orgs),
+			apiClient: makeClient([{ id: '886313e1-3b8a-4372-9b90-0c9aee199e5d', name: 'GS', slug: 'getting-started' }], orgs),
 		});
 
 		expect(result.link).toEqual({ status: 'unlinked', reason: 'several-orgs' });
@@ -299,7 +299,7 @@ describe('poli init --starter', () => {
 			homeDir: fakeHome,
 			noCache: true,
 			fetcher: makeFetcher(requested),
-			apiClient: makeClient([{ id: 'proj_gs', name: 'GS', slug: 'getting-started' }]),
+			apiClient: makeClient([{ id: '886313e1-3b8a-4372-9b90-0c9aee199e5d', name: 'GS', slug: 'getting-started' }]),
 		});
 
 		expect(requested.length).toBeGreaterThan(1);

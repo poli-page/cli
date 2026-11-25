@@ -26,7 +26,7 @@ function sessionMe(): MeResponse {
 		},
 		key: null,
 		org: {
-			id: 'org_uuid_acme',
+			id: '3b241101-e2bb-4255-8caf-4136c566a962',
 			slug: 'acme',
 			name: 'Acme',
 			tier: 'free',
@@ -48,7 +48,7 @@ function apiKeyMe(): MeResponse {
 			lastUsedAt: null,
 		},
 		org: {
-			id: 'org_uuid_acme',
+			id: '3b241101-e2bb-4255-8caf-4136c566a962',
 			slug: 'acme',
 			name: 'Acme',
 			tier: 'starter',
@@ -71,7 +71,7 @@ function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
 			sessionToken: 'device-session-token',
 			user: { id: 'user_1', name: 'Xavier', email: 'xavier@test.com' },
 		}),
-		getOrganizations: async () => [{ id: 'org_1', name: 'Acme Corp', slug: 'acme-corp' }],
+		getOrganizations: async () => [{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme Corp', slug: 'acme-corp' }],
 		...overrides,
 	});
 }
@@ -374,7 +374,7 @@ describe('auth commands', () => {
 		async function linkProject(apiUrl: string) {
 			await writeManifest(projectDir, {
 				project: { name: 'p' },
-				cloud: { orgSlug: 'acme', orgId: 'org_1', projectSlug: 'p', projectId: 'proj_1', apiUrl },
+				cloud: { orgSlug: 'acme', orgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', projectSlug: 'p', projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268', apiUrl },
 			});
 		}
 
@@ -482,9 +482,9 @@ describe('auth commands', () => {
 				project: { name: 'p' },
 				cloud: {
 					orgSlug: 'acme',
-					orgId: 'org_uuid_acme',
+					orgId: '3b241101-e2bb-4255-8caf-4136c566a962',
 					projectSlug: 'p',
-					projectId: 'proj_1',
+					projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268',
 				},
 			});
 		}
@@ -522,7 +522,7 @@ describe('auth commands', () => {
 
 			expect(result.mode).toBe('session');
 			expect(receivedAuth).toBe('Bearer session-token');
-			expect(receivedOrgId).toBe('org_uuid_acme');
+			expect(receivedOrgId).toBe('3b241101-e2bb-4255-8caf-4136c566a962');
 			expect(result.payload.user?.email).toBe('xavier@test.com');
 			expect(result.payload.org?.slug).toBe('acme');
 		});
@@ -568,8 +568,8 @@ describe('auth commands', () => {
 			// no manifest at all
 			const client = createMockApiClient({
 				getOrganizations: async () => [
-					{ id: 'org_uuid_acme', slug: 'acme', name: 'Acme' },
-					{ id: 'org_uuid_other', slug: 'other', name: 'Other Co' },
+					{ id: '3b241101-e2bb-4255-8caf-4136c566a962', slug: 'acme', name: 'Acme' },
+					{ id: '5c1e6f0a-7d2b-4e8c-9a31-2f4b6d8e0c17', slug: 'other', name: 'Other Co' },
 				],
 			});
 
@@ -595,7 +595,7 @@ describe('auth commands', () => {
 			);
 
 			const client = createMockApiClient({
-				getOrganizations: async () => [{ id: 'org_uuid_acme', slug: 'acme', name: 'Acme' }],
+				getOrganizations: async () => [{ id: '3b241101-e2bb-4255-8caf-4136c566a962', slug: 'acme', name: 'Acme' }],
 			});
 
 			const result = await executeWhoami({
@@ -706,9 +706,9 @@ describe('auth commands', () => {
 				project: { name: 'p' },
 				cloud: {
 					orgSlug: 'acme',
-					orgId: 'org_uuid_acme',
+					orgId: '3b241101-e2bb-4255-8caf-4136c566a962',
 					projectSlug: 'p',
-					projectId: 'proj_1',
+					projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268',
 				},
 			});
 			me = { ...sessionMe(), auth: { ...sessionMe().auth, role: 'admin' } };

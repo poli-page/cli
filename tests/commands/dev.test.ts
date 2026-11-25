@@ -50,7 +50,7 @@ function fakePdf(label: string): Buffer {
  */
 function makeStubClient(options: StubOptions = {}): ApiClient {
 	return createFakeApiClient({
-		getOrganizations: async () => [{ id: 'org_1', name: 'Acme', slug: 'acme' }],
+		getOrganizations: async () => [{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme', slug: 'acme' }],
 		patchFiles: async (_session, _orgId, _projectId, body) => {
 			options.patchBodies?.push(body);
 			if (options.patchImpl) return options.patchImpl(body);
@@ -162,9 +162,9 @@ async function setupLinkedProject(projectDir: string, fakeHome: string): Promise
 			project: { name: 'demo' },
 			cloud: {
 				orgSlug: 'acme',
-				orgId: 'org_1',
+				orgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
 				projectSlug: 'demo',
-				projectId: 'proj_1',
+				projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268',
 			},
 			templates: [],
 		})
@@ -318,7 +318,7 @@ describe('poli dev', () => {
 			// The draft renders through the signed-in session only: the body
 			// names no environment and no version.
 			expect(draftCalls[0].authorization).toBe('Bearer sess-tok');
-			expect(draftCalls[0].orgIdHeader).toBe('org_1');
+			expect(draftCalls[0].orgIdHeader).toBe('0e89d99e-1516-4b48-baa1-f49e660ad1c1');
 			expect(draftCalls[0].payload).toEqual({
 				project: 'demo',
 				template: 'invoice',

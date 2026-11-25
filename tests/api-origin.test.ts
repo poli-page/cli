@@ -65,7 +65,7 @@ const ME = {
 	auth: { mode: 'session', keyType: null, environment: null, role: 'owner' },
 	user: { id: 'user_1', email: 'xavier@test.com', name: 'Xavier', username: 'xavier' },
 	key: null,
-	org: { id: 'org_1', slug: 'acme', name: 'Acme', tier: 'free', lifecycleStatus: 'active' },
+	org: { id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', slug: 'acme', name: 'Acme', tier: 'free', lifecycleStatus: 'active' },
 };
 
 describe('assertTrustedApiOrigin', () => {
@@ -240,11 +240,11 @@ describe('the stored session is bound to the origin that issued it', () => {
 	it('a file without origin is the default origin: refused elsewhere', async () => {
 		await writeCredentials(SESSION, fakeHome);
 		vi.stubEnv('POLI_API_URL', 'https://api-develop.poli.page');
-		await expect(resolveAuth({ manifestOrgId: 'org_1', homeDir: fakeHome })).rejects.toThrow(
+		await expect(resolveAuth({ manifestOrgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', homeDir: fakeHome })).rejects.toThrow(
 			expect.objectContaining({ exitCode: ExitCode.NOT_AUTHENTICATED })
 		);
 		vi.stubEnv('POLI_API_URL', '');
-		await expect(resolveAuth({ manifestOrgId: 'org_1', homeDir: fakeHome })).resolves.toMatchObject({
+		await expect(resolveAuth({ manifestOrgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', homeDir: fakeHome })).resolves.toMatchObject({
 			authorization: 'Bearer session-token-abc',
 		});
 	});
@@ -252,11 +252,11 @@ describe('the stored session is bound to the origin that issued it', () => {
 	it('a session for origin A is refused for origin B', async () => {
 		await writeCredentials({ ...SESSION, origin: 'https://api-develop.poli.page' }, fakeHome);
 		vi.stubEnv('POLI_API_URL', 'https://api.poli.page');
-		await expect(resolveAuth({ manifestOrgId: 'org_1', homeDir: fakeHome })).rejects.toThrow(
+		await expect(resolveAuth({ manifestOrgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', homeDir: fakeHome })).rejects.toThrow(
 			/issued by https:\/\/api-develop\.poli\.page/
 		);
 		vi.stubEnv('POLI_API_URL', 'https://api-develop.poli.page');
-		await expect(resolveAuth({ manifestOrgId: 'org_1', homeDir: fakeHome })).resolves.toMatchObject({
+		await expect(resolveAuth({ manifestOrgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', homeDir: fakeHome })).resolves.toMatchObject({
 			authorization: 'Bearer session-token-abc',
 		});
 	});
@@ -349,9 +349,9 @@ describe('poli commands and the API URL', () => {
 			project: { name: 'p' },
 			cloud: {
 				orgSlug: 'acme',
-				orgId: 'org_1',
+				orgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
 				projectSlug: 'p',
-				projectId: 'proj_1',
+				projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268',
 				...(apiUrl ? { apiUrl } : {}),
 			},
 		});

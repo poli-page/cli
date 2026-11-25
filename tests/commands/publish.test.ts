@@ -36,9 +36,9 @@ const MANIFEST = {
 	],
 	cloud: {
 		orgSlug: 'acme',
-		orgId: 'org_1',
+		orgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
 		projectSlug: 'invoices',
-		projectId: 'proj_1',
+		projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268',
 	},
 };
 
@@ -88,7 +88,7 @@ function keyMe(auth: Partial<MeResponse['auth']> = {}): MeResponse {
 		},
 		user: null,
 		key: null,
-		org: { id: 'org_1', slug: 'acme', name: 'Acme', tier: 'free', lifecycleStatus: 'active' },
+		org: { id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', slug: 'acme', name: 'Acme', tier: 'free', lifecycleStatus: 'active' },
 	};
 }
 
@@ -156,10 +156,10 @@ describe('poli publish', () => {
 			);
 
 			expect(result).toEqual(publishResult());
-			expect(listed).toEqual([['Bearer session-token', 'org_1']]);
+			expect(listed).toEqual([['Bearer session-token', '0e89d99e-1516-4b48-baa1-f49e660ad1c1']]);
 			expect(calls).toHaveLength(1);
 			expect(calls[0].authorization).toBe('Bearer session-token');
-			expect(calls[0].orgId).toBe('org_1');
+			expect(calls[0].orgId).toBe('0e89d99e-1516-4b48-baa1-f49e660ad1c1');
 			expect(calls[0].project).toBe('invoices');
 			expect(calls[0].body.environment).toBe('sandbox');
 			expect(calls[0].body.message).toBe('First release');
@@ -572,7 +572,7 @@ describe('poli publish', () => {
 			await run({ env: 'sandbox' }, makeClient(calls));
 			expect(calls).toHaveLength(1);
 			expect(calls[0].authorization).toBe('Bearer session-token');
-			expect(calls[0].orgId).toBe('org_1');
+			expect(calls[0].orgId).toBe('0e89d99e-1516-4b48-baa1-f49e660ad1c1');
 		});
 
 		it('refuses an unlinked folder (exit 6) without calling the API', async () => {
@@ -665,7 +665,7 @@ describe('poli publish', () => {
 			meAnswer = () => new Response('unexpected', { status: 500 });
 			fetchMock = vi.fn(async (url: string) => {
 				if (url === `${API_URL}/v1/me`) return meAnswer();
-				if (url.endsWith('/organizations/org_1/environments')) {
+				if (url.endsWith('/organizations/0e89d99e-1516-4b48-baa1-f49e660ad1c1/environments')) {
 					return jsonResponse(200, ENVIRONMENTS);
 				}
 				if (url === `${API_URL}/v1/projects/invoices/publish`) return publishAnswer();
