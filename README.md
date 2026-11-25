@@ -210,6 +210,8 @@ Flags:
 
 Opens your browser for the device authorization flow and stores the session token at `~/.polipage/credentials.json`.
 
+It first prints the API host it logs into. The browser opens only an `https` page on the API's own site (`poli.page` or a subdomain; a local page when the API is local): any other verification URL the API sends is printed, not opened, and login exits `3`. The API URL is stored in the credentials file only when you chose it: `--api-url`, your own `POLI_API_URL`, or the `apiUrl` an earlier login stored. A `poli-page.json` `cloud.apiUrl` is never stored.
+
 #### `poli logout`
 
 Clears the local credentials file.
