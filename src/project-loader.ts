@@ -1,6 +1,6 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join, dirname, extname } from 'node:path';
-import { readManifest, type PoliPageManifest } from './manifest.js';
+import { readProjectManifest, type PoliPageManifest } from './manifest.js';
 import { MANIFEST_FILENAME } from './constants.js';
 
 export interface TemplateEntry {
@@ -24,13 +24,7 @@ export interface LoadedProject {
 }
 
 export async function loadProject(cwd: string): Promise<LoadedProject> {
-	let manifest;
-	try {
-		manifest = await readManifest(cwd);
-	} catch {
-		throw new Error(`No ${MANIFEST_FILENAME} found in ${cwd}. Are you in a Poli Page project?`);
-	}
-	return { manifest, projectDir: cwd };
+	return { manifest: await readProjectManifest(cwd), projectDir: cwd };
 }
 
 export function findTemplate(

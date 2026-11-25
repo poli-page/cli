@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeInit } from '../src/commands/init.js';
@@ -25,6 +25,16 @@ describe('project-loader', () => {
 			const project = await loadProject(projectDir);
 			expect(project.manifest.project.name).toBe('test-project');
 			expect(project.projectDir).toBe(projectDir);
+		});
+
+		it('reports an invalid manifest as invalid, not as missing', async () => {
+			await writeFile(
+				join(projectDir, 'poli-page.json'),
+				JSON.stringify({ project: { name: 'p' }, cloud: { orgSlug: 'acme', projectId: 'proj_1' } })
+			);
+			await expect(loadProject(projectDir)).rejects.toThrow(
+				'Invalid poli-page.json — cloud.projectId: must be a UUID'
+			);
 		});
 
 		it('should throw if no manifest found', async () => {

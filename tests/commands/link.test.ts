@@ -201,7 +201,11 @@ describe('poli link / unlink', () => {
 				join(projectDir, MANIFEST_FILENAME),
 				JSON.stringify({
 					project: { name: 'test-project', version: '1.2.0' },
-					cloud: { orgSlug: 'acme-corp', projectId: '6fa459ea-ee8a-4ca4-894e-db77e160355e', track: '1.2' },
+					cloud: {
+						orgSlug: 'acme-corp',
+						projectId: '6fa459ea-ee8a-4ca4-894e-db77e160355e',
+						track: '1.2',
+					},
 				})
 			);
 			const log = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -222,6 +226,34 @@ describe('poli link / unlink', () => {
 				await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
 			);
 			expect(manifest).toEqual({ project: { name: 'test-project' } });
+		});
+
+		it('removes a cloud block whose ids are not UUIDs', async () => {
+			await writeFile(
+				join(projectDir, MANIFEST_FILENAME),
+				JSON.stringify({
+					project: { name: 'test-project' },
+					cloud: { orgSlug: 'acme-corp', orgId: 'org_1', projectId: 'proj_1' },
+				})
+			);
+
+			await executeUnlink({ cwd: projectDir });
+
+			const manifest = JSON.parse(
+				await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
+			);
+			expect(manifest).toEqual({ project: { name: 'test-project' } });
+		});
+
+		it('still validates the rest of the manifest', async () => {
+			await writeFile(
+				join(projectDir, MANIFEST_FILENAME),
+				JSON.stringify({
+					project: {},
+					cloud: { orgSlug: 'acme-corp', projectId: 'proj_1' },
+				})
+			);
+			await expect(executeUnlink({ cwd: projectDir })).rejects.toThrow(/project\.name/);
 		});
 
 		it('should throw if not linked', async () => {

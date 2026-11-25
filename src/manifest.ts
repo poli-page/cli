@@ -7,16 +7,24 @@ export type { PoliPageManifest } from './manifest.schema.js';
 export { ManifestValidationError, type ManifestValidationIssue } from './manifest.schema.js';
 
 export async function readManifest(projectDir: string): Promise<PoliPageManifest> {
+	return parseManifest(await readManifestJson(projectDir));
+}
+
+async function readManifestJson(projectDir: string): Promise<unknown> {
 	const manifestPath = join(projectDir, MANIFEST_FILENAME);
 	const content = await readFile(manifestPath, 'utf-8');
-	const raw = JSON.parse(content);
-	return parseManifest(raw);
+	return JSON.parse(content);
 }
 
 /** `readManifest`, reporting a missing file as "not in a Poli Page project". */
 export async function readProjectManifest(projectDir: string): Promise<PoliPageManifest> {
+	return parseManifest(await readProjectManifestJson(projectDir));
+}
+
+/** The unvalidated JSON of `poli-page.json`, a missing file reported as in `readProjectManifest`. */
+export async function readProjectManifestJson(projectDir: string): Promise<unknown> {
 	try {
-		return await readManifest(projectDir);
+		return await readManifestJson(projectDir);
 	} catch (err) {
 		if (err instanceof Error && /ENOENT/.test(err.message)) {
 			throw new Error(

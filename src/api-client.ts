@@ -678,7 +678,7 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				headers['X-Poli-Org-Id'] = orgIdHeader;
 			}
 			const response = await request(
-				`/v1/projects/${encodeURIComponent(project)}/publish`,
+				`/v1/projects/${idSegment(project, 'project')}/publish`,
 				{
 					method: 'POST',
 					headers,

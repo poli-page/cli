@@ -19,8 +19,9 @@ const templateEntrySchema = z
 	})
 	.passthrough();
 
-// Both ids become path segments of the API calls made with the session.
-const cloudIdSchema = z.uuid({ error: 'must be a UUID' });
+// Both ids become path segments of the API calls made with the session. The
+// shape is enough for that; z.uuid() would also pin the version and variant.
+const cloudIdSchema = z.guid({ error: 'must be a UUID' });
 
 const cloudSchema = z
 	.object({
@@ -88,6 +89,13 @@ export function parseManifest(raw: unknown): PoliPageManifest {
 	}));
 	const summary = issues.map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join('; ');
 	throw new ManifestValidationError(`Invalid poli-page.json — ${summary}`, issues);
+}
+
+/** `parseManifest` of `raw` without its `cloud` block, for a caller that drops it. */
+export function parseManifestWithoutCloud(raw: unknown): PoliPageManifest {
+	if (typeof raw !== 'object' || raw === null) return parseManifest(raw);
+	const { cloud: _dropped, ...rest } = raw as Record<string, unknown>;
+	return parseManifest(rest);
 }
 
 function formatPath(path: ReadonlyArray<PropertyKey>): string {

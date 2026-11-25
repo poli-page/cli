@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readManifest, writeManifest } from '../src/manifest.js';
 import { MANIFEST_FILENAME } from '../src/constants.js';
+import { parseManifestWithoutCloud } from '../src/manifest.schema.js';
 
 const ORG_ID = '0e89d99e-1516-4b48-baa1-f49e660ad1c1';
 const PROJECT_ID = '8274f64d-4ea2-4f96-b596-5727a7b17268';
@@ -83,6 +84,31 @@ describe('manifest schema validation', () => {
 			const m = await readManifest(dir);
 			expect(m.cloud?.orgSlug).toBe('acme');
 			expect(m.cloud?.orgId).toBeUndefined();
+		});
+
+		// The check guards the path, not how the server generates its ids.
+		it('accepts any id of the UUID shape, whatever its version digit', async () => {
+			const id = '00000000-0000-0000-0000-000000000001';
+			await writeRaw({
+				project: { name: 'p' },
+				cloud: { orgSlug: 'acme', orgId: id, projectId: id },
+			});
+			const m = await readManifest(dir);
+			expect(m.cloud?.projectId).toBe(id);
+		});
+	});
+
+	describe('parseManifestWithoutCloud', () => {
+		it('ignores an invalid cloud block and drops it', () => {
+			const m = parseManifestWithoutCloud({
+				project: { name: 'p' },
+				cloud: { projectId: 'proj_1' },
+			});
+			expect(m).toEqual({ project: { name: 'p' } });
+		});
+
+		it.each([null, 'text'])('reports %j as an invalid manifest', (raw) => {
+			expect(() => parseManifestWithoutCloud(raw)).toThrow(/^Invalid poli-page\.json/);
 		});
 	});
 

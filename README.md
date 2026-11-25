@@ -249,7 +249,7 @@ Interactively select an organization, create the cloud project, and write the `c
 
 #### `poli unlink`
 
-Removes the `cloud:` section from `poli-page.json`. Local files are preserved.
+Removes the `cloud:` section from `poli-page.json`, even one whose ids are invalid. Local files are preserved.
 
 #### `poli watch`
 
@@ -544,7 +544,7 @@ poli documents preview doc_abc123 -o ./preview.html
 
 The `cloud:` block is written by `poli link`, removed by `poli unlink`. **No API keys here** — the credentials file (or `POLI_PAGE_API_KEY`) carries the secret.
 
-`cloud.orgId` and `cloud.projectId` must be UUIDs: any other value makes the manifest invalid (`Invalid poli-page.json — cloud.projectId: must be a UUID`), so a hand-edited id cannot change the API path the CLI calls with your session.
+`cloud.orgId` and `cloud.projectId` must be UUIDs (8-4-4-4-12 hex digits): any other value makes the manifest invalid (`Invalid poli-page.json — cloud.projectId: must be a UUID`, from every command that reads it), so a hand-edited id cannot change the API path the CLI calls with your session. `poli unlink` still removes such a block, and `poli init --starter` ignores the starter's own `cloud:` block. A `cloud.projectSlug` of `.` or `..` is refused by `poli publish` (`Invalid project ID.`).
 
 A manifest from before environments may still carry `project.version` or `cloud.track`. Both are ignored, and dropped the next time the CLI writes the file (`poli link`, `poli unlink`, `poli new`).
 

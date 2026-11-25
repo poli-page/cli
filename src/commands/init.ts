@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { writeManifest } from '../manifest.js';
-import { parseManifest, type PoliPageManifest } from '../manifest.schema.js';
+import { parseManifestWithoutCloud, type PoliPageManifest } from '../manifest.schema.js';
 import { readCredentials, sessionFor } from '../credentials.js';
 import { createApiClient, type ApiClient } from '../api-client.js';
 import { MANIFEST_FILENAME } from '../constants.js';
@@ -214,9 +214,9 @@ export async function executeInitStarter(
 		noCache: options.noCache,
 	});
 	const manifestFile = files.find((f) => f.path === MANIFEST_FILENAME)!;
-	const manifest = parseManifest(JSON.parse(manifestFile.content.toString('utf-8')));
-	// F3: no cloud block but the one the link step writes.
-	delete manifest.cloud;
+	// F3: no cloud block but the one the link step writes; the starter's own is
+	// someone else's, so it is not validated either.
+	const manifest = parseManifestWithoutCloud(JSON.parse(manifestFile.content.toString('utf-8')));
 
 	const { link, cloud } = await linkStarter(starter, options);
 	if (cloud) manifest.cloud = cloud;
