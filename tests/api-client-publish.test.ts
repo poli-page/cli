@@ -30,7 +30,7 @@ describe('api-client publish', () => {
 		};
 		const fetchMock = mockFetchOnce(200, response);
 
-		const client = createApiClient('https://api.test');
+		const client = createApiClient('https://api.poli.page');
 		const body = {
 			environment: 'live',
 			message: 'Release',
@@ -47,7 +47,7 @@ describe('api-client publish', () => {
 
 		expect(result).toEqual(response);
 		const [url, init] = fetchMock.mock.calls[0];
-		expect(url).toBe('https://api.test/v1/projects/invoices/publish');
+		expect(url).toBe('https://api.poli.page/v1/projects/invoices/publish');
 		expect((init as RequestInit).method).toBe('POST');
 		const headers = (init as RequestInit).headers as Record<string, string>;
 		expect(headers.Authorization).toBe('Bearer sess-tok');
@@ -57,7 +57,7 @@ describe('api-client publish', () => {
 
 	it('sends no X-Poli-Org-Id without an organization: an API key carries its own', async () => {
 		const fetchMock = mockFetchOnce(200, {});
-		const client = createApiClient('https://api.test');
+		const client = createApiClient('https://api.poli.page');
 		await client.publish(`Bearer ${testApiKey('staging')}`, undefined, 'invoices', {
 			environment: 'staging',
 			files: [],
@@ -72,12 +72,12 @@ describe('api-client publish', () => {
 
 	it('encodes the project slug in the path', async () => {
 		const fetchMock = mockFetchOnce(200, {});
-		const client = createApiClient('https://api.test');
+		const client = createApiClient('https://api.poli.page');
 		await client.publish('Bearer sess-tok', 'org_1', '../admin', {
 			environment: 'live',
 			files: [],
 		});
-		expect(fetchMock.mock.calls[0][0]).toBe('https://api.test/v1/projects/..%2Fadmin/publish');
+		expect(fetchMock.mock.calls[0][0]).toBe('https://api.poli.page/v1/projects/..%2Fadmin/publish');
 	});
 });
 
@@ -107,12 +107,12 @@ describe('api-client listEnvironments', () => {
 		];
 		const fetchMock = mockFetchOnce(200, environments);
 
-		const client = createApiClient('https://api.test');
+		const client = createApiClient('https://api.poli.page');
 		const result = await client.listEnvironments('Bearer sess-tok', 'org_1');
 
 		expect(result).toEqual(environments);
 		const [url, init] = fetchMock.mock.calls[0];
-		expect(url).toBe('https://api.test/api/organizations/org_1/environments');
+		expect(url).toBe('https://api.poli.page/api/organizations/org_1/environments');
 		expect((init as RequestInit).method ?? 'GET').toBe('GET');
 		const headers = (init as RequestInit).headers as Record<string, string>;
 		expect(headers.Authorization).toBe('Bearer sess-tok');
@@ -121,10 +121,10 @@ describe('api-client listEnvironments', () => {
 	// The organization id comes from poli-page.json, which the user can edit.
 	it('encodes the organization id in the path', async () => {
 		const fetchMock = mockFetchOnce(200, []);
-		const client = createApiClient('https://api.test');
+		const client = createApiClient('https://api.poli.page');
 		await client.listEnvironments('sess-tok', 'x/../..');
 		expect(fetchMock.mock.calls[0][0]).toBe(
-			'https://api.test/api/organizations/x%2F..%2F../environments'
+			'https://api.poli.page/api/organizations/x%2F..%2F../environments'
 		);
 	});
 
@@ -132,7 +132,7 @@ describe('api-client listEnvironments', () => {
 		'refuses the dot segment "%s" as an organization id without a request',
 		async (orgId) => {
 			const fetchMock = mockFetchOnce(200, []);
-			const client = createApiClient('https://api.test');
+			const client = createApiClient('https://api.poli.page');
 			await expect(client.listEnvironments('sess-tok', orgId)).rejects.toThrow(
 				'Invalid organization ID.'
 			);

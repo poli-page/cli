@@ -16,7 +16,7 @@ describe('api-client renderDraft', () => {
 		);
 		vi.stubGlobal('fetch', fetchMock);
 
-		const client = createApiClient('https://api.test');
+		const client = createApiClient('https://api.poli.page');
 		const result = await client.renderDraft('Bearer sess-tok', 'org_1', {
 			project: 'invoices',
 			template: 'invoice',
@@ -28,7 +28,7 @@ describe('api-client renderDraft', () => {
 		expect(result.equals(pdfBytes)).toBe(true);
 
 		const [url, init] = fetchMock.mock.calls[0];
-		expect(url).toBe('https://api.test/v1/render/draft');
+		expect(url).toBe('https://api.poli.page/v1/render/draft');
 		expect((init as RequestInit).method).toBe('POST');
 		const headers = (init as RequestInit).headers as Record<string, string>;
 		expect(headers.Authorization).toBe('Bearer sess-tok');
@@ -52,7 +52,7 @@ describe('api-client renderDraft', () => {
 			)
 		);
 
-		const client = createApiClient('https://api.test');
+		const client = createApiClient('https://api.poli.page');
 		const failure = client.renderDraft('Bearer pp_sandbox_x', 'org_1', {
 			project: 'invoices',
 			template: 'invoice',
