@@ -432,7 +432,7 @@ describe('auth commands', () => {
 		});
 	});
 	describe('poli whoami (the command)', () => {
-		const API_URL = 'https://api.test';
+		const API_URL = 'https://api.poli.page';
 		let projectDir: string;
 		let me: MeResponse;
 		let logs: string[];

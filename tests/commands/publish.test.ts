@@ -627,7 +627,7 @@ describe('poli publish', () => {
 	});
 
 	describe('the command', () => {
-		const API_URL = 'https://api.test';
+		const API_URL = 'https://api.poli.page';
 		const RESULT = publishResult({ bundleHash: `sha256:0123456789abcdef${'0'.repeat(48)}` });
 		let fetchMock: ReturnType<typeof vi.fn>;
 		let publishAnswer: () => Response;

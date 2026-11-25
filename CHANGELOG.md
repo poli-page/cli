@@ -8,8 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-
 - **`poli watch` and `poli dev` walked and watched whatever a symlink in the project pointed to.** A link to `~` or `/` made the watcher traverse it, since it followed symlinks and ignored less than the sync reads. The watcher no longer follows symlinks, and only files of the project file set trigger a sync. `.poli/` joins the ignored directories.
+
+### Security
+- **The CLI only sends credentials to a Poli Page API origin.** `poli-page.json` `cloud.apiUrl` no longer picks the API: it is ignored, with a warning, unless it equals the `apiUrl` stored by `poli login` or the default `https://api.poli.page`, so a cloned folder or a pull request can no longer send your session or `POLI_PAGE_API_KEY` to a host it chose. `--api-url` and `POLI_API_URL` must be an origin only (no user, path, query or hash) on `https://poli.page` or `https://*.poli.page`; `http://localhost` and `http://127.0.0.1` need the new `--allow-insecure-api` flag or `POLI_ALLOW_INSECURE_API=1`. Any other URL exits `2` before any request. Request URLs are built from the checked origin, never by appending to the configured string.
+- **A session is bound to the API origin that issued it.** `poli login` stores that origin in `~/.polipage/credentials` (`origin`); a file without it counts as `https://api.poli.page`. A command run against another origin refuses the session and exits `4`, asking you to log in there. If you logged in to a non-default API before this release, run `poli login` again.
+- **The API client no longer follows redirects.** A redirect fails the command instead of re-sending the request body (project files, the sign-in password) to another host.
 
 ## [0.10.0] — 2026-10-27
 

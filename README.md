@@ -551,13 +551,15 @@ A manifest from before environments may still carry `project.version` or `cloud.
 | Variable             | Effect                                                                                                                                                                                                                                          |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POLI_PAGE_API_KEY`  | Single env var for any API key in CI/CD: `pp_<environment>_` followed by 32 lowercase hex characters, checked in full before any call. The key renders only its own environment; a service key also publishes to it. **Precedence**: when a credentials file is also present, the session wins. |
-| `POLI_API_URL`       | Override the API base URL (precedence: `--api-url` flag → `POLI_API_URL` → `poli-page.json` `cloud.apiUrl` → `~/.polipage/credentials.json` `apiUrl` → default `https://api.poli.page`).                                                          |
+| `POLI_API_URL`       | Override the API base URL (precedence: `--api-url` flag → `POLI_API_URL` → `poli-page.json` `cloud.apiUrl`, when allowed (see below) → `~/.polipage/credentials.json` `apiUrl` → default `https://api.poli.page`). The URL must be an origin only (no user, path, query or hash) on `https://poli.page` or `https://*.poli.page`; anything else exits `2` before any request. `poli-page.json` `cloud.apiUrl` is ignored, with a warning, unless it equals the stored `apiUrl` or the default: a cloned folder cannot choose where your credentials go. A session is only sent to the API origin that issued it; log in again to use another one. |
+| `POLI_ALLOW_INSECURE_API` | Set to `1` to allow a local API URL (`http://localhost`, `http://127.0.0.1`), like `--allow-insecure-api`. |
 | `NO_COLOR`           | Disable ANSI colors (Unix standard).                                                                                                                                                                                                            |
 | `CI`                 | Auto-detected; equivalent to a global `--yes`, except for `poli env remove-project`.                                                                                                                                                            |
 
 ### Common flags
 
-- `--api-url <url>` — override the API base URL for one invocation
+- `--api-url <url>` — override the API base URL for one invocation (a Poli Page origin; see `POLI_API_URL`)
+- `--allow-insecure-api` — allow a local API URL (`localhost`, `127.0.0.1`) for one invocation
 - `-y` / `--yes` — skip confirmation prompts
 - `-h` / `--help` — show help for any command or sub-command
 - `-v` / `--version` — print the CLI version and exit
