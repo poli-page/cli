@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { resolveAuth } from '../src/auth.js';
+import { resolveAuth, SESSION_IGNORED_HINT } from '../src/auth.js';
 import { writeCredentials, type StoredCredentials } from '../src/credentials.js';
 import { testApiKey } from './helpers/api-key.js';
 
@@ -50,15 +50,34 @@ describe('resolveAuth', () => {
 			await expect(resolveAuth({ homeDir: fakeHome })).rejects.toThrow(/isn't linked/i);
 		});
 
-		it('takes precedence over POLI_PAGE_API_KEY when both are set', async () => {
+		it('gives way to POLI_PAGE_API_KEY when both are set', async () => {
 			await writeCredentials(baseCredentials, fakeHome);
 			process.env.POLI_PAGE_API_KEY = testApiKey('sandbox');
 			const ctx = await resolveAuth({
 				manifestOrgId: 'org-123',
 				homeDir: fakeHome,
 			});
-			expect(ctx.mode).toBe('session');
-			expect(ctx.authorization).toBe('Bearer session-token-abc');
+			expect(ctx).toEqual({
+				mode: 'api-key',
+				authorization: `Bearer ${testApiKey('sandbox')}`,
+				environment: 'sandbox',
+				sessionIgnored: true,
+			});
+		});
+
+		it('refuses a malformed POLI_PAGE_API_KEY even with a session stored', async () => {
+			await writeCredentials(baseCredentials, fakeHome);
+			process.env.POLI_PAGE_API_KEY = 'not_a_key';
+			const refusal = resolveAuth({ manifestOrgId: 'org-123', homeDir: fakeHome });
+			await expect(refusal).rejects.toThrow(/POLI_PAGE_API_KEY must be/);
+			await expect(refusal).rejects.toThrow(SESSION_IGNORED_HINT);
+		});
+
+		it('refuses a malformed POLI_PAGE_API_KEY without the session hint when no session is stored', async () => {
+			process.env.POLI_PAGE_API_KEY = 'not_a_key';
+			const refusal = resolveAuth({ homeDir: fakeHome });
+			await expect(refusal).rejects.toThrow(/POLI_PAGE_API_KEY must be/);
+			await expect(refusal).rejects.not.toThrow(SESSION_IGNORED_HINT);
 		});
 	});
 

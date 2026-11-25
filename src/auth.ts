@@ -8,7 +8,12 @@ export type AuthContext =
 			orgIdHeader?: undefined;
 			/** The environment the key is bound to, read from its prefix (K1). */
 			environment: string;
+			/** A `poli login` session is stored but set aside for the key. */
+			sessionIgnored?: true;
 	  };
+
+export const SESSION_IGNORED_HINT =
+	'Your `poli login` session is not used while POLI_PAGE_API_KEY is set: unset it to use the session.';
 
 export interface ResolveAuthOptions {
 	manifestOrgId?: string;
@@ -19,8 +24,24 @@ export interface ResolveAuthOptions {
 // for clients; the lookahead caps the environment name at 20 characters.
 const API_KEY = /^pp_(?=[a-z][a-z0-9-]{0,19}_)[a-z][a-z0-9]*(?:-[a-z0-9]+)*_[0-9a-f]{32}$/;
 
+// A set key is an explicit choice for this shell, so it beats the stored
+// session (e.g. a sandbox key exported to act with less than the full session).
 export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<AuthContext> {
+	const envKey = process.env.POLI_PAGE_API_KEY;
 	const credentials = await readCredentials(options.homeDir);
+	if (envKey) {
+		if (!API_KEY.test(envKey)) {
+			throw new Error(
+				`POLI_PAGE_API_KEY must be a Poli Page API key: \`pp_<environment>_…\` (e.g. \`pp_sandbox_…\`, \`pp_live_…\`), the environment name followed by 32 lowercase hex characters.${credentials?.session ? ` ${SESSION_IGNORED_HINT}` : ''}`
+			);
+		}
+		return {
+			mode: 'api-key',
+			authorization: `Bearer ${envKey}`,
+			environment: envKey.slice('pp_'.length, envKey.indexOf('_', 'pp_'.length)),
+			...(credentials?.session ? { sessionIgnored: true as const } : {}),
+		};
+	}
 
 	if (credentials?.session) {
 		const session = sessionFor(credentials);
@@ -31,20 +52,6 @@ export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<Aut
 			mode: 'session',
 			authorization: `Bearer ${session}`,
 			orgIdHeader: options.manifestOrgId,
-		};
-	}
-
-	const envKey = process.env.POLI_PAGE_API_KEY;
-	if (envKey) {
-		if (!API_KEY.test(envKey)) {
-			throw new Error(
-				'POLI_PAGE_API_KEY must be a Poli Page API key: `pp_<environment>_…` (e.g. `pp_sandbox_…`, `pp_live_…`), the environment name followed by 32 lowercase hex characters.'
-			);
-		}
-		return {
-			mode: 'api-key',
-			authorization: `Bearer ${envKey}`,
-			environment: envKey.slice('pp_'.length, envKey.indexOf('_', 'pp_'.length)),
 		};
 	}
 
