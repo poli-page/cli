@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { readProjectManifest, writeManifest } from '../manifest.js';
-import { getSessionToken, readCredentials } from '../credentials.js';
+import { getSessionToken, readCredentials, sessionFor } from '../credentials.js';
 import { createApiClient, type ApiClient } from '../api-client.js';
 import { collectProjectPayload } from '../project-loader.js';
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
@@ -127,7 +127,7 @@ export function registerLinkCommands(program: Command) {
 				}
 
 				const client = createApiClient();
-				const orgs = await client.getOrganizations(credentials.session);
+				const orgs = await client.getOrganizations(sessionFor(credentials));
 
 				if (orgs.length === 0) {
 					console.error(

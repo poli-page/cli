@@ -39,11 +39,11 @@ describe('api-client getMe', () => {
 			200,
 			calls
 		);
-		const client = createApiClient('https://api.test');
+		const client = createApiClient('https://api.poli.page');
 		const me = await client.getMe('Bearer session-token-abc', 'org-uuid-acme');
 
 		expect(calls).toHaveLength(1);
-		expect(calls[0].url).toBe('https://api.test/v1/me');
+		expect(calls[0].url).toBe('https://api.poli.page/v1/me');
 		expect(calls[0].init.method).toBe('GET');
 		const headers = calls[0].init.headers as Record<string, string>;
 		expect(headers.Authorization).toBe('Bearer session-token-abc');
@@ -79,7 +79,7 @@ describe('api-client getMe', () => {
 			200,
 			calls
 		);
-		const client = createApiClient('https://api.test');
+		const client = createApiClient('https://api.poli.page');
 		const me = await client.getMe(`Bearer ${testApiKey('staging')}`);
 
 		expect(calls).toHaveLength(1);
@@ -100,7 +100,7 @@ describe('api-client getMe', () => {
 			{ error: 'MISSING_ORG_CONTEXT', detail: 'no org header', requestId: 'req-test' },
 			400
 		);
-		const client = createApiClient('https://api.test');
+		const client = createApiClient('https://api.poli.page');
 		await expect(client.getMe('Bearer session')).rejects.toBeInstanceOf(
 			MissingOrgContextError
 		);

@@ -16,7 +16,7 @@ import { MANIFEST_FILENAME } from '../../src/constants.js';
 const { inputMock } = vi.hoisted(() => ({ inputMock: vi.fn() }));
 vi.mock('@inquirer/prompts', () => ({ input: inputMock }));
 
-const API_URL = 'https://api.test';
+const API_URL = 'https://api.poli.page';
 
 const LINKED_MANIFEST = {
 	project: { name: 'Invoices' },

@@ -58,7 +58,7 @@ describe('api-client error mapping', () => {
 	});
 
 	function callAnyEndpoint() {
-		const client = createApiClient('https://api.test');
+		const client = createApiClient('https://api.poli.page');
 		return client.getOrganizations('session-token');
 	}
 
@@ -254,7 +254,7 @@ describe('api-client error mapping', () => {
 			const err = await callAnyEndpoint().catch((e) => e);
 			expect(err).toBeInstanceOf(Error);
 			expect(err.message).toMatch(/Cannot reach the API/i);
-			expect(err.message).toMatch(/api\.test/);
+			expect(err.message).toMatch(/api\.poli\.page/);
 			expect(err.message).toMatch(/ENOTFOUND/);
 		});
 
