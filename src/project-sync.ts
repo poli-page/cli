@@ -14,7 +14,8 @@ const IGNORED_DIRECTORY_NAMES = new Set(['node_modules', '.git', 'output', 'dist
 /**
  * `true` when a segment of `relPath` names a directory the sync never
  * enters. The watcher prunes directories with it: `shouldIgnoreProjectPath`
- * rejects every directory, none being in the file set.
+ * is a file check and rejects `templates/`, `partials/` and `assets/`
+ * themselves, so it cannot decide which directories to walk.
  */
 export function isInIgnoredProjectDirectory(relPath: string): boolean {
 	return relPath.split(/[\\/]/).some((segment) => IGNORED_DIRECTORY_NAMES.has(segment));
