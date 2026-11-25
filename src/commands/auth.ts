@@ -204,8 +204,7 @@ export async function executeWhoami(
 
 	const payload = await client.getMe(auth.authorization, auth.orgIdHeader);
 	if (auth.mode === 'api-key') {
-		const credentials = await readCredentials(options.homeDir);
-		return { mode: auth.mode, payload, sessionIgnored: Boolean(credentials?.session) };
+		return { mode: auth.mode, payload, sessionIgnored: auth.sessionIgnored === true };
 	}
 	return { mode: auth.mode, payload };
 }

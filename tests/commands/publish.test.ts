@@ -508,6 +508,26 @@ describe('poli publish', () => {
 			expect(calls).toHaveLength(0);
 		});
 
+		it("refuses another --env with a session stored, saying to unset the key to use the session", async () => {
+			await writeCredentials(
+				{
+					session: 'session-token',
+					user: { id: 'u1', name: 'X', email: 'x@x' },
+					orgs: { acme: {} },
+				},
+				fakeHome
+			);
+			const calls: PublishCall[] = [];
+			const err = await run({ env: 'live', yes: true }, keyClient(calls, keyMe())).catch(
+				(e) => e
+			);
+			expect(err.message).toMatch(
+				/, or use a key for "live"\. Your `poli login` session is not used while POLI_PAGE_API_KEY is set: unset it to use the session\.$/
+			);
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
+			expect(calls).toHaveLength(0);
+		});
+
 		it("compares --env with the environment the key carries (K1), not /v1/me's", async () => {
 			const calls: PublishCall[] = [];
 			await run({ env: 'staging' }, keyClient(calls, keyMe({ environment: 'live' })));

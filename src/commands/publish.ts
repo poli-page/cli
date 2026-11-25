@@ -196,7 +196,7 @@ async function publishWithApiKey(
 	}
 	if (key.environment !== environment) {
 		throw new UsageError(
-			`This service key publishes to "${key.environment}" only, not "${environment}". Run \`poli publish --env ${key.environment}\`, or use a key for "${environment}".`
+			`This service key publishes to "${key.environment}" only, not "${environment}". Run \`poli publish --env ${key.environment}\`, or use a key for "${environment}".${key.sessionIgnored ? ` ${SESSION_IGNORED_HINT}` : ''}`
 		);
 	}
 

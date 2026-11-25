@@ -170,7 +170,7 @@ export async function executeRender(
 
 	if (auth.mode === 'api-key' && target !== auth.environment) {
 		throw new UsageError(
-			`This API key renders the \`${auth.environment}\` environment, not \`${target}\`. Use \`${templateName}@${auth.environment}\`, or a key for \`${target}\`.`
+			`This API key renders the \`${auth.environment}\` environment, not \`${target}\`. Use \`${templateName}@${auth.environment}\`, or a key for \`${target}\`.${auth.sessionIgnored ? ` ${SESSION_IGNORED_HINT}` : ''}`
 		);
 	}
 
