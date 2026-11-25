@@ -12,7 +12,7 @@ import { registerWatchCommand } from './commands/watch.js';
 import { registerDevCommand } from './commands/dev.js';
 import { readCredentials } from './credentials.js';
 import { readManifest } from './manifest.js';
-import { apiOrigin, DEFAULT_API_URL } from './api-origin.js';
+import { apiOrigin, DEFAULT_API_URL, setLoginApiUrl } from './api-origin.js';
 import { ExitCode } from './exit-codes.js';
 
 const require = createRequire(import.meta.url);
@@ -41,9 +41,13 @@ export function createProgram() {
 		if (opts.allowInsecureApi) process.env.POLI_ALLOW_INSECURE_API = '1';
 		if (opts.apiUrl) {
 			process.env.POLI_API_URL = opts.apiUrl;
-		} else if (!process.env.POLI_API_URL) {
-			const apiUrl = await storedApiUrl();
+			setLoginApiUrl(opts.apiUrl);
+		} else if (process.env.POLI_API_URL) {
+			setLoginApiUrl(process.env.POLI_API_URL);
+		} else {
+			const { apiUrl, fromManifest } = await storedApiUrl();
 			if (apiUrl) process.env.POLI_API_URL = apiUrl;
+			setLoginApiUrl(fromManifest ? undefined : apiUrl);
 		}
 		try {
 			apiOrigin();
@@ -72,20 +76,22 @@ export function createProgram() {
 /**
  * The URL from the credentials file, or the manifest's `cloud.apiUrl` when it
  * names that URL or the default: a cloned folder must not pick the host the
- * CLI sends the session or the API key to.
+ * CLI sends the session or the API key to. `fromManifest` marks a URL only
+ * the manifest named, which `poli login` must not store.
  */
-async function storedApiUrl(): Promise<string | undefined> {
+async function storedApiUrl(): Promise<{ apiUrl: string | undefined; fromManifest: boolean }> {
 	const credentials = await readCredentials();
+	const stored = { apiUrl: credentials?.apiUrl, fromManifest: false };
 	let manifestUrl: string | undefined;
 	try {
 		manifestUrl = (await readManifest(process.cwd())).cloud?.apiUrl;
 	} catch {
 		// Not in a project directory — that's fine
 	}
-	if (manifestUrl === undefined) return credentials?.apiUrl;
-	if (manifestUrl === DEFAULT_API_URL || manifestUrl === credentials?.apiUrl) return manifestUrl;
+	if (manifestUrl === undefined || manifestUrl === credentials?.apiUrl) return stored;
+	if (manifestUrl === DEFAULT_API_URL) return { apiUrl: manifestUrl, fromManifest: true };
 	console.error(
 		`Ignoring cloud.apiUrl "${manifestUrl}" in poli-page.json: pass --api-url or set POLI_API_URL to use another API.`
 	);
-	return credentials?.apiUrl;
+	return stored;
 }

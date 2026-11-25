@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { assertTrustedApiOrigin } from '../src/api-origin.js';
+import { assertTrustedApiOrigin, assertVerificationUrl } from '../src/api-origin.js';
 import { createApiClient } from '../src/api-client.js';
 import { resolveAuth } from '../src/auth.js';
 import {
@@ -120,6 +120,49 @@ describe('assertTrustedApiOrigin', () => {
 			expect(assertTrustedApiOrigin(url, true)).toBe(url);
 		}
 	);
+});
+
+describe('assertVerificationUrl', () => {
+	it.each([
+		['https://app.poli.page/auth/device?code=AB', 'https://api.poli.page'],
+		['https://poli.page/device', 'https://api.poli.page'],
+		['https://app-develop.poli.page/device', 'https://api-develop.poli.page'],
+		['http://localhost:3000/device', 'http://127.0.0.1:8787'],
+		['https://127.0.0.1:3000/device', 'http://localhost:8787'],
+	])('opens %s for the API %s', (url, api) => {
+		expect(assertVerificationUrl(url, api)).toBe(new URL(url).href);
+	});
+
+	it.each([
+		['file:///etc/passwd', 'https://api.poli.page'],
+		['smb://attacker.example/share', 'https://api.poli.page'],
+		['poli-evil://run?cmd=x', 'https://api.poli.page'],
+		['javascript:alert(1)', 'https://api.poli.page'],
+		['http://app.poli.page/device', 'https://api.poli.page'],
+		['https://evil.com/device', 'https://api.poli.page'],
+		['https://poli.page.evil.com/device', 'https://api.poli.page'],
+		['https://evilpoli.page/device', 'https://api.poli.page'],
+		['http://localhost:3000/device', 'https://api.poli.page'],
+		['https://app.poli.page/device', 'http://127.0.0.1:8787'],
+		['file:///etc/passwd', 'http://127.0.0.1:8787'],
+		['smb://localhost/share', 'http://127.0.0.1:8787'],
+		['not a url', 'https://api.poli.page'],
+	])('refuses %s for the API %s with exit code 3', (url, api) => {
+		expect(() => assertVerificationUrl(url, api)).toThrow(
+			expect.objectContaining({
+				exitCode: ExitCode.NETWORK_OR_API_ERROR,
+				message: expect.stringMatching(/Refusing to open/),
+			})
+		);
+	});
+
+	it('names the refused URL so the user can see it, with control characters escaped', () => {
+		expect(() => assertVerificationUrl('smb://attacker.example/share\u001b[2J', 'https://api.poli.page')).toThrow(
+			expect.objectContaining({
+				message: expect.stringContaining('smb://attacker.example/share%1B[2J'),
+			})
+		);
+	});
 });
 
 describe('createApiClient builds every request from the validated origin', () => {

@@ -10,7 +10,7 @@ import {
 import { readManifest } from '../manifest.js';
 import { resolveAuth } from '../auth.js';
 import { createApiClient, type ApiClient, type MeResponse } from '../api-client.js';
-import { apiOrigin } from '../api-origin.js';
+import { apiOrigin, assertTrustedApiOrigin, assertVerificationUrl, getLoginApiUrl } from '../api-origin.js';
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 
@@ -32,11 +32,10 @@ export interface DeviceLoginOptions {
 	envApiKey?: string;
 	onEnvVarInfo?: (message: string) => void;
 	/**
-	 * Explicit API URL to persist in credentials after a successful login.
-	 * When omitted, falls back to `process.env.POLI_API_URL`. This is the
-	 * value the CLI will use on subsequent runs without `--api-url` —
-	 * critical for non-prod (develop) targeting, which relies on a custom
-	 * URL but should not require the flag at every invocation.
+	 * The API URL to store in credentials after a successful login, so later
+	 * runs target it without `--api-url` (develop relies on this). Only one
+	 * the user chose: a URL taken from a manifest must never become the
+	 * default for every later command.
 	 */
 	apiUrl?: string;
 }
@@ -44,6 +43,7 @@ export interface DeviceLoginOptions {
 export async function executeDeviceLogin(
 	options: DeviceLoginOptions = {},
 ): Promise<StoredCredentials> {
+	const apiUrl = options.apiUrl === undefined ? undefined : assertTrustedApiOrigin(options.apiUrl);
 	const client = options.apiClient ?? createApiClient();
 
 	// Step 0: friendly info-message when an api-key env var is set.
@@ -59,14 +59,15 @@ export async function executeDeviceLogin(
 
 	// Step 1: Request device code
 	const deviceReq = await client.deviceRequest();
-	options.onUserCode?.(deviceReq.userCode, deviceReq.verificationUrl);
+	const verificationUrl = assertVerificationUrl(deviceReq.verificationUrl, apiOrigin());
+	options.onUserCode?.(deviceReq.userCode, verificationUrl);
 
 	// Step 2: Open browser
 	if (options.openUrl) {
-		await options.openUrl(deviceReq.verificationUrl);
+		await options.openUrl(verificationUrl);
 	} else {
 		const open = await import('open');
-		await open.default(deviceReq.verificationUrl);
+		await open.default(verificationUrl);
 	}
 
 	// Step 3: Poll for confirmation
@@ -103,7 +104,6 @@ export async function executeDeviceLogin(
 			const result = await client.devicePoll(deviceReq.deviceCode);
 
 			if (result.status === 'confirmed' && result.sessionToken && result.user) {
-				const apiUrl = options.apiUrl ?? process.env.POLI_API_URL;
 				const credentials: StoredCredentials = {
 					...(apiUrl ? { apiUrl } : {}),
 					origin: apiOrigin(),
@@ -210,10 +210,12 @@ export function registerAuthCommands(program: Command) {
 			const { default: chalk } = await import('chalk');
 			const { default: ora } = await import('ora');
 
+			console.log(chalk.dim(`Logging in to ${new URL(apiOrigin()).host}`));
 			const spinner = ora('Opening browser for authentication…').start();
 
 			try {
 				const credentials = await executeDeviceLogin({
+					apiUrl: getLoginApiUrl(),
 					onEnvVarInfo: (msg) => {
 						spinner.info(chalk.dim(msg));
 						spinner.start('Opening browser for authentication…');

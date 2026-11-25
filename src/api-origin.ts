@@ -1,4 +1,4 @@
-import { UsageError } from './exit-codes.js';
+import { ExitCode, UsageError } from './exit-codes.js';
 
 export const DEFAULT_API_URL = 'https://api.poli.page';
 
@@ -43,7 +43,53 @@ export function assertTrustedApiOrigin(url: string, allowInsecure = insecureApiA
 	);
 }
 
+/** The API sent a device-flow page the CLI must not open. */
+export class UntrustedVerificationUrlError extends Error {
+	readonly exitCode = ExitCode.NETWORK_OR_API_ERROR;
+}
+
+function siteOf(host: string): string {
+	if (host === 'poli.page' || host.endsWith('.poli.page')) return 'poli.page';
+	return LOOPBACK_HOSTS.has(host) ? 'loopback' : host;
+}
+
+/**
+ * The verification URL when the browser may open it: on the same site as the
+ * trusted API origin `api`, over `https:` (or `http:` when both are loopback).
+ * The API chooses this URL, and `open()` hands any scheme to the OS.
+ */
+export function assertVerificationUrl(url: string, api: string): string {
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
+	} catch {
+		throw new UntrustedVerificationUrlError('Refusing to open the verification URL: the API sent an invalid URL.');
+	}
+	const site = siteOf(new URL(api).hostname);
+	const sameSite = (parsed.protocol === 'http:' || parsed.protocol === 'https:') && siteOf(parsed.hostname) === site;
+	if (sameSite && (parsed.protocol === 'https:' || site === 'loopback')) return parsed.href;
+	// href, not the raw string: the URL parser percent-encodes control characters.
+	throw new UntrustedVerificationUrlError(
+		`Refusing to open the verification URL ${parsed.href}: it is not an https page on ${site === 'loopback' ? 'a local address' : site}.`
+	);
+}
+
 /** The validated origin of the API this run talks to. */
 export function apiOrigin(): string {
 	return assertTrustedApiOrigin(process.env.POLI_API_URL || DEFAULT_API_URL);
+}
+
+let loginApiUrl: string | undefined;
+
+/**
+ * Records the API URL the user chose for this run (`--api-url`, their
+ * POLI_API_URL, or the one an earlier login stored); undefined when it came
+ * from a manifest or is the default. `poli login` stores only this one.
+ */
+export function setLoginApiUrl(url: string | undefined): void {
+	loginApiUrl = url;
+}
+
+export function getLoginApiUrl(): string | undefined {
+	return loginApiUrl;
 }
