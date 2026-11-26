@@ -262,7 +262,7 @@ poli watch
 Resilience built in:
 
 - Network errors → exponential backoff (1s, 2s, 4s, 8s, 16s, 30s capped, reset on success)
-- `503 ORGANIZATION_MIGRATING` → 5-second retry
+- `503 ORGANIZATION_MIGRATING` → 5-second retr
 - Other API errors → logged, watch continues, next save retries
 
 Requires a TTY. Refused with exit `2` when run in a non-interactive context. If
