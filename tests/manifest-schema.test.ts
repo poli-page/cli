@@ -150,6 +150,16 @@ describe('manifest schema validation', () => {
 			]);
 		});
 
+		it('names the page formats as the README does', async () => {
+			await writeRaw({
+				project: { name: 'p' },
+				templates: [{ ...validTemplate, format: 'A7' }],
+			});
+			await expect(readManifest(dir)).rejects.toThrow(
+				/expected one of A3, A4, A5, A6, B4, B5, Letter, Legal, Tabloid, Statement, Executive, Folio/
+			);
+		});
+
 		it('accepts nested template paths and any letter case of format and orientation', async () => {
 			await writeRaw({
 				project: { name: 'p' },

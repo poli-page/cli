@@ -238,8 +238,24 @@ describe('poli new', () => {
 				homeDir: fakeHome,
 				fetcher: makeFetcher(SOURCE_FILES),
 			})
-		).rejects.toThrow(/poli-page\.json/i);
+		).rejects.toThrow(/No poli-page\.json found.*Run "poli init" first/);
 		await rm(emptyDir, { recursive: true, force: true });
+	});
+
+	it('reports why the manifest is invalid instead of "No poli-page.json found"', async () => {
+		const manifestPath = join(projectDir, MANIFEST_FILENAME);
+		const manifest = JSON.parse(await readFile(manifestPath, 'utf-8'));
+		manifest.templates = [{ name: 'x', template: 'x.html', mock: 'x.json', format: 'A7' }];
+		await writeFile(manifestPath, JSON.stringify(manifest), 'utf-8');
+		const error = await executeNew('invoice', {
+			cwd: projectDir,
+			fromTemplate: 'showcase/invoice',
+			homeDir: fakeHome,
+			fetcher: makeFetcher(SOURCE_FILES),
+		}).catch((err: Error) => err);
+		expect(String(error)).toMatch(/templates\[0\]\.format: expected one of/);
+		expect(String(error)).not.toMatch(/No poli-page\.json found/);
+		await expect(stat(join(projectDir, 'templates', 'invoice'))).rejects.toThrow(/ENOENT/);
 	});
 
 	it('sanitizes the destination name to kebab-case', async () => {

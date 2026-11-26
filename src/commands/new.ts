@@ -50,10 +50,11 @@ export async function executeNew(name: string, options: NewOptions = {}): Promis
 
 	try {
 		await readManifest(cwd);
-	} catch {
-		throw new Error(
-			`No ${MANIFEST_FILENAME} found in ${cwd}. Run "poli init" first.`
-		);
+	} catch (err) {
+		if (err instanceof Error && /ENOENT/.test(err.message)) {
+			throw new Error(`No ${MANIFEST_FILENAME} found in ${cwd}. Run "poli init" first.`);
+		}
+		throw err;
 	}
 
 	// The manifest refuses an unknown value, so it must never be written.

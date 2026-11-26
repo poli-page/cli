@@ -58,7 +58,7 @@ const FORMAT_MAP: Record<string, Record<string, PageFormat>> = {
 	},
 };
 
-export const PAGE_FORMATS = Object.keys(FORMAT_MAP);
+export const PAGE_FORMATS = Object.values(FORMAT_MAP).map((o) => o.portrait.name);
 export const ORIENTATIONS: readonly Orientation[] = ['portrait', 'landscape'];
 
 /** Whether `resolveFormat` accepts `format`, in any letter case. */
