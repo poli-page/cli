@@ -118,11 +118,19 @@ export async function collectProjectPayload(
 	const files = await readAllProjectFiles(projectDir);
 
 	// The API takes template files by their name inside `templates/<name>/`.
+	// One the manifest names but the file set lacks fails the link: the cloud
+	// project would be created without it.
 	const templateFiles: Array<{ path: string; content: string }> = [];
 	for (const tpl of manifest.templates ?? []) {
 		for (const fileName of [tpl.template, tpl.mock]) {
-			const content = files.get(`templates/${tpl.name}/${fileName}`);
-			if (content !== undefined) templateFiles.push({ path: fileName, content });
+			const key = `templates/${tpl.name}/${fileName}`;
+			const content = files.get(key);
+			if (content === undefined) {
+				throw new Error(
+					`${key} is not a file of the project (missing, symlinked, or not .html, .json or .css).`
+				);
+			}
+			templateFiles.push({ path: fileName, content });
 		}
 	}
 

@@ -203,47 +203,73 @@ describe('project-loader', () => {
 			expect(payload).not.toHaveProperty('tailwindCss');
 		});
 
-		it('leaves out a template path that leaves its template folder', async () => {
+		it('leaves out an asset outside assets/images, assets/icons and assets/fonts', async () => {
+			await addProjectFiles();
+			await mkdir(join(projectDir, 'assets', 'brand'), { recursive: true });
+			await writeFile(join(projectDir, 'assets', 'logo.png'), Buffer.from([7]));
+			await writeFile(join(projectDir, 'assets', 'brand', 'mark.svg'), '<svg/>', 'utf-8');
+			await writeFile(join(projectDir, 'assets', 'fonts', 'glyph.svg'), '<svg/>', 'utf-8');
+			const { manifest } = await loadProject(projectDir);
+
+			const payload = await collectProjectPayload(projectDir, manifest);
+
+			expect((payload.images as Array<{ path: string }>).map((i) => i.path)).toEqual([
+				'fonts/inter-400.woff2',
+				'images/logo.png',
+			]);
+		});
+
+		it('refuses a template path that leaves its template folder, without reading it', async () => {
 			await mkdir(join(projectDir, 'templates', 'other'), { recursive: true });
-			await writeFile(join(projectDir, 'templates', 'other', 'secret.html'), 'secret', 'utf-8');
+			await writeFile(join(projectDir, 'templates', 'other', 'secret.html'), 's3cret', 'utf-8');
 			const { manifest } = await loadProject(projectDir);
 			// The schema refuses `..`; the payload must not depend on it.
 			manifest.templates![0].template = '../other/secret.html';
 
-			const payload = await collectProjectPayload(projectDir, manifest);
-
-			expect((payload.templates as Array<{ path: string }>).map((t) => t.path)).toEqual([
-				'invoice.json',
-			]);
+			await expect(collectProjectPayload(projectDir, manifest)).rejects.toThrow(
+				'templates/invoice/../other/secret.html is not a file of the project'
+			);
 		});
 
 		it.each(['template', 'mock'] as const)(
-			'leaves out a %s file symlinked outside the project',
+			'refuses a %s file symlinked outside the project, without reading it',
 			async (field) => {
 				const outside = join(tempDir, 'secret.json');
 				await writeFile(outside, '{"token":"s3cret"}', 'utf-8');
 				const { manifest } = await loadProject(projectDir);
-				const linked = join(projectDir, 'templates', 'invoice', findTemplate(manifest, 'invoice')[field]);
+				const fileName = findTemplate(manifest, 'invoice')[field];
+				const linked = join(projectDir, 'templates', 'invoice', fileName);
 				await rm(linked);
 				await symlink(outside, linked);
 
-				const payload = await collectProjectPayload(projectDir, manifest);
+				const error = await collectProjectPayload(projectDir, manifest).catch((e: Error) => e);
 
-				expect(JSON.stringify(payload)).not.toContain('s3cret');
-				expect(payload.templates).toHaveLength(1);
+				expect(error).toBeInstanceOf(Error);
+				expect((error as Error).message).toContain(`templates/invoice/${fileName} is not a file of the project`);
+				expect((error as Error).message).not.toContain('s3cret');
 			}
 		);
 
-		it('leaves out a template folder symlinked outside the project', async () => {
+		it.each(['template', 'mock'] as const)('refuses a missing %s file', async (field) => {
+			const { manifest } = await loadProject(projectDir);
+			const fileName = findTemplate(manifest, 'invoice')[field];
+			await rm(join(projectDir, 'templates', 'invoice', fileName));
+
+			await expect(collectProjectPayload(projectDir, manifest)).rejects.toThrow(
+				`templates/invoice/${fileName} is not a file of the project`
+			);
+		});
+
+		it('refuses a template folder symlinked outside the project', async () => {
 			const outside = join(tempDir, 'elsewhere');
 			await cp(join(projectDir, 'templates', 'invoice'), outside, { recursive: true });
 			await rm(join(projectDir, 'templates', 'invoice'), { recursive: true });
 			await symlink(outside, join(projectDir, 'templates', 'invoice'));
 			const { manifest } = await loadProject(projectDir);
 
-			const payload = await collectProjectPayload(projectDir, manifest);
-
-			expect(payload.templates).toEqual([]);
+			await expect(collectProjectPayload(projectDir, manifest)).rejects.toThrow(
+				'templates/invoice/invoice.html is not a file of the project'
+			);
 		});
 	});
 });
