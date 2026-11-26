@@ -1,4 +1,19 @@
 import { z } from 'zod';
+import { isOrientation, isPageFormat, ORIENTATIONS, PAGE_FORMATS } from './format-resolver.js';
+import { TEMPLATE_SLUG_RE } from './project-files.js';
+import { assertSafeRelativePath } from './security/paths.js';
+
+// These fields become paths: `templates/<name>/<template>`, the mock read
+// sent as render data, and `output/<name>/<format>-<orientation>/`.
+function safeRelativePath(field: string) {
+	return z.string().superRefine((p, ctx) => {
+		try {
+			assertSafeRelativePath(p, field);
+		} catch (err) {
+			ctx.addIssue({ code: 'custom', message: (err as Error).message });
+		}
+	});
+}
 
 const fontEntrySchema = z
 	.object({
@@ -11,11 +26,19 @@ const fontEntrySchema = z
 
 const templateEntrySchema = z
 	.object({
-		name: z.string(),
-		template: z.string(),
-		mock: z.string(),
-		format: z.string().optional(),
-		orientation: z.string().optional(),
+		name: z.string().regex(TEMPLATE_SLUG_RE, {
+			message: 'expected a slug of lowercase letters, digits and "-"',
+		}),
+		template: safeRelativePath('template'),
+		mock: safeRelativePath('mock'),
+		format: z
+			.string()
+			.refine(isPageFormat, { message: `expected one of ${PAGE_FORMATS.join(', ')}` })
+			.optional(),
+		orientation: z
+			.string()
+			.refine(isOrientation, { message: `expected ${ORIENTATIONS.join(' or ')}` })
+			.optional(),
 	})
 	.passthrough();
 

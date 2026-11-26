@@ -7,7 +7,7 @@ import {
 	type StoredCredentials,
 	type UserInfo,
 } from '../credentials.js';
-import { readManifest } from '../manifest.js';
+import { readCloudLink } from '../manifest.js';
 import { resolveAuth } from '../auth.js';
 import { createApiClient, type ApiClient, type MeResponse } from '../api-client.js';
 import { apiOrigin, assertTrustedApiOrigin, assertVerificationUrl, getLoginApiUrl } from '../api-origin.js';
@@ -168,13 +168,7 @@ export async function executeWhoami(
 ): Promise<WhoamiResult> {
 	const cwd = options.cwd ?? process.cwd();
 
-	let manifestOrgId: string | undefined;
-	try {
-		const manifest = await readManifest(cwd);
-		manifestOrgId = manifest.cloud?.orgId;
-	} catch {
-		// Not in a Poli Page project — leave orgId undefined.
-	}
+	const manifestOrgId = (await readCloudLink(cwd))?.orgId;
 
 	const client = options.apiClient ?? createApiClient();
 

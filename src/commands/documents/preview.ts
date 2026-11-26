@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { resolveAuth } from '../../auth.js';
-import { readManifest } from '../../manifest.js';
+import { readCloudLink } from '../../manifest.js';
 import { createApiClient, type ApiClient } from '../../api-client.js';
 import { errorToExitCode } from '../../exit-codes.js';
 import { shouldEmitJson } from '../../output.js';
@@ -102,13 +102,7 @@ export async function executeDocumentsPreview(
 	const cwd = options.cwd ?? process.cwd();
 	assertDocumentId(id);
 
-	let manifestOrgId: string | undefined;
-	try {
-		const manifest = await readManifest(cwd);
-		manifestOrgId = manifest.cloud?.orgId;
-	} catch {
-		// Not in a project — leave undefined.
-	}
+	const manifestOrgId = (await readCloudLink(cwd))?.orgId;
 
 	let auth;
 	try {

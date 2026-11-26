@@ -579,6 +579,18 @@ describe('importTemplate — paths from the source', () => {
 			'template.mock',
 			{ ...INVOICE_MANIFEST, template: { name: 'invoice', template: 'invoice.html' } },
 		],
+		[
+			'template.format',
+			{ ...INVOICE_MANIFEST, template: { ...INVOICE_MANIFEST.template, format: 'A4/../..' } },
+		],
+		[
+			'template.format',
+			{ ...INVOICE_MANIFEST, template: { ...INVOICE_MANIFEST.template, format: 'A7' } },
+		],
+		[
+			'template.orientation',
+			{ ...INVOICE_MANIFEST, template: { ...INVOICE_MANIFEST.template, orientation: 'up' } },
+		],
 	])('refuses an unsafe %s with no file written anywhere', async (field, manifest) => {
 		const urls = await expectRefusedWithNothingWritten(
 			sourceWithManifest(manifest),
@@ -591,6 +603,23 @@ describe('importTemplate — paths from the source', () => {
 			'showcase/templates/invoice/manifest.json',
 		]);
 	});
+
+	it.each(['Invoice_v2', 'a.b', ''])(
+		'refuses the destination name %j, which the project manifest would refuse',
+		async (destTemplateName) => {
+			const projectBefore = await listFiles(projectDir);
+			await expect(
+				importTemplate({
+					templateRef: { collection: 'showcase', name: 'invoice' },
+					destTemplateName,
+					projectDir,
+					homeDir: fakeHome,
+					fetcher: makeFetcher(fullSource()),
+				})
+			).rejects.toThrow(/Invalid template name/);
+			expect(await listFiles(projectDir)).toEqual(projectBefore);
+		}
+	);
 
 	it('refuses a poisoned manifest already in the cache', async () => {
 		const cacheDir = join(fakeHome, '.polipage', 'cache', 'poli-page', 'templates', 'main');

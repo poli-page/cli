@@ -1,7 +1,8 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join, dirname, extname } from 'node:path';
-import { readManifest, type PoliPageManifest } from './manifest.js';
+import { readProjectManifest, type PoliPageManifest } from './manifest.js';
 import { MANIFEST_FILENAME } from './constants.js';
+import { resolveInside } from './security/paths.js';
 
 export interface TemplateEntry {
 	name: string;
@@ -24,13 +25,7 @@ export interface LoadedProject {
 }
 
 export async function loadProject(cwd: string): Promise<LoadedProject> {
-	let manifest;
-	try {
-		manifest = await readManifest(cwd);
-	} catch {
-		throw new Error(`No ${MANIFEST_FILENAME} found in ${cwd}. Are you in a Poli Page project?`);
-	}
-	return { manifest, projectDir: cwd };
+	return { manifest: await readProjectManifest(cwd), projectDir: cwd };
 }
 
 export function findTemplate(
@@ -57,9 +52,11 @@ export async function loadTemplate(
 	projectDir: string,
 	entry: TemplateEntry
 ): Promise<LoadedTemplate> {
-	const templateDir = join(projectDir, 'templates', entry.name);
-	const htmlPath = join(templateDir, entry.template);
-	const mockPath = join(templateDir, entry.mock);
+	// Against the project root, so a symlinked `templates/<name>` folder is
+	// refused too: the mock is sent to the API as render data.
+	const templateDir = join('templates', entry.name);
+	const htmlPath = await resolveInside(projectDir, join(templateDir, entry.template));
+	const mockPath = await resolveInside(projectDir, join(templateDir, entry.mock));
 
 	let html: string;
 	try {
@@ -137,13 +134,13 @@ export async function collectProjectPayload(
 	// Collect template files
 	const templateFiles: Array<{ path: string; content: string }> = [];
 	for (const tpl of manifest.templates ?? []) {
-		const templateDir = join(projectDir, 'templates', tpl.name);
-		const htmlPath = join(templateDir, tpl.template);
+		const templateDir = join('templates', tpl.name);
+		const htmlPath = await resolveInside(projectDir, join(templateDir, tpl.template));
 		const htmlContent = await readFile(htmlPath, 'utf-8');
 		templateFiles.push({ path: tpl.template, content: htmlContent });
 
 		if (tpl.mock) {
-			const mockPath = join(templateDir, tpl.mock);
+			const mockPath = await resolveInside(projectDir, join(templateDir, tpl.mock));
 			const mockContent = await readFile(mockPath, 'utf-8');
 			templateFiles.push({ path: tpl.mock, content: mockContent });
 		}

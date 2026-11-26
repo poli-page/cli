@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readManifest, writeManifest } from '../src/manifest.js';
+import { ManifestValidationError, readManifest, writeManifest } from '../src/manifest.js';
 import { MANIFEST_FILENAME } from '../src/constants.js';
 
 describe('manifest schema validation', () => {
@@ -116,6 +116,72 @@ describe('manifest schema validation', () => {
 				cloud: { orgSlug: 42, projectId: 'proj_1' },
 			});
 			await expect(readManifest(dir)).rejects.toThrow(/cloud\.orgSlug/);
+		});
+
+		const validTemplate = {
+			name: 'invoice',
+			template: 'invoice.html',
+			mock: 'invoice.json',
+			format: 'A4',
+			orientation: 'portrait',
+		};
+
+		it.each([
+			['name', '../../outside'],
+			['name', 'Invoice/..'],
+			['template', '../../../etc/passwd'],
+			['template', '/etc/passwd'],
+			['template', 'sub/./invoice.html'],
+			// The template importer's rule: a segment starts with a letter or digit.
+			['template', '_invoice.html'],
+			['mock', '../../../home/.polipage/credentials'],
+			['mock', 'x?/../../mock.json'],
+			['format', 'A4/../../..'],
+			['format', 'A7'],
+			['orientation', '../portrait'],
+			['orientation', 'sideways'],
+		])('rejects templates[0].%s = %j with the field path', async (field, value) => {
+			await writeRaw({
+				project: { name: 'p' },
+				templates: [{ ...validTemplate, [field]: value }],
+			});
+			const err = await readManifest(dir).catch((e: unknown) => e);
+			expect(err).toBeInstanceOf(ManifestValidationError);
+			expect((err as ManifestValidationError).issues.map((i) => i.path)).toEqual([
+				`templates[0].${field}`,
+			]);
+		});
+
+		it('names the page formats as the README does', async () => {
+			await writeRaw({
+				project: { name: 'p' },
+				templates: [{ ...validTemplate, format: 'A7' }],
+			});
+			await expect(readManifest(dir)).rejects.toThrow(
+				/expected one of A3, A4, A5, A6, B4, B5, Letter, Legal, Tabloid, Statement, Executive, Folio/
+			);
+		});
+
+		it('accepts nested template paths and any letter case of format and orientation', async () => {
+			await writeRaw({
+				project: { name: 'p' },
+				templates: [
+					{
+						...validTemplate,
+						template: 'pages/invoice.html',
+						mock: 'mocks/invoice.json',
+					},
+					{
+						...validTemplate,
+						name: 'letter-2',
+						format: 'Letter',
+						orientation: 'LANDSCAPE',
+					},
+					{ name: 'no-format', template: 'a.html', mock: 'a.json' },
+				],
+			});
+			const m = await readManifest(dir);
+			expect(m.templates?.map((t) => t.name)).toEqual(['invoice', 'letter-2', 'no-format']);
 		});
 
 		it('throws when JSON is malformed', async () => {

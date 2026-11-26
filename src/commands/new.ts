@@ -14,7 +14,8 @@ import {
 	promptForStarterTemplate,
 	type TemplatePromptResult,
 } from '../template-prompt.js';
-import { errorToExitCode } from '../exit-codes.js';
+import { errorToExitCode, UsageError } from '../exit-codes.js';
+import { resolveFormat } from '../format-resolver.js';
 
 function toKebabCase(name: string): string {
 	return name
@@ -49,10 +50,20 @@ export async function executeNew(name: string, options: NewOptions = {}): Promis
 
 	try {
 		await readManifest(cwd);
-	} catch {
-		throw new Error(
-			`No ${MANIFEST_FILENAME} found in ${cwd}. Run "poli init" first.`
-		);
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+			throw new Error(`No ${MANIFEST_FILENAME} found in ${cwd}. Run "poli init" first.`);
+		}
+		throw err;
+	}
+
+	// The manifest refuses an unknown value, so it must never be written.
+	if (options.format || options.orientation) {
+		try {
+			resolveFormat(options.format ?? 'A4', options.orientation ?? 'portrait');
+		} catch (err) {
+			throw new UsageError((err as Error).message);
+		}
 	}
 
 	const source =

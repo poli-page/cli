@@ -109,6 +109,18 @@ export async function executeInit(name: string, options: InitOptions = {}): Prom
 		promptResult = await prompt();
 	}
 
+	// Precedence for the destination template name: --template-name, the
+	// prompt's answer, then the source template's own name.
+	const requestedName = promptResult
+		? options.templateName || promptResult.destName || promptResult.ref.name
+		: undefined;
+	const destTemplateName = requestedName === undefined ? undefined : toKebabCase(requestedName);
+	if (destTemplateName === '') {
+		throw new Error(
+			`Invalid template name ${JSON.stringify(requestedName)}: use lowercase letters, digits and "-".`
+		);
+	}
+
 	if (!initInPlace) {
 		const exists = await stat(projectDir).catch(() => null);
 		if (exists) {
@@ -133,16 +145,6 @@ export async function executeInit(name: string, options: InitOptions = {}): Prom
 	await writeFile(join(projectDir, '.prettierignore'), PRETTIERIGNORE_TEMPLATE, 'utf-8');
 
 	if (promptResult) {
-		// Precedence for the destination template name:
-		//   1. explicit --template-name flag (options.templateName)
-		//   2. value returned by the interactive prompt (promptResult.destName)
-		//   3. the source template's own name (default in importTemplate)
-		const destTemplateName = options.templateName
-			? toKebabCase(options.templateName)
-			: promptResult.destName
-				? toKebabCase(promptResult.destName)
-				: undefined;
-
 		await importTemplate({
 			source,
 			templateRef: promptResult.ref,
