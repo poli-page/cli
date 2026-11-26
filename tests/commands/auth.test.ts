@@ -450,7 +450,7 @@ describe('auth commands', () => {
 			);
 		}
 
-		it('revokes the stored session, then removes the credentials file', async () => {
+		it('removes the credentials file before it revokes the stored session', async () => {
 			await storeSession();
 			const revoked: Array<{ session: string; fileStillThere: boolean }> = [];
 			const apiClient = createFakeApiClient({
@@ -461,7 +461,7 @@ describe('auth commands', () => {
 
 			const result = await executeLogout({ homeDir: fakeHome, apiClient });
 
-			expect(revoked).toEqual([{ session: 'token', fileStillThere: true }]);
+			expect(revoked).toEqual([{ session: 'token', fileStillThere: false }]);
 			expect(result).toEqual({ status: 'revoked', origin: 'https://api.poli.page' });
 			expect(await readCredentials(fakeHome)).toBeNull();
 		});

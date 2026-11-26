@@ -98,10 +98,10 @@ The CLI supports two authentication modes. Both flow through the same internal r
 ```bash
 poli login    # device authorization flow — opens your browser
 poli whoami   # show the current session and active org
-poli logout   # revoke the session, then delete ~/.polipage/credentials
+poli logout   # delete ~/.polipage/credentials, then revoke the session
 ```
 
-After `poli login`, the session token is stored at `~/.polipage/credentials.json` and used by every command that needs it (while `POLI_PAGE_API_KEY` is set, the commands that accept a key use the key instead: see [Precedence](#precedence)).
+After `poli login`, the session token is stored at `~/.polipage/credentials` and used by every command that needs it (while `POLI_PAGE_API_KEY` is set, the commands that accept a key use the key instead: see [Precedence](#precedence)).
 
 ### Programmatic (CI / CD / scripts)
 
@@ -130,7 +130,7 @@ The other workspace commands (`link`, `watch`, `dev`) need `poli login`.
 
 ### Precedence
 
-When **both** `~/.polipage/credentials.json` (a session) and `POLI_PAGE_API_KEY` are set, **the key wins** for every command that accepts either credential (`whoami`, `publish`, `render`, `documents`): a set key is an explicit choice, so exporting a `pp_sandbox_…` key makes those commands act as that key, not as your full session. The session-only commands (`link`, `watch`, `dev`, `env`) keep using your session. While the key wins, what it cannot do is refused even though a session is stored: `poli render <name>` (the draft), `poli render <name>@<environment>` for another environment than the key's, `poli publish` with a standard key or with an `--env` other than the key's, and any of those commands with a malformed key fail, and their error says to unset `POLI_PAGE_API_KEY` to use the session. In a terminal, `poli whoami` says when the key is used instead of a stored session (its JSON is the `GET /v1/me` response, unchanged), and `poli publish` prints which credential it used (`Auth:` in its summary, `credential` in its JSON). `poli login` does not refuse if the env var is set — it shows an info-message and proceeds, but the key keeps winning until you unset it.
+When **both** `~/.polipage/credentials` (a session) and `POLI_PAGE_API_KEY` are set, **the key wins** for every command that accepts either credential (`whoami`, `publish`, `render`, `documents`): a set key is an explicit choice, so exporting a `pp_sandbox_…` key makes those commands act as that key, not as your full session. The session-only commands (`link`, `watch`, `dev`, `env`) keep using your session. While the key wins, what it cannot do is refused even though a session is stored: `poli render <name>` (the draft), `poli render <name>@<environment>` for another environment than the key's, `poli publish` with a standard key or with an `--env` other than the key's, and any of those commands with a malformed key fail, and their error says to unset `POLI_PAGE_API_KEY` to use the session. In a terminal, `poli whoami` says when the key is used instead of a stored session (its JSON is the `GET /v1/me` response, unchanged), and `poli publish` prints which credential it used (`Auth:` in its summary, `credential` in its JSON). `poli login` does not refuse if the env var is set — it shows an info-message and proceeds, but the key keeps winning until you unset it.
 
 ---
 
@@ -209,13 +209,13 @@ Flags:
 
 #### `poli login`
 
-Opens your browser for the device authorization flow and stores the session token at `~/.polipage/credentials.json`.
+Opens your browser for the device authorization flow and stores the session token at `~/.polipage/credentials`.
 
 It first prints the API host it logs into. The browser opens only an `https` page on the API's own site (`poli.page` or a subdomain; a local page when the API is local): any other verification URL the API sends is printed, not opened, and login exits `3`. The API URL is stored in the credentials file only when you chose it: `--api-url`, your own `POLI_API_URL`, or the `apiUrl` an earlier login stored. A `poli-page.json` `cloud.apiUrl` is never stored.
 
 #### `poli logout`
 
-Revokes the stored session on the API origin that issued it (`POST /api/auth/sign-out`), then deletes the local credentials file. If the revoke fails (network error, API error, an origin the CLI does not trust), the file is still deleted and a warning says the session stays valid until it expires; the exit code is `0` either way.
+Deletes the local credentials file, then revokes the session it held on the API origin that issued it (`POST /api/auth/sign-out`), so the file is gone even if the revoke hangs or is interrupted. If the revoke fails (network error, API error, an origin the CLI does not trust), a warning says the session stays valid until it expires; the exit code is `0` either way.
 
 #### `poli whoami`
 
@@ -578,7 +578,7 @@ A manifest from before environments may still carry `project.version` or `cloud.
 | Variable             | Effect                                                                                                                                                                                                                                          |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POLI_PAGE_API_KEY`  | Single env var for any API key in CI/CD: `pp_<environment>_` followed by 32 lowercase hex characters, checked in full before any call. The key renders only its own environment; a service key also publishes to it. **Precedence**: when a credentials file is also present, the key wins for `whoami`, `publish`, `render` and `documents`. |
-| `POLI_API_URL`       | Override the API base URL (precedence: `--api-url` flag → `POLI_API_URL` → `poli-page.json` `cloud.apiUrl`, when allowed (see below) → `~/.polipage/credentials.json` `apiUrl` → default `https://api.poli.page`). The URL must be an origin only (no user, path, query or hash) on `https://poli.page` or `https://*.poli.page`; anything else exits `2` before any request. `poli-page.json` `cloud.apiUrl` is ignored, with a warning, unless it equals the stored `apiUrl` or the default: a cloned folder cannot choose where your credentials go. A session is only sent to the API origin that issued it; log in again to use another one. |
+| `POLI_API_URL`       | Override the API base URL (precedence: `--api-url` flag → `POLI_API_URL` → `poli-page.json` `cloud.apiUrl`, when allowed (see below) → `~/.polipage/credentials` `apiUrl` → default `https://api.poli.page`). The URL must be an origin only (no user, path, query or hash) on `https://poli.page` or `https://*.poli.page`; anything else exits `2` before any request. `poli-page.json` `cloud.apiUrl` is ignored, with a warning, unless it equals the stored `apiUrl` or the default: a cloned folder cannot choose where your credentials go. A session is only sent to the API origin that issued it; log in again to use another one. |
 | `POLI_ALLOW_INSECURE_API` | Set to `1` to allow a local API URL (`http://localhost`, `http://127.0.0.1`), like `--allow-insecure-api`. |
 | `NO_COLOR`           | Disable ANSI colors (Unix standard).                                                                                                                                                                                                            |
 | `CI`                 | Not read. `CI=true` is not consent: without a TTY, a prompt needs `--yes`.                                                                                                                                                                       |

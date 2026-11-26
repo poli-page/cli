@@ -155,29 +155,26 @@ export type LogoutResult =
 	| { status: 'revoke-failed'; origin: string; reason: string };
 
 /**
- * Revokes the stored session, then deletes the credentials file whatever the
- * revoke did: a copy of the file must not outlive the logout.
+ * Deletes the credentials file, then revokes the session it held: the file
+ * must not outlive a logout that is killed while the revoke is in flight.
  */
 export async function executeLogout(options: LogoutOptions = {}): Promise<LogoutResult> {
+	const credentials = await readCredentials(options.homeDir);
+	await clearCredentials(options.homeDir);
+	if (!credentials?.session) return { status: 'not-logged-in' };
+	// Revoked where it was issued: sending it to the API this run targets
+	// would hand the token to another origin.
+	const origin = credentials.origin ?? DEFAULT_API_URL;
 	try {
-		const credentials = await readCredentials(options.homeDir);
-		if (!credentials?.session) return { status: 'not-logged-in' };
-		// Revoked where it was issued: sending it to the API this run targets
-		// would hand the token to another origin.
-		const origin = credentials.origin ?? DEFAULT_API_URL;
-		try {
-			const client = options.apiClient ?? createApiClient(origin);
-			await client.signOut(credentials.session);
-			return { status: 'revoked', origin };
-		} catch (error) {
-			return {
-				status: 'revoke-failed',
-				origin,
-				reason: error instanceof Error ? error.message : String(error),
-			};
-		}
-	} finally {
-		await clearCredentials(options.homeDir);
+		const client = options.apiClient ?? createApiClient(origin);
+		await client.signOut(credentials.session);
+		return { status: 'revoked', origin };
+	} catch (error) {
+		return {
+			status: 'revoke-failed',
+			origin,
+			reason: error instanceof Error ? error.message : String(error),
+		};
 	}
 }
 
