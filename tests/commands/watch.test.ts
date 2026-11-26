@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, mkdir, readFile, realpath, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeWatch, type WatchEvent } from '../../src/commands/watch.js';
 import { writeCredentials } from '../../src/credentials.js';
+import { recordLink } from '../../src/cloud-link.js';
 import {
 	type ApiClient,
 	type PatchFilesBody,
@@ -16,6 +17,7 @@ import { createFakeApiClient } from '../helpers/fake-api-client.js';
 function makeStubClient(overrides: Partial<ApiClient> = {}): ApiClient {
 	return createFakeApiClient({
 		getOrganizations: async () => [{ id: 'org_1', name: 'Acme', slug: 'acme' }],
+		listProjects: async () => [{ id: 'proj_1', name: 'Invoices', slug: 'invoices' }],
 		...overrides,
 	});
 }
@@ -50,6 +52,12 @@ function createManualWatcherFactory(): {
 }
 
 async function setupLinkedProject(tempDir: string, fakeHome: string): Promise<void> {
+	await setupClonedProject(tempDir, fakeHome);
+	await recordLink(tempDir, 'proj_1', fakeHome);
+}
+
+/** A linked manifest as a clone brings it: no confirmed link on this machine. */
+async function setupClonedProject(tempDir: string, fakeHome: string): Promise<void> {
 	await writeFile(
 		join(tempDir, MANIFEST_FILENAME),
 		JSON.stringify({
@@ -129,6 +137,116 @@ describe('executeWatch', () => {
 				signal: controller.signal,
 			})
 		).rejects.toThrow(/not linked|poli link/i);
+	});
+
+	describe('a cloned folder (cloud block, no confirmed link)', () => {
+		it('refuses without a confirmLink prompt (exit 2), naming org and project, before any sync', async () => {
+			await setupClonedProject(tempDir, fakeHome);
+			const patchFiles = vi.fn();
+
+			const err = await executeWatch({
+				cwd: tempDir,
+				homeDir: fakeHome,
+				apiClient: makeStubClient({ patchFiles }),
+				isTTY: true,
+			}).catch((e) => e);
+
+			expect(err.exitCode).toBe(2);
+			expect(err.message).toMatch(/"Invoices" \(invoices\) of organization "Acme" \(acme\)/);
+			expect(err.message).toMatch(/poli link/);
+			expect(patchFiles).not.toHaveBeenCalled();
+		});
+
+		it('asks once: a confirmed link is recorded and the next run does not ask', async () => {
+			await setupClonedProject(tempDir, fakeHome);
+			const confirmLink = vi.fn(async () => true);
+
+			for (let run = 0; run < 2; run++) {
+				const controller = new AbortController();
+				const { factory } = createManualWatcherFactory();
+				const ready = new Promise<void>((resolve) => {
+					void executeWatch({
+						cwd: tempDir,
+						homeDir: fakeHome,
+						apiClient: makeStubClient(),
+						isTTY: true,
+						signal: controller.signal,
+						watcherFactory: factory,
+						confirmLink,
+						onEvent: (e) => {
+							if (e.type === 'ready') resolve();
+						},
+					});
+				});
+				await ready;
+				controller.abort();
+			}
+
+			expect(confirmLink).toHaveBeenCalledTimes(1);
+			expect(confirmLink).toHaveBeenCalledWith({
+				org: { id: 'org_1', name: 'Acme', slug: 'acme' },
+				project: { id: 'proj_1', name: 'Invoices', slug: 'invoices' },
+			});
+			const links = JSON.parse(
+				await readFile(join(fakeHome, '.polipage', 'links.json'), 'utf-8')
+			);
+			expect(links.links[await realpath(tempDir)]).toBe('proj_1');
+		});
+
+		it('does not sync and records nothing when the user declines', async () => {
+			await setupClonedProject(tempDir, fakeHome);
+			const patchFiles = vi.fn();
+
+			await expect(
+				executeWatch({
+					cwd: tempDir,
+					homeDir: fakeHome,
+					apiClient: makeStubClient({ patchFiles }),
+					isTTY: true,
+					confirmLink: async () => false,
+				})
+			).rejects.toThrow(/cancelled/i);
+
+			expect(patchFiles).not.toHaveBeenCalled();
+			await expect(stat(join(fakeHome, '.polipage', 'links.json'))).rejects.toThrow(/ENOENT/);
+		});
+
+		it('asks again when the manifest now names another project', async () => {
+			await setupClonedProject(tempDir, fakeHome);
+			await recordLink(tempDir, 'proj_other', fakeHome);
+
+			const err = await executeWatch({
+				cwd: tempDir,
+				homeDir: fakeHome,
+				apiClient: makeStubClient(),
+				isTTY: true,
+			}).catch((e) => e);
+
+			expect(err.exitCode).toBe(2);
+		});
+	});
+
+	it('refuses a manifest whose ids name different projects, before any sync', async () => {
+		await setupLinkedProject(tempDir, fakeHome);
+		const patchFiles = vi.fn();
+
+		const err = await executeWatch({
+			cwd: tempDir,
+			homeDir: fakeHome,
+			apiClient: makeStubClient({
+				patchFiles,
+				listProjects: async () => [
+					{ id: 'proj_1', name: 'Payroll', slug: 'payroll' },
+					{ id: 'proj_2', name: 'Invoices', slug: 'invoices' },
+				],
+			}),
+			isTTY: true,
+			confirmLink: async () => true,
+		}).catch((e) => e);
+
+		expect(err.exitCode).toBe(6);
+		expect(err.message).toMatch(/projectSlug "invoices"/);
+		expect(patchFiles).not.toHaveBeenCalled();
 	});
 
 	it('emits a "ready" event after the initial snapshot, then "syncing" → "synced" on save', async () => {

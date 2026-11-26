@@ -1,7 +1,7 @@
 import { readCredentials, sessionFor } from './credentials.js';
 
 export type AuthContext =
-	| { mode: 'session'; authorization: string; orgIdHeader: string }
+	| { mode: 'session'; session: string; authorization: string; orgIdHeader: string }
 	| {
 			mode: 'api-key';
 			authorization: string;
@@ -50,6 +50,7 @@ export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<Aut
 		}
 		return {
 			mode: 'session',
+			session,
 			authorization: `Bearer ${session}`,
 			orgIdHeader: options.manifestOrgId,
 		};

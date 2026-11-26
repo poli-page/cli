@@ -3,6 +3,7 @@ import { readProjectManifest, writeManifest } from '../manifest.js';
 import { getSessionToken, readCredentials, sessionFor } from '../credentials.js';
 import { createApiClient, type ApiClient } from '../api-client.js';
 import { collectProjectPayload } from '../project-loader.js';
+import { forgetLink, recordLink } from '../cloud-link.js';
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
 
 export interface LinkOptions {
@@ -90,10 +91,13 @@ export async function executeLink(options: LinkOptions): Promise<void> {
 	};
 
 	await writeManifest(cwd, manifest);
+	// The user chose this link: `poli dev` / `poli watch` sync it without asking.
+	await recordLink(cwd, projectId, options.homeDir);
 }
 
 export interface UnlinkOptions {
 	cwd?: string;
+	homeDir?: string;
 }
 
 export async function executeUnlink(options: UnlinkOptions = {}): Promise<void> {
@@ -105,6 +109,8 @@ export async function executeUnlink(options: UnlinkOptions = {}): Promise<void> 
 		throw new Error('Project is not linked to any organization.');
 	}
 
+	// Forget first: once the cloud block is gone, `poli unlink` cannot be retried.
+	await forgetLink(cwd, options.homeDir);
 	delete manifest.cloud;
 	await writeManifest(cwd, manifest);
 }

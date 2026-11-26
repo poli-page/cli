@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeInit } from '../../src/commands/init.js';
 import { executeLink, executeUnlink } from '../../src/commands/link.js';
 import { writeCredentials } from '../../src/credentials.js';
+import { isLinkConfirmed, recordLink } from '../../src/cloud-link.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import type { ApiClient } from '../../src/api-client.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
@@ -66,6 +67,19 @@ describe('poli link / unlink', () => {
 				projectSlug: 'test-project',
 				projectId: 'proj_abc123',
 			});
+		});
+
+		it('records the link as confirmed, so dev and watch sync with no prompt', async () => {
+			await executeLink({
+				cwd: projectDir,
+				orgSlug: 'acme-corp',
+				apiClient: createMockApiClient(),
+				homeDir: fakeHome,
+			});
+
+			expect(await isLinkConfirmed(projectDir, 'proj_abc123', fakeHome)).toBe(true);
+			const linksPath = join(fakeHome, '.polipage', 'links.json');
+			expect((await stat(linksPath)).mode & 0o777).toBe(0o600);
 		});
 
 		it('does not cache an API key in credentials (CLI uses session auth)', async () => {
@@ -222,6 +236,46 @@ describe('poli link / unlink', () => {
 				await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
 			);
 			expect(manifest).toEqual({ project: { name: 'test-project' } });
+		});
+
+		it("forgets the folder's confirmed link, and only that folder's", async () => {
+			const other = await mkdtemp(join(tmpdir(), 'poli-link-other-'));
+			try {
+				await executeLink({
+					cwd: projectDir,
+					orgSlug: 'acme-corp',
+					apiClient: createMockApiClient(),
+					homeDir: fakeHome,
+				});
+				await recordLink(other, 'proj_other', fakeHome);
+
+				await executeUnlink({ cwd: projectDir, homeDir: fakeHome });
+
+				expect(await isLinkConfirmed(projectDir, 'proj_abc123', fakeHome)).toBe(false);
+				expect(await isLinkConfirmed(other, 'proj_other', fakeHome)).toBe(true);
+			} finally {
+				await rm(other, { recursive: true, force: true });
+			}
+		});
+
+		it('keeps the cloud block when the confirmed link cannot be forgotten, so unlink can be retried', async () => {
+			await executeLink({
+				cwd: projectDir,
+				orgSlug: 'acme-corp',
+				apiClient: createMockApiClient(),
+				homeDir: fakeHome,
+			});
+			const linksPath = join(fakeHome, '.polipage', 'links.json');
+			// A directory in place of links.json makes forgetLink fail.
+			await rm(linksPath);
+			await mkdir(linksPath);
+
+			await expect(executeUnlink({ cwd: projectDir, homeDir: fakeHome })).rejects.toThrow();
+
+			const manifest = JSON.parse(
+				await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
+			);
+			expect(manifest.cloud).toBeDefined();
 		});
 
 		it('should throw if not linked', async () => {

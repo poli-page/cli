@@ -20,6 +20,7 @@ import { promptForStarterTemplate, type TemplatePromptResult } from '../template
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 import { resolveWritable, safeWriteFile } from '../security/paths.js';
+import { recordLink } from '../cloud-link.js';
 
 function toKebabCase(name: string): string {
 	return name
@@ -231,6 +232,7 @@ export async function executeInitStarter(
 		await safeWriteFile(projectDir, file.path, file.content);
 	}
 	await safeWriteFile(projectDir, MANIFEST_FILENAME, serializeManifest(manifest));
+	if (cloud) await recordLink(projectDir, cloud.projectId, options.homeDir);
 
 	return { projectDir, link };
 }

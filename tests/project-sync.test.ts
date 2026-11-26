@@ -17,6 +17,7 @@ const ctx: CloudContext = {
 	orgId: 'org_1',
 	orgSlug: 'acme',
 	projectId: 'proj_1',
+	projectSlug: 'demo',
 };
 
 function makeClient(bodies: PatchFilesBody[]): ApiClient {
