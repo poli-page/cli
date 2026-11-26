@@ -1,8 +1,10 @@
-import { readFile, readdir, stat } from 'node:fs/promises';
-import { join, dirname, extname } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { readProjectManifest, type PoliPageManifest } from './manifest.js';
 import { MANIFEST_FILENAME } from './constants.js';
 import { resolveInside } from './security/paths.js';
+import { readAllProjectFiles } from './project-sync.js';
+import { toProjectFileEntries } from './project-files.js';
 
 export interface TemplateEntry {
 	name: string;
@@ -103,67 +105,34 @@ export function unwrapMockJson(
 	return { data, locale };
 }
 
-export function createAssetsResolver(projectDir: string) {
-	return (path: string): Buffer => {
-		const { readFileSync } = require('node:fs');
-		const fullPath = join(projectDir, 'assets', path);
-		return readFileSync(fullPath);
-	};
-}
-
-export function createFontsResolver(projectDir: string) {
-	return (path: string): Buffer => {
-		const { readFileSync } = require('node:fs');
-		const fullPath = join(projectDir, 'assets', path);
-		return readFileSync(fullPath);
-	};
-}
-
-export async function loadTailwindCss(projectDir: string): Promise<string | undefined> {
-	try {
-		return await readFile(join(projectDir, 'tailwind.css'), 'utf-8');
-	} catch {
-		return undefined;
-	}
-}
-
+/**
+ * The bundle `poli link` sends to create the cloud project, built from the
+ * project file set (`readAllProjectFiles`, as for `poli publish`): it holds
+ * regular files inside the project only, never a symlink, so a cloned
+ * folder cannot make the link upload a file from outside it.
+ */
 export async function collectProjectPayload(
 	projectDir: string,
 	manifest: PoliPageManifest,
 ): Promise<Record<string, unknown>> {
-	// Collect template files
+	const files = await readAllProjectFiles(projectDir);
+
+	// The API takes template files by their name inside `templates/<name>/`.
 	const templateFiles: Array<{ path: string; content: string }> = [];
 	for (const tpl of manifest.templates ?? []) {
-		const templateDir = join('templates', tpl.name);
-		const htmlPath = await resolveInside(projectDir, join(templateDir, tpl.template));
-		const htmlContent = await readFile(htmlPath, 'utf-8');
-		templateFiles.push({ path: tpl.template, content: htmlContent });
-
-		if (tpl.mock) {
-			const mockPath = await resolveInside(projectDir, join(templateDir, tpl.mock));
-			const mockContent = await readFile(mockPath, 'utf-8');
-			templateFiles.push({ path: tpl.mock, content: mockContent });
+		for (const fileName of [tpl.template, tpl.mock]) {
+			const content = files.get(`templates/${tpl.name}/${fileName}`);
+			if (content !== undefined) templateFiles.push({ path: fileName, content });
 		}
 	}
 
-	// Collect assets (images + fonts)
-	const imageFiles: Array<{ path: string; data: string }> = [];
-	const assetsDir = join(projectDir, 'assets');
-	try {
-		const assetEntries = await readdir(assetsDir, { recursive: true });
-		for (const entry of assetEntries) {
-			const fullPath = join(assetsDir, entry);
-			const s = await stat(fullPath);
-			if (s.isFile() && /\.(png|jpg|jpeg|gif|svg|webp|woff2|woff|ttf|otf)$/i.test(entry)) {
-				const buffer = await readFile(fullPath);
-				imageFiles.push({ path: entry, data: buffer.toString('base64') });
-			}
-		}
-	} catch {
-		// No assets directory
-	}
+	// Assets go by their path under `assets/`, already base64. In the file
+	// set only assets carry these extensions.
+	const imageFiles = toProjectFileEntries(files)
+		.filter((file) => /\.(png|jpg|jpeg|gif|svg|webp|woff2|woff|ttf|otf)$/i.test(file.path))
+		.map((file) => ({ path: file.path.slice('assets/'.length), data: file.content }));
 
-	const tailwindCss = await loadTailwindCss(projectDir);
+	const tailwindCss = files.get('tailwind.css');
 
 	return {
 		manifest: {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { cp, mkdtemp, rm, readFile, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, rm, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeInit } from '../src/commands/init.js';
@@ -8,7 +8,6 @@ import {
 	loadProject,
 	findTemplate,
 	loadTemplate,
-	loadTailwindCss,
 	collectProjectPayload,
 } from '../src/project-loader.js';
 
@@ -127,8 +126,99 @@ describe('project-loader', () => {
 	});
 
 	describe('collectProjectPayload', () => {
+		async function addProjectFiles(): Promise<void> {
+			await mkdir(join(projectDir, 'assets', 'images'), { recursive: true });
+			await mkdir(join(projectDir, 'assets', 'fonts'), { recursive: true });
+			await writeFile(join(projectDir, 'assets', 'images', 'logo.png'), Buffer.from([1, 2, 3]));
+			await writeFile(join(projectDir, 'assets', 'fonts', 'inter-400.woff2'), Buffer.from([4, 5]));
+			// In the file set, but never part of the link payload.
+			await writeFile(join(projectDir, 'assets', 'images', 'notes.txt'), 'notes', 'utf-8');
+		}
+
+		it('builds a normal project\'s payload', async () => {
+			await addProjectFiles();
+			const { manifest } = await loadProject(projectDir);
+
+			const payload = await collectProjectPayload(projectDir, manifest);
+
+			expect(payload).toEqual({
+				manifest: {
+					project: manifest.project,
+					fonts: [],
+					templates: manifest.templates,
+				},
+				templates: [
+					{ path: 'invoice.html', content: '<div class="poli-header"></div><div>{{ content }}</div>' },
+					{
+						path: 'invoice.json',
+						content: JSON.stringify({ locale: 'en', data: { title: 'Sample', content: 'Hello' } }),
+					},
+				],
+				images: [
+					{ path: 'fonts/inter-400.woff2', data: Buffer.from([4, 5]).toString('base64') },
+					{ path: 'images/logo.png', data: Buffer.from([1, 2, 3]).toString('base64') },
+				],
+				tailwindCss: await readFile(join(projectDir, 'tailwind.css'), 'utf-8'),
+			});
+		});
+
+		it('leaves out an asset symlinked outside the project', async () => {
+			await addProjectFiles();
+			const outside = join(tempDir, 'id_ed25519.png');
+			await writeFile(outside, 'PRIVATE KEY', 'utf-8');
+			await symlink(outside, join(projectDir, 'assets', 'images', 'key.png'));
+			const { manifest } = await loadProject(projectDir);
+
+			const payload = await collectProjectPayload(projectDir, manifest);
+
+			expect((payload.images as Array<{ path: string }>).map((i) => i.path)).toEqual([
+				'fonts/inter-400.woff2',
+				'images/logo.png',
+			]);
+		});
+
+		it('leaves out an assets folder symlinked outside the project', async () => {
+			const outside = join(tempDir, 'ssh');
+			await mkdir(outside);
+			await writeFile(join(outside, 'id_ed25519.png'), 'PRIVATE KEY', 'utf-8');
+			await rm(join(projectDir, 'assets', 'images'), { recursive: true, force: true });
+			await mkdir(join(projectDir, 'assets'), { recursive: true });
+			await symlink(outside, join(projectDir, 'assets', 'images'));
+			const { manifest } = await loadProject(projectDir);
+
+			const payload = await collectProjectPayload(projectDir, manifest);
+
+			expect(payload).not.toHaveProperty('images');
+		});
+
+		it('leaves out a tailwind.css symlinked outside the project', async () => {
+			const outside = join(tempDir, 'credentials');
+			await writeFile(outside, '{"session":"s3cret"}', 'utf-8');
+			await rm(join(projectDir, 'tailwind.css'));
+			await symlink(outside, join(projectDir, 'tailwind.css'));
+			const { manifest } = await loadProject(projectDir);
+
+			const payload = await collectProjectPayload(projectDir, manifest);
+
+			expect(payload).not.toHaveProperty('tailwindCss');
+		});
+
+		it('leaves out a template path that leaves its template folder', async () => {
+			await mkdir(join(projectDir, 'templates', 'other'), { recursive: true });
+			await writeFile(join(projectDir, 'templates', 'other', 'secret.html'), 'secret', 'utf-8');
+			const { manifest } = await loadProject(projectDir);
+			// The schema refuses `..`; the payload must not depend on it.
+			manifest.templates![0].template = '../other/secret.html';
+
+			const payload = await collectProjectPayload(projectDir, manifest);
+
+			expect((payload.templates as Array<{ path: string }>).map((t) => t.path)).toEqual([
+				'invoice.json',
+			]);
+		});
+
 		it.each(['template', 'mock'] as const)(
-			'refuses a %s file symlinked outside the project',
+			'leaves out a %s file symlinked outside the project',
 			async (field) => {
 				const outside = join(tempDir, 'secret.json');
 				await writeFile(outside, '{"token":"s3cret"}', 'utf-8');
@@ -137,32 +227,23 @@ describe('project-loader', () => {
 				await rm(linked);
 				await symlink(outside, linked);
 
-				await expect(collectProjectPayload(projectDir, manifest)).rejects.toThrow(/resolves outside/);
+				const payload = await collectProjectPayload(projectDir, manifest);
+
+				expect(JSON.stringify(payload)).not.toContain('s3cret');
+				expect(payload.templates).toHaveLength(1);
 			}
 		);
 
-		it('refuses a template folder symlinked outside the project', async () => {
+		it('leaves out a template folder symlinked outside the project', async () => {
 			const outside = join(tempDir, 'elsewhere');
 			await cp(join(projectDir, 'templates', 'invoice'), outside, { recursive: true });
 			await rm(join(projectDir, 'templates', 'invoice'), { recursive: true });
 			await symlink(outside, join(projectDir, 'templates', 'invoice'));
 			const { manifest } = await loadProject(projectDir);
 
-			await expect(collectProjectPayload(projectDir, manifest)).rejects.toThrow(/resolves outside/);
-		});
-	});
+			const payload = await collectProjectPayload(projectDir, manifest);
 
-	describe('loadTailwindCss', () => {
-		it('should load tailwind.css if present', async () => {
-			const css = await loadTailwindCss(projectDir);
-			expect(css).toContain('@theme');
-		});
-
-		it('should return undefined if no tailwind.css', async () => {
-			const emptyDir = await mkdtemp(join(tmpdir(), 'poli-no-tw-'));
-			const css = await loadTailwindCss(emptyDir);
-			expect(css).toBeUndefined();
-			await rm(emptyDir, { recursive: true, force: true });
+			expect(payload.templates).toEqual([]);
 		});
 	});
 });
