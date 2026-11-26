@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import type { ServerResponse } from 'node:http';
 import type { ApiClient } from '../api-client.js';
 import { resolveCloudContext } from '../cloud-context.js';
+import { confirmLinkPrompt, type LinkTarget } from '../cloud-link.js';
 import { createFileWatcher, type FileWatcher, type FileWatcherOptions } from '../file-watcher.js';
 import { createProjectSyncer } from '../project-sync.js';
 import {
@@ -85,6 +86,8 @@ export interface DevOptions {
 	onEvent?: (event: DevEvent) => void;
 	/** Injectable for tests — defaults to the `open` package. */
 	openFn?: (url: string) => Promise<unknown>;
+	/** Asks before the first sync of an unconfirmed folder; absent, such a folder is refused. */
+	confirmLink?: (target: LinkTarget) => Promise<boolean>;
 }
 
 export interface DevSession {
@@ -209,28 +212,27 @@ export async function startDevSession(
 	const cwd = options.cwd ?? process.cwd();
 	const emit = (event: DevEvent) => options.onEvent?.(event);
 
-	// Resolves the manifest, the session token and the org — throws the
-	// familiar "not linked" / "not logged in" errors before anything is
-	// served, so a misconfigured project fails fast instead of booting a
-	// server that can never work.
-	const { client, ctx } = await resolveCloudContext({
-		cwd,
-		apiClient: options.apiClient,
-		homeDir: options.homeDir,
-	});
-
 	const initial = await loadProject(cwd);
 	let manifest: PoliPageManifest = initial.manifest;
 	let templates = templateNamesOf(manifest);
 
-	// `projectSlug` is optional in the manifest schema (legacy links lack
-	// it) but every render payload needs it. Without this guard the
-	// server boots and then fails every render into the overlay forever —
-	// fail fast instead, with the same message (and exit code) as
-	// `poli render`.
+	// A legacy link (no `projectSlug`) is refused like `poli render` does,
+	// and before the link prompt, so the user never confirms a folder that
+	// cannot render.
 	if (!manifest.cloud?.projectSlug) {
 		throw new Error("This folder isn't linked to a cloud project. Run `poli link` first.");
 	}
+
+	// Resolves the session token, the org and the confirmed link — throws
+	// the familiar "not logged in" errors before anything is served, so a
+	// misconfigured project fails fast instead of booting a server that can
+	// never work.
+	const { client, ctx } = await resolveCloudContext({
+		cwd,
+		apiClient: options.apiClient,
+		homeDir: options.homeDir,
+		confirmLink: options.confirmLink,
+	});
 
 	if (templateName !== undefined) {
 		// Fail fast on an unknown name given on the command line — same
@@ -341,7 +343,8 @@ export async function startDevSession(
 		locale: string | undefined
 	): Record<string, unknown> {
 		return {
-			project: manifest.cloud?.projectSlug,
+			// The verified project sync writes to, not the manifest re-read on each batch.
+			project: ctx.projectSlug,
 			template: entry.name,
 			data,
 			format: entry.format,
@@ -531,6 +534,8 @@ export async function startDevSession(
 	const watcher = (options.watcherFactory ?? createFileWatcher)({
 		cwd,
 		debounceMs: options.debounceMs ?? DEFAULT_DEBOUNCE_MS,
+		// The override is outside the file set, yet a save must re-render.
+		extraPaths: options.data ? [resolve(cwd, options.data)] : [],
 		onBatch: () => {
 			// Chained rather than fire-and-forget so `close()` can await
 			// the batch already in flight. `onBatch` handles its own
@@ -650,6 +655,9 @@ export function registerDevCommand(program: Command): void {
 			try {
 				await executeDev(template, {
 					signal: controller.signal,
+					// Piped (concurrently, a Procfile) nobody can answer: refuse instead.
+					confirmLink:
+						process.stdin.isTTY && process.stdout.isTTY ? confirmLinkPrompt : undefined,
 					port: opts.port ? parsePort(opts.port) : undefined,
 					data: opts.data,
 					open: opts.open !== false,

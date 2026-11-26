@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { resolveAuth } from '../../auth.js';
-import { readManifestIfPresent } from '../../manifest.js';
+import { readCloudLink } from '../../manifest.js';
 import { createApiClient, type ApiClient, type DocumentDescriptor } from '../../api-client.js';
 import { errorToExitCode } from '../../exit-codes.js';
 import { shouldEmitJson } from '../../output.js';
@@ -17,7 +17,7 @@ export async function executeDocumentsGet(
 ): Promise<DocumentDescriptor> {
 	const cwd = options.cwd ?? process.cwd();
 
-	const manifestOrgId = (await readManifestIfPresent(cwd))?.cloud?.orgId;
+	const manifestOrgId = (await readCloudLink(cwd))?.orgId;
 
 	let auth;
 	try {

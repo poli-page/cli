@@ -5,6 +5,8 @@ import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { readManifest, writeManifest } from './manifest.js';
 import { MANIFEST_FILENAME } from './constants.js';
+import { isOrientation, isPageFormat } from './format-resolver.js';
+import { TEMPLATE_SLUG_RE } from './project-files.js';
 import {
 	assertSafeRelativePath,
 	isSafeDottedSegment,
@@ -156,6 +158,19 @@ function parseTemplateManifest(data: unknown): TemplateManifest {
 	const manifest = data as TemplateManifest;
 	assertSafeRelativePath(manifest.template?.template, 'template.template');
 	assertSafeRelativePath(manifest.template?.mock, 'template.mock');
+	// Copied into poli-page.json as they are, which refuses an unknown one.
+	const { format, orientation } = manifest.template;
+	if (format !== undefined && (typeof format !== 'string' || !isPageFormat(format))) {
+		throw new Error(`Unsafe template.format ${JSON.stringify(format)}: not a known page format.`);
+	}
+	if (
+		orientation !== undefined &&
+		(typeof orientation !== 'string' || !isOrientation(orientation))
+	) {
+		throw new Error(
+			`Unsafe template.orientation ${JSON.stringify(orientation)}: expected portrait or landscape.`
+		);
+	}
 	for (const field of ['fonts', 'images'] as const) {
 		if (manifest[field] !== undefined && !Array.isArray(manifest[field])) {
 			throw new Error(
@@ -244,6 +259,11 @@ export async function importTemplate(
 	const source = options.source ?? DEFAULT_SOURCE;
 	const ref = options.templateRef;
 	const destName = options.destTemplateName ?? ref.name;
+	if (!TEMPLATE_SLUG_RE.test(destName)) {
+		throw new Error(
+			`Invalid template name ${JSON.stringify(destName)}: use lowercase letters, digits and "-".`
+		);
+	}
 	const fetchOpts: FetchOptions = {
 		fetcher: options.fetcher,
 		homeDir: options.homeDir,

@@ -17,6 +17,7 @@ import { shouldEmitJson } from '../output.js';
 import { toProjectFileEntries } from '../project-files.js';
 import { readAllProjectFiles } from '../project-sync.js';
 import { confirmPrompt } from '../template-prompt.js';
+import { verifyCloudLink } from '../cloud-link.js';
 
 export interface PublishOptions {
 	cwd?: string;
@@ -134,14 +135,14 @@ export async function executePublish(options: PublishOptions): Promise<PublishOu
 		);
 	}
 
-	const manifest = await readProjectManifest(cwd);
-	const project = manifest.cloud?.projectSlug;
-	if (!project) {
+	const { cloud } = await readProjectManifest(cwd);
+	const project = cloud?.projectSlug;
+	if (!cloud || !project) {
 		throw new Error('Project is not linked. Run `poli link` first.');
 	}
 
 	const auth = await resolveAuth({
-		manifestOrgId: manifest.cloud?.orgId,
+		manifestOrgId: cloud.orgId,
 		homeDir: options.homeDir,
 	});
 	const client = options.apiClient ?? createApiClient();
@@ -151,6 +152,9 @@ export async function executePublish(options: PublishOptions): Promise<PublishOu
 	}
 
 	const body = await buildPublishBody(cwd, environment, options.message);
+
+	// `project` is the slug; refuse a manifest whose other ids name another project.
+	await verifyCloudLink(client, auth.session, cloud);
 
 	const environments = await client.listEnvironments(auth.authorization, auth.orgIdHeader);
 	const target = environments.find((e) => e.name === environment);

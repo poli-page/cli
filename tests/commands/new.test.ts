@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { executeNew } from '../../src/commands/new.js';
 import { executeInit } from '../../src/commands/init.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
+import { ExitCode, errorToExitCode } from '../../src/exit-codes.js';
 import type { Fetcher, TemplateIndex, TemplateManifest } from '../../src/template-importer.js';
 
 const INDEX: TemplateIndex = {
@@ -171,6 +172,24 @@ describe('poli new', () => {
 		expect(manifest.templates[0].orientation).toBe('landscape');
 	});
 
+	it.each([
+		[{ format: 'A4/../..' }, /Unknown page format/],
+		[{ orientation: 'sideways' }, /Unknown orientation/],
+		[{ orientation: 'constructor' }, /Unknown orientation/],
+		[{ orientation: '__proto__' }, /Unknown orientation/],
+	])('refuses %j before importing anything', async (override, message) => {
+		const error = await executeNew('certificate', {
+			cwd: projectDir,
+			fromTemplate: 'showcase/invoice',
+			...override,
+			homeDir: fakeHome,
+			fetcher: makeFetcher(SOURCE_FILES),
+		}).catch((err: Error) => err);
+		expect(String(error)).toMatch(message);
+		expect(errorToExitCode(error)).toBe(ExitCode.INVALID_USAGE);
+		await expect(stat(join(projectDir, 'templates', 'certificate'))).rejects.toThrow(/ENOENT/);
+	});
+
 	it('falls back to structures/blank when --from-template is omitted (no prompt available)', async () => {
 		// In non-TTY contexts the prompt returns null and `poli new` defaults
 		// to the minimal blank template rather than erroring out. The user
@@ -222,7 +241,7 @@ describe('poli new', () => {
 				homeDir: fakeHome,
 				fetcher: makeFetcher(SOURCE_FILES),
 			})
-		).rejects.toThrow(/poli-page\.json/i);
+		).rejects.toThrow(/No poli-page\.json found.*Run "poli init" first/);
 		await rm(emptyDir, { recursive: true, force: true });
 	});
 
@@ -240,6 +259,36 @@ describe('poli new', () => {
 				fetcher: makeFetcher(SOURCE_FILES),
 			})
 		).rejects.toThrow('Invalid poli-page.json — cloud.orgId: must be a UUID');
+	});
+
+	it('reports why the manifest is invalid instead of "No poli-page.json found"', async () => {
+		const manifestPath = join(projectDir, MANIFEST_FILENAME);
+		const manifest = JSON.parse(await readFile(manifestPath, 'utf-8'));
+		manifest.templates = [{ name: 'x', template: 'x.html', mock: 'x.json', format: 'A7' }];
+		await writeFile(manifestPath, JSON.stringify(manifest), 'utf-8');
+		const error = await executeNew('invoice', {
+			cwd: projectDir,
+			fromTemplate: 'showcase/invoice',
+			homeDir: fakeHome,
+			fetcher: makeFetcher(SOURCE_FILES),
+		}).catch((err: Error) => err);
+		expect(String(error)).toMatch(/templates\[0\]\.format: expected one of/);
+		expect(String(error)).not.toMatch(/No poli-page\.json found/);
+		await expect(stat(join(projectDir, 'templates', 'invoice'))).rejects.toThrow(/ENOENT/);
+	});
+
+	it('keeps the validation error when the refused value contains "ENOENT"', async () => {
+		const manifestPath = join(projectDir, MANIFEST_FILENAME);
+		const manifest = JSON.parse(await readFile(manifestPath, 'utf-8'));
+		manifest.templates = [{ name: 'x', template: 'x.html', mock: 'ENOENT/../x.json' }];
+		await writeFile(manifestPath, JSON.stringify(manifest), 'utf-8');
+		const error = await executeNew('invoice', {
+			cwd: projectDir,
+			fromTemplate: 'showcase/invoice',
+			homeDir: fakeHome,
+			fetcher: makeFetcher(SOURCE_FILES),
+		}).catch((err: Error) => err);
+		expect(String(error)).toMatch(/templates\[0\]\.mock/);
 	});
 
 	it('sanitizes the destination name to kebab-case', async () => {

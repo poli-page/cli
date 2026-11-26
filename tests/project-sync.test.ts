@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
 	createProjectSyncer,
+	isInIgnoredProjectDirectory,
 	readAllProjectFiles,
 	shouldIgnoreProjectPath,
 } from '../src/project-sync.js';
@@ -16,6 +17,7 @@ const ctx: CloudContext = {
 	orgId: 'org_1',
 	orgSlug: 'acme',
 	projectId: 'proj_1',
+	projectSlug: 'demo',
 };
 
 function makeClient(bodies: PatchFilesBody[]): ApiClient {
@@ -198,6 +200,19 @@ describe('createProjectSyncer', () => {
 	});
 });
 
+describe('isInIgnoredProjectDirectory', () => {
+	it.each(['node_modules', '.git', 'output', 'dist', '.poli', 'templates/invoice/.poli', 'assets\\dist'])(
+		'prunes %s',
+		(path) => {
+			expect(isInIgnoredProjectDirectory(path)).toBe(true);
+		}
+	);
+
+	it.each(['', 'templates', 'templates/invoice', 'assets/images', 'home'])('enters %s', (path) => {
+		expect(isInIgnoredProjectDirectory(path)).toBe(false);
+	});
+});
+
 describe('shouldIgnoreProjectPath — API allowlist', () => {
 	it.each([
 		'poli-page.json',
@@ -226,6 +241,9 @@ describe('shouldIgnoreProjectPath — API allowlist', () => {
 		'new.json',
 		'templates/invoice/notes.md',
 		'assets/fonts/readme.txt',
+		'.poli/state.json',
+		'templates/invoice/.poli/cache.html',
+		'templates/invoice/dist/invoice.html',
 	])('skips %s', (path) => {
 		expect(shouldIgnoreProjectPath(path)).toBe(true);
 	});

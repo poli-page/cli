@@ -46,4 +46,12 @@ describe('resolveFormat', () => {
 	it('should throw for unknown orientation', () => {
 		expect(() => resolveFormat('A4', 'diagonal')).toThrow(/Unknown orientation/);
 	});
+
+	it.each(['constructor', '__proto__', 'toString'])(
+		'should throw for the inherited property name %j',
+		(name) => {
+			expect(() => resolveFormat('A4', name)).toThrow(/Unknown orientation/);
+			expect(() => resolveFormat(name, 'portrait')).toThrow(/Unknown page format/);
+		}
+	);
 });

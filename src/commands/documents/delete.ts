@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { resolveAuth } from '../../auth.js';
-import { readManifestIfPresent } from '../../manifest.js';
+import { readCloudLink } from '../../manifest.js';
 import { createApiClient, type ApiClient } from '../../api-client.js';
 import { errorToExitCode } from '../../exit-codes.js';
 
@@ -18,7 +18,7 @@ export async function executeDocumentsDelete(
 ): Promise<void> {
 	const cwd = options.cwd ?? process.cwd();
 
-	const manifestOrgId = (await readManifestIfPresent(cwd))?.cloud?.orgId;
+	const manifestOrgId = (await readCloudLink(cwd))?.orgId;
 
 	let auth;
 	try {

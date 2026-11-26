@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { resolveAuth } from '../../auth.js';
-import { readManifestIfPresent } from '../../manifest.js';
+import { readCloudLink } from '../../manifest.js';
 import {
 	createApiClient,
 	type ApiClient,
@@ -39,7 +39,7 @@ export async function executeDocumentsThumbnails(
 	const cwd = options.cwd ?? process.cwd();
 	assertDocumentId(id);
 
-	const manifestOrgId = (await readManifestIfPresent(cwd))?.cloud?.orgId;
+	const manifestOrgId = (await readCloudLink(cwd))?.orgId;
 
 	let auth;
 	try {

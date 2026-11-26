@@ -98,10 +98,10 @@ The CLI supports two authentication modes. Both flow through the same internal r
 ```bash
 poli login    # device authorization flow — opens your browser
 poli whoami   # show the current session and active org
-poli logout   # clear ~/.polipage/credentials.json
+poli logout   # delete ~/.polipage/credentials, then revoke the session
 ```
 
-After `poli login`, the session token is stored at `~/.polipage/credentials.json` and used by every command that needs it (while `POLI_PAGE_API_KEY` is set, the commands that accept a key use the key instead: see [Precedence](#precedence)).
+After `poli login`, the session token is stored at `~/.polipage/credentials` and used by every command that needs it (while `POLI_PAGE_API_KEY` is set, the commands that accept a key use the key instead: see [Precedence](#precedence)).
 
 ### Programmatic (CI / CD / scripts)
 
@@ -130,7 +130,7 @@ The other workspace commands (`link`, `watch`, `dev`) need `poli login`.
 
 ### Precedence
 
-When **both** `~/.polipage/credentials.json` (a session) and `POLI_PAGE_API_KEY` are set, **the key wins** for every command that accepts either credential (`whoami`, `publish`, `render`, `documents`): a set key is an explicit choice, so exporting a `pp_sandbox_…` key makes those commands act as that key, not as your full session. The session-only commands (`link`, `watch`, `dev`, `env`) keep using your session. While the key wins, what it cannot do is refused even though a session is stored: `poli render <name>` (the draft), `poli render <name>@<environment>` for another environment than the key's, `poli publish` with a standard key or with an `--env` other than the key's, and any of those commands with a malformed key fail, and their error says to unset `POLI_PAGE_API_KEY` to use the session. In a terminal, `poli whoami` says when the key is used instead of a stored session (its JSON is the `GET /v1/me` response, unchanged), and `poli publish` prints which credential it used (`Auth:` in its summary, `credential` in its JSON). `poli login` does not refuse if the env var is set — it shows an info-message and proceeds, but the key keeps winning until you unset it.
+When **both** `~/.polipage/credentials` (a session) and `POLI_PAGE_API_KEY` are set, **the key wins** for every command that accepts either credential (`whoami`, `publish`, `render`, `documents`): a set key is an explicit choice, so exporting a `pp_sandbox_…` key makes those commands act as that key, not as your full session. The session-only commands (`link`, `watch`, `dev`, `env`) keep using your session. While the key wins, what it cannot do is refused even though a session is stored: `poli render <name>` (the draft), `poli render <name>@<environment>` for another environment than the key's, `poli publish` with a standard key or with an `--env` other than the key's, and any of those commands with a malformed key fail, and their error says to unset `POLI_PAGE_API_KEY` to use the session. In a terminal, `poli whoami` says when the key is used instead of a stored session (its JSON is the `GET /v1/me` response, unchanged), and `poli publish` prints which credential it used (`Auth:` in its summary, `credential` in its JSON). `poli login` does not refuse if the env var is set — it shows an info-message and proceeds, but the key keeps winning until you unset it.
 
 ---
 
@@ -203,18 +203,19 @@ Flags:
 - `--from-template <ref>` — collection/template. Skips the interactive prompt.
 - `--source <repo>` — override the source
 - `--no-cache` — bypass cache
+- `--format <format>`, `--orientation <orientation>` — set the template's page format and orientation (see [Manifest format](#manifest-format)); an unknown value exits `2` before anything is imported
 
 ### Authentication commands
 
 #### `poli login`
 
-Opens your browser for the device authorization flow and stores the session token at `~/.polipage/credentials.json`.
+Opens your browser for the device authorization flow and stores the session token at `~/.polipage/credentials`.
 
 It first prints the API host it logs into. The browser opens only an `https` page on the API's own site (`poli.page` or a subdomain; a local page when the API is local): any other verification URL the API sends is printed, not opened, and login exits `3`. The API URL is stored in the credentials file only when you chose it: `--api-url`, your own `POLI_API_URL`, or the `apiUrl` an earlier login stored. A `poli-page.json` `cloud.apiUrl` is never stored.
 
 #### `poli logout`
 
-Clears the local credentials file.
+Deletes the local credentials file, then revokes the session it held on the API origin that issued it (`POST /api/auth/sign-out`), so the file is gone even if the revoke hangs or is interrupted. If the revoke fails (network error, API error, an origin the CLI does not trust), a warning says the session stays valid until it expires; the exit code is `0` either way. If the file cannot be deleted (for example a read-only `~/.polipage`), the CLI still tries to revoke the session (a failed revoke gets the same warning), an error asks you to delete the file by hand, and the exit code is `6`.
 
 #### `poli whoami`
 
@@ -245,11 +246,21 @@ Flag: `--json` to dump the raw `/v1/me` payload (or, in `session-no-org` mode, `
 
 #### `poli link`
 
-Interactively select an organization, create the cloud project, and write the `cloud:` section into `poli-page.json` with the four fields the API needs (`orgSlug`, `orgId`, `projectSlug`, `projectId`). No API key is stored in the manifest — the file is safe to commit.
+Interactively select an organization, create the cloud project, and write the `cloud:` section into `poli-page.json` with the four fields the API needs (`orgSlug`, `orgId`, `projectSlug`, `projectId`). No API key is stored in the manifest — the file is safe to commit. It also records the folder as a [confirmed link](#confirmed-links) on this machine, so `poli watch` and `poli dev` sync it without asking.
+
+When the organization already has a project whose slug is the kebab-cased `project.name` (say, a teammate's), `poli link` links to it instead of creating one, and every later sync overwrites that project's draft. So it first names the project and organization and asks; a no leaves the folder unlinked (exit `1`). When it cannot ask (stdin or stdout not a TTY, e.g. its output piped), it refuses with exit `2` and writes nothing, unless you pass `--existing`, which links to that project without asking. The organization picker before it still needs a terminal, so `--existing` alone does not make `poli link` scriptable. `poli init --starter` is not affected: it links only to the organization's existing starter project.
+
+The new cloud project is created from the files [`poli publish`](#poli-publish) would send (regular files only, never a symlink), restricted to the templates and mocks the manifest names, `tailwind.css`, and the image and font files under `assets/images/`, `assets/icons/` and `assets/fonts/`; partials and other files reach the project on the first sync or publish. A template or mock file the manifest names that is not in that set (missing, symlinked, outside `templates/<name>/`, or under a `node_modules`, `.git`, `output`, `dist` or `.poli` folder, e.g. a template named `output`) fails the link before the project is created.
+
+#### Confirmed links
+
+A `cloud:` block can come with a cloned repository, and every sync overwrites the cloud draft of the project it names. So `poli watch` and `poli dev` sync only a folder whose link you confirmed on this machine. The confirmed links are kept per user in `~/.polipage/links.json` (mode `0600`), keyed by the folder's real path and the project id; `poli link` and `poli init --starter` (when it links) write them, `poli unlink` removes the folder's. The first time you run `poli watch` or `poli dev` in a folder that is not there, or whose `projectId` changed, the command names the organization and project and asks once; a yes is recorded, a no stops the command before any sync. Without a terminal to ask in (stdin or stdout not a TTY), it refuses with exit `2`.
+
+Before syncing, `poli watch` and `poli dev` also check with the API that the manifest's `orgSlug`, `orgId`, `projectId` and `projectSlug` all name the same project (sync writes to `projectId` in the `orgSlug` organization; render and publish address `projectSlug` with `orgId`). A manifest whose ids disagree, or whose `orgSlug` names none of your organizations, is refused before any write (exit `6`); `poli publish` with a session refuses it too.
 
 #### `poli unlink`
 
-Removes the `cloud:` section from `poli-page.json`, even one whose ids are invalid. Local files are preserved.
+Removes the `cloud:` section from `poli-page.json`, even one whose ids are invalid, and forgets the folder's [confirmed link](#confirmed-links), so a `cloud:` block that comes back later (a pull, a checkout) is asked about again. Local files are preserved.
 
 #### `poli watch`
 
@@ -262,10 +273,10 @@ poli watch
 Resilience built in:
 
 - Network errors → exponential backoff (1s, 2s, 4s, 8s, 16s, 30s capped, reset on success)
-- `503 ORGANIZATION_MIGRATING` → 5-second retr
+- `503 ORGANIZATION_MIGRATING` → 5-second retry
 - Other API errors → logged, watch continues, next save retries
 
-Requires a TTY. Refused with exit `2` when run in a non-interactive context. If
+Requires a TTY. Refused with exit `2` when run in a non-interactive context. Syncs only a [confirmed link](#confirmed-links): the first run in a cloned folder asks first. If
 you need the same sync inside a script or alongside a browser preview, use
 [`poli dev`](#poli-dev-template), which has no TTY requirement.
 
@@ -292,7 +303,7 @@ poli dev -d ./big.json   # render every template against your own data
 | Flag                 | Default            | Meaning                                                    |
 | -------------------- | ------------------ | ---------------------------------------------------------- |
 | `-p, --port <n>`     | `7654`             | Port to bind on `127.0.0.1`. Walks upwards when it is busy. |
-| `-d, --data <path>`  | the template mock  | JSON data file, same shape as `poli render -d`.             |
+| `-d, --data <path>`  | the template mock  | JSON data file, same shape as `poli render -d`; saving it re-renders when it is inside the project. |
 | `--no-open`          | opens the browser  | Skip launching a browser on start.                          |
 | `[template]`         | first in manifest  | Which template to show first.                               |
 
@@ -324,6 +335,9 @@ Notes:
   { "scripts": { "dev": "concurrently \"poli dev --no-open\" \"vite\"" } }
   ```
 
+- It syncs only a [confirmed link](#confirmed-links). In a terminal the first
+  run in a cloned folder asks first; piped, an unconfirmed folder is refused
+  with exit `2`: run `poli dev` once in a terminal, or `poli unlink`, then `poli link`.
 - It binds to `127.0.0.1` only — the rendered draft is never exposed to the
   local network.
 - Only its own page can change the view: a `POST` from another site (or from
@@ -341,7 +355,7 @@ Notes:
 
 #### `poli publish`
 
-Publishes the local project, the files on disk, to an environment of your organization: `POST /v1/projects/<projectSlug>/publish`, with a service key in `POLI_PAGE_API_KEY` when one is set (see below), or else with your `poli login` session and the manifest's `cloud.orgId`. The environment's copy of the project is replaced in place. There is no rollback: to go back, check out the earlier state from your own version control and publish again.
+Publishes the local project, the files on disk, to an environment of your organization: `POST /v1/projects/<projectSlug>/publish`, with a service key in `POLI_PAGE_API_KEY` when one is set (see below), or else with your `poli login` session and the manifest's `cloud.orgId`; with a session, a manifest whose `cloud` ids do not all name the same project is refused before the upload (exit `6`, see [confirmed links](#confirmed-links)). The environment's copy of the project is replaced in place. There is no rollback: to go back, check out the earlier state from your own version control and publish again.
 
 ```bash
 poli publish --env sandbox
@@ -357,7 +371,7 @@ poli publish --env live --yes      # protected environment, no prompt (scripts)
 | `--json`               | Print the API response as JSON (also the default when stdout is not a TTY).                |
 
 - **Environment names** are 1-20 characters: lowercase letters, digits and single inner hyphens, starting with a letter. A name that breaks this rule is refused before any call (exit `2`). An environment that does not exist in the organization is refused with the list of the ones that do (exit `2`).
-- **The bundle** is the project file set: `poli-page.json`, `tailwind.css`, the `.html`, `.json` and `.css` files under `templates/<slug>/`, the `.html` files under `partials/`, everything under `assets/images/` and `assets/icons/`, and the `.woff2`, `.woff`, `.ttf` and `.otf` files under `assets/fonts/`. Anything else (`.gitignore`, `README.md`, `output/`, `node_modules/`) is left out. Assets are sent base64-encoded, every other file as UTF-8. A bundle over 5 MiB, or a message over 500 characters, is refused before any call (exit `2`).
+- **The bundle** is the project file set: `poli-page.json`, `tailwind.css`, the `.html`, `.json` and `.css` files under `templates/<slug>/`, the `.html` files under `partials/`, everything under `assets/images/` and `assets/icons/`, and the `.woff2`, `.woff`, `.ttf` and `.otf` files under `assets/fonts/`. Anything else (`.gitignore`, `README.md`, `*.log`, `.DS_Store`) is left out, and so is every `node_modules/`, `.git/`, `output/`, `dist/` and `.poli/` directory at any depth. Assets are sent base64-encoded, every other file as UTF-8. A bundle over 5 MiB, or a message over 500 characters, is refused before any call (exit `2`).
 - **Protected environments** (`live` by default) accept a publish from an owner or an admin only. In a terminal, `poli publish` asks for confirmation first; without a TTY it needs `--yes`. `CI=true` does not stand in for `--yes`. Without the role, the API refuses with `ENVIRONMENT_PROTECTED` (exit `5`).
 - **With a service key** (`POLI_PAGE_API_KEY`; the key wins over a `poli login` session when both are there): the CLI calls `GET /v1/me`, then publishes to the manifest's `cloud.projectSlug` with no organization header, since the key carries its organization. `--env` must name the key's own environment, or the publish is refused before any upload, naming it (exit `2`). A standard key is refused with "Standard API keys can only render. Use a service key or `poli login`." (exit `5`); with a session stored, both messages say to unset `POLI_PAGE_API_KEY` to use the session instead. There is no prompt and no environment check on the CLI side: the API applies the protected-environment rule, and a service key without the `admin` role gets `ENVIRONMENT_PROTECTED` (exit `5`).
 - **One publish at a time** per project and environment: while one runs, a second gets `PUBLISH_IN_PROGRESS` (exit `3`). It is not retried; run it again once the first one is done.
@@ -529,8 +543,8 @@ poli documents preview doc_abc123 -o ./preview.html
   "templates": [
     {
       "name": "invoice",
-      "template": "templates/invoice/invoice.html",
-      "mock": "templates/invoice/invoice.json",
+      "template": "invoice.html",
+      "mock": "invoice.json",
       "format": "A4",
       "orientation": "portrait"
     }
@@ -543,6 +557,13 @@ poli documents preview doc_abc123 -o ./preview.html
   }
 }
 ```
+
+Each `templates[]` entry is checked when the manifest is read, and a bad value fails with the field it is in (`templates[0].mock: …`):
+
+- `name` — the template's folder under `templates/`: lowercase letters, digits and inner `-`.
+- `template`, `mock` — paths relative to `templates/<name>/`, made of segments of letters, digits, `.`, `_` and `-`, each starting with a letter or digit (no `..`, absolute path, `\`, `?`, `#` or `%`). The files are read only when they resolve inside the project, symlinks included.
+- `format` (default `A4`) — one of `A3`, `A4`, `A5`, `A6`, `B4`, `B5`, `Letter`, `Legal`, `Tabloid`, `Statement`, `Executive`, `Folio`, in any letter case.
+- `orientation` (default `portrait`) — `portrait` or `landscape`, in any letter case.
 
 The `cloud:` block is written by `poli link`, removed by `poli unlink`. **No API keys here** — the credentials file (or `POLI_PAGE_API_KEY`) carries the secret.
 
@@ -559,7 +580,7 @@ A manifest from before environments may still carry `project.version` or `cloud.
 | Variable             | Effect                                                                                                                                                                                                                                          |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POLI_PAGE_API_KEY`  | Single env var for any API key in CI/CD: `pp_<environment>_` followed by 32 lowercase hex characters, checked in full before any call. The key renders only its own environment; a service key also publishes to it. **Precedence**: when a credentials file is also present, the key wins for `whoami`, `publish`, `render` and `documents`. |
-| `POLI_API_URL`       | Override the API base URL (precedence: `--api-url` flag → `POLI_API_URL` → `poli-page.json` `cloud.apiUrl`, when allowed (see below) → `~/.polipage/credentials.json` `apiUrl` → default `https://api.poli.page`). The URL must be an origin only (no user, path, query or hash) on `https://poli.page` or `https://*.poli.page`; anything else exits `2` before any request. `poli-page.json` `cloud.apiUrl` is ignored, with a warning, unless it equals the stored `apiUrl` or the default: a cloned folder cannot choose where your credentials go. A session is only sent to the API origin that issued it; log in again to use another one. |
+| `POLI_API_URL`       | Override the API base URL (precedence: `--api-url` flag → `POLI_API_URL` → `poli-page.json` `cloud.apiUrl`, when allowed (see below) → `~/.polipage/credentials` `apiUrl` → default `https://api.poli.page`). The URL must be an origin only (no user, path, query or hash) on `https://poli.page` or `https://*.poli.page`; anything else exits `2` before any request. `poli-page.json` `cloud.apiUrl` is ignored, with a warning, unless it equals the stored `apiUrl` or the default: a cloned folder cannot choose where your credentials go. A session is only sent to the API origin that issued it; log in again to use another one. |
 | `POLI_ALLOW_INSECURE_API` | Set to `1` to allow a local API URL (`http://localhost`, `http://127.0.0.1`), like `--allow-insecure-api`. |
 | `NO_COLOR`           | Disable ANSI colors (Unix standard).                                                                                                                                                                                                            |
 | `CI`                 | Not read. `CI=true` is not consent: without a TTY, a prompt needs `--yes`.                                                                                                                                                                       |
@@ -711,6 +732,14 @@ A service key publishes into its own environment only. Pass `--env <a>`, or use 
 
 You're in session mode and the local manifest has no `cloud:` block. Either run `poli link`, or switch to api-key mode with `POLI_PAGE_API_KEY=pp_<environment>_…` (which carries the org context implicitly). Exit code `6`.
 
+### `This folder is linked to project "<name>" (<slug>) of organization "<name>" (<slug>), a link you have not confirmed on this machine...`
+
+`poli watch` or `poli dev` found a `cloud:` block (from a clone, say) that is not in your `~/.polipage/links.json`, and had no terminal to ask in. Run the command once in a terminal and answer yes, or run `poli unlink`, then `poli link`. Exit code `2`. See [confirmed links](#confirmed-links).
+
+### `The cloud block of poli-page.json names more than one project: ...`
+
+The manifest's `orgSlug`, `orgId`, `projectId` and `projectSlug` do not all name the same project, so sync and publish would write to different ones. The message names the id that disagrees. Run `poli unlink`, then `poli link`. Exit code `6`.
+
 ### `API keys render a published environment: use \`name@<environment>\``
 
 `poli render name` renders the draft, which only a `poli login` session can do. With an API key, render the key's environment: `poli render name@<environment>`. If you are logged in, the key wins over your session while it is set (the message then says so): unset `POLI_PAGE_API_KEY` to render the draft. Exit code `2`.
@@ -751,7 +780,7 @@ Your org is being migrated to a new tier. `poli watch` retries automatically aft
 
 ### `poli watch` doesn't fire on save
 
-Make sure you're not editing inside an ignored directory. Default ignores: `node_modules/`, `.git/`, `output/`, `dist/`, `*.log`, `.DS_Store`. The watcher uses `chokidar` v5; if your editor saves via "atomic write + rename" (some Vim setups), the rename event fires within the debounce window and triggers a sync.
+Make sure the file is in the project file set, as [`poli publish`](#poli-publish) defines the bundle (only some file types count under each folder, e.g. `templates/<slug>/logo.svg` does not): no other file triggers a sync, except the `poli dev --data` file. The watcher does not follow symlinks: a file reached through a symlinked directory is not watched. The watcher uses `chokidar` v5; if your editor saves via "atomic write + rename" (some Vim setups), the rename event fires within the debounce window and triggers a sync.
 
 ---
 

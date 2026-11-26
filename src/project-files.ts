@@ -13,7 +13,7 @@ import { MANIFEST_FILENAME } from './constants.js';
  * `assets/icons/`; `.woff2`, `.woff`, `.ttf` and `.otf` files under
  * `assets/fonts/`. Paths are POSIX, relative to the project root.
  */
-const TEMPLATE_SLUG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+export const TEMPLATE_SLUG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 const TEMPLATE_FILE_EXTENSIONS = new Set(['html', 'json', 'css']);
 const FONT_EXTENSIONS = new Set(['woff2', 'woff', 'ttf', 'otf']);
 

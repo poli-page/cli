@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describeUnlinked, executeInitStarter } from '../../src/commands/init.js';
 import { createProgram } from '../../src/program.js';
 import { writeCredentials } from '../../src/credentials.js';
+import { isLinkConfirmed } from '../../src/cloud-link.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import type { ApiClient } from '../../src/api-client.js';
 import type { Fetcher } from '../../src/template-importer.js';
@@ -173,6 +174,25 @@ describe('poli init --starter', () => {
 		expect(manifest.templates).toEqual(STARTER_MANIFEST.templates);
 		expect(manifest.fonts).toEqual(STARTER_MANIFEST.fonts);
 		expect(new Set(calls)).toEqual(new Set(['getOrganizations', 'listProjects']));
+		// The user chose this link: dev and watch sync it with no prompt.
+		expect(
+			await isLinkConfirmed(
+				result.projectDir,
+				'886313e1-3b8a-4372-9b90-0c9aee199e5d',
+				fakeHome
+			)
+		).toBe(true);
+	});
+
+	it('records no confirmed link when it does not link', async () => {
+		const result = await executeInitStarter('getting-started', undefined, {
+			cwd: tempDir,
+			homeDir: fakeHome,
+			fetcher: makeFetcher([]),
+			apiClient: makeClient([]),
+		});
+		expect(result.link.status).toBe('unlinked');
+		await expect(stat(join(fakeHome, '.polipage', 'links.json'))).rejects.toThrow(/ENOENT/);
 	});
 
 	it('refuses a session issued by another API origin, before any call', async () => {

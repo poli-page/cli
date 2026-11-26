@@ -100,6 +100,12 @@ function keyMe(auth: Partial<MeResponse['auth']> = {}): MeResponse {
 
 function makeClient(calls: PublishCall[], overrides: Partial<ApiClient> = {}): ApiClient {
 	return createFakeApiClient({
+		getOrganizations: async () => [
+			{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme', slug: 'acme' },
+		],
+		listProjects: async () => [
+			{ id: '8274f64d-4ea2-4f96-b596-5727a7b17268', name: 'Invoices', slug: 'invoices' },
+		],
 		listEnvironments: async () => ENVIRONMENTS,
 		publish: async (authorization, orgId, project, body) => {
 			calls.push({ authorization, orgId, project, body });
@@ -351,6 +357,50 @@ describe('poli publish', () => {
 			const err = await run({ env: 'sandbox' }, noCall()).catch((e) => e);
 			expect(err.message).toMatch(/poli link/);
 			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_LOCAL_STATE);
+		});
+	});
+
+	describe('a manifest whose ids name different projects', () => {
+		it('refuses a projectSlug that is not the projectId, exit 6, without publishing', async () => {
+			const calls: PublishCall[] = [];
+			const client = makeClient(calls, {
+				listProjects: async () => [
+					{
+						id: '8274f64d-4ea2-4f96-b596-5727a7b17268',
+						name: 'Payroll',
+						slug: 'payroll',
+					},
+					{ id: 'proj_2', name: 'Invoices', slug: 'invoices' },
+				],
+			});
+			const err = await run({ env: 'sandbox', yes: true }, client).catch((e) => e);
+			expect(err.message).toMatch(
+				/projectSlug "invoices" is not project "8274f64d-4ea2-4f96-b596-5727a7b17268"/
+			);
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_LOCAL_STATE);
+			expect(calls).toHaveLength(0);
+		});
+
+		it('refuses an orgId that is not the orgSlug organization, without publishing', async () => {
+			const calls: PublishCall[] = [];
+			const client = makeClient(calls, {
+				getOrganizations: async () => [{ id: 'org_9', name: 'Acme', slug: 'acme' }],
+			});
+			const err = await run({ env: 'sandbox', yes: true }, client).catch((e) => e);
+			expect(err.message).toMatch(
+				/orgId "0e89d99e-1516-4b48-baa1-f49e660ad1c1" is not organization "acme" \(org_9\)/
+			);
+			expect(calls).toHaveLength(0);
+		});
+
+		it('refuses a projectId that is not in the organization, without publishing', async () => {
+			const calls: PublishCall[] = [];
+			const client = makeClient(calls, { listProjects: async () => [] });
+			const err = await run({ env: 'sandbox', yes: true }, client).catch((e) => e);
+			expect(err.message).toMatch(
+				/projectId "8274f64d-4ea2-4f96-b596-5727a7b17268" is not a project of "acme"/
+			);
+			expect(calls).toHaveLength(0);
 		});
 	});
 
@@ -729,6 +779,23 @@ describe('poli publish', () => {
 					url.endsWith('/organizations/0e89d99e-1516-4b48-baa1-f49e660ad1c1/environments')
 				) {
 					return jsonResponse(200, ENVIRONMENTS);
+				}
+				if (url === `${API_URL}/api/organizations`) {
+					return jsonResponse(200, [
+						{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme', slug: 'acme' },
+					]);
+				}
+				if (
+					url ===
+					`${API_URL}/api/organizations/0e89d99e-1516-4b48-baa1-f49e660ad1c1/projects`
+				) {
+					return jsonResponse(200, [
+						{
+							id: '8274f64d-4ea2-4f96-b596-5727a7b17268',
+							name: 'Invoices',
+							slug: 'invoices',
+						},
+					]);
 				}
 				if (url === `${API_URL}/v1/projects/invoices/publish`) return publishAnswer();
 				return new Response('unexpected', { status: 500 });

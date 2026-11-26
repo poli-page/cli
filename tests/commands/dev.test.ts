@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { mkdtemp, rm, writeFile, mkdir, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -15,6 +15,7 @@ import {
 } from '../../src/commands/dev.js';
 import { createProgram } from '../../src/program.js';
 import { writeCredentials } from '../../src/credentials.js';
+import { isLinkConfirmed, recordLink } from '../../src/cloud-link.js';
 import { readManifest, writeManifest } from '../../src/manifest.js';
 import { setupTemplate } from '../helpers/setup-template.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
@@ -52,6 +53,9 @@ function makeStubClient(options: StubOptions = {}): ApiClient {
 	return createFakeApiClient({
 		getOrganizations: async () => [
 			{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme', slug: 'acme' },
+		],
+		listProjects: async () => [
+			{ id: '8274f64d-4ea2-4f96-b596-5727a7b17268', name: 'Demo', slug: 'demo' },
 		],
 		patchFiles: async (_session, _orgId, _projectId, body) => {
 			options.patchBodies?.push(body);
@@ -179,6 +183,7 @@ async function setupLinkedProject(projectDir: string, fakeHome: string): Promise
 		},
 		fakeHome
 	);
+	await recordLink(projectDir, '8274f64d-4ea2-4f96-b596-5727a7b17268', fakeHome);
 }
 
 describe('poli dev', () => {
@@ -458,6 +463,97 @@ describe('poli dev', () => {
 					apiClient: makeStubClient(),
 				})
 			).rejects.toThrow(/not linked|poli link/i);
+		});
+
+		it('refuses a folder whose link is not confirmed on this machine (exit 2)', async () => {
+			await rm(join(fakeHome, '.polipage', 'links.json'));
+			const patchBodies: PatchFilesBody[] = [];
+
+			const err = await startDevSession(undefined, {
+				cwd: projectDir,
+				homeDir: fakeHome,
+				port: 0,
+				open: false,
+				apiClient: makeStubClient({ patchBodies }),
+			}).catch((e) => e);
+
+			expect(err.exitCode).toBe(2);
+			expect(err.message).toMatch(/"Demo" \(demo\) of organization "Acme" \(acme\)/);
+			expect(patchBodies).toEqual([]);
+		});
+
+		it('syncs a folder once its link is confirmed at the prompt', async () => {
+			await rm(join(fakeHome, '.polipage', 'links.json'));
+			await setupTemplate(projectDir, 'invoice');
+			const confirmLink = vi.fn(async () => true);
+			const patchBodies: PatchFilesBody[] = [];
+
+			await start(undefined, { apiClient: makeStubClient({ patchBodies }), confirmLink });
+
+			expect(confirmLink).toHaveBeenCalledTimes(1);
+			expect(patchBodies).toHaveLength(1);
+			expect(
+				await isLinkConfirmed(projectDir, '8274f64d-4ea2-4f96-b596-5727a7b17268', fakeHome)
+			).toBe(true);
+		});
+
+		it('refuses a legacy block without projectSlug before asking to confirm it', async () => {
+			await rm(join(fakeHome, '.polipage', 'links.json'));
+			await setupTemplate(projectDir, 'invoice');
+			const manifest = await readManifest(projectDir);
+			delete manifest.cloud!.projectSlug;
+			await writeManifest(projectDir, manifest);
+			const confirmLink = vi.fn(async () => true);
+
+			await expect(
+				startDevSession(undefined, {
+					cwd: projectDir,
+					homeDir: fakeHome,
+					port: 0,
+					open: false,
+					apiClient: makeStubClient(),
+					confirmLink,
+				})
+			).rejects.toThrow(/isn't linked to a cloud project/);
+			expect(confirmLink).not.toHaveBeenCalled();
+			expect(
+				await isLinkConfirmed(projectDir, '8274f64d-4ea2-4f96-b596-5727a7b17268', fakeHome)
+			).toBe(false);
+		});
+
+		it('keeps rendering the verified project when the cloud block changes mid-session', async () => {
+			await setupTemplate(projectDir, 'invoice');
+			const { factory, getController } = createManualWatcherFactory();
+			const draftCalls: RenderCall[] = [];
+			await start(undefined, {
+				apiClient: makeStubClient({ draftCalls }),
+				watcherFactory: factory,
+			});
+
+			const manifest = await readManifest(projectDir);
+			manifest.cloud!.projectSlug = 'other-project';
+			await writeManifest(projectDir, manifest);
+			getController().emit(['poli-page.json']);
+
+			await waitFor(() => draftCalls.length === 2, 're-render after the manifest edit');
+			expect(draftCalls[1].payload.project).toBe('demo');
+		});
+
+		it('refuses a manifest whose orgId is not its orgSlug organization (exit 6)', async () => {
+			const manifest = await readManifest(projectDir);
+			manifest.cloud!.orgId = '11111111-2222-4333-8444-555555555555';
+			await writeManifest(projectDir, manifest);
+
+			const err = await startDevSession(undefined, {
+				cwd: projectDir,
+				homeDir: fakeHome,
+				port: 0,
+				open: false,
+				apiClient: makeStubClient(),
+			}).catch((e) => e);
+
+			expect(err.exitCode).toBe(6);
+			expect(err.message).toMatch(/orgId "11111111-2222-4333-8444-555555555555"/);
 		});
 
 		it('rejects a legacy-linked manifest that has no projectSlug', async () => {
@@ -1034,6 +1130,32 @@ describe('poli dev', () => {
 
 			expect(draftCalls[0].payload.data).toEqual({ title: 'From override' });
 			expect(draftCalls[0].payload.locale).toBe('fr');
+		});
+
+		it('watches the override file and re-renders with its new data', async () => {
+			await setupTemplate(projectDir, 'invoice');
+			await mkdir(join(projectDir, 'fixtures'), { recursive: true });
+			const dataPath = join(projectDir, 'fixtures', 'acme.json');
+			await writeFile(dataPath, JSON.stringify({ data: { title: 'v1' } }));
+
+			const { factory, getController } = createManualWatcherFactory();
+			let watcherOptions: FileWatcherOptions | undefined;
+			const draftCalls: RenderCall[] = [];
+			await start(undefined, {
+				apiClient: makeStubClient({ draftCalls }),
+				data: 'fixtures/acme.json',
+				watcherFactory: (opts) => {
+					watcherOptions = opts;
+					return factory(opts);
+				},
+			});
+			expect(watcherOptions?.extraPaths).toEqual([dataPath]);
+
+			await writeFile(dataPath, JSON.stringify({ data: { title: 'v2' } }));
+			getController().emit(['fixtures/acme.json']);
+
+			await waitFor(() => draftCalls.length === 2, 'a second draft render');
+			expect(draftCalls[1].payload.data).toEqual({ title: 'v2' });
 		});
 	});
 

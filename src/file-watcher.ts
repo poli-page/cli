@@ -1,5 +1,7 @@
 import chokidar from 'chokidar';
+import type { Stats } from 'node:fs';
 import { relative } from 'node:path';
+import { isInIgnoredProjectDirectory, shouldIgnoreProjectPath } from './project-sync.js';
 
 export interface DebouncedBatcher<T> {
 	push(item: T): void;
@@ -48,23 +50,35 @@ export function createDebouncedBatcher<T>(
 	};
 }
 
-// Chokidar v5 dropped glob support — `ignored` accepts functions, regexes,
-// or literal path strings only. We test against the path with simple
-// substring/suffix checks since chokidar passes absolute paths.
-function defaultIgnoredFn(path: string): boolean {
-	return (
-		path.includes('/node_modules/') ||
-		path.includes('/.git/') ||
-		path.includes('/output/') ||
-		path.endsWith('/.DS_Store') ||
-		path.endsWith('.log')
-	);
+// Chokidar calls `ignored` with the stats when it has them and without
+// them on some paths (before its own stat, on unlink), so a path without
+// stats is treated as a directory: the file check runs again once the
+// stats are in. A directory holding an extra path stays walked so chokidar
+// reaches that path; its other entries still go through the checks.
+// Paths are compared project-relative in POSIX form: chokidar hands
+// `ignored` forward-slash paths, `resolve()` gives backslashes on Windows.
+export function projectIgnoredFn(
+	cwd: string,
+	extraPaths: ReadonlySet<string>
+): (path: string, stats?: Stats) => boolean {
+	const toPosixRelative = (path: string) => relative(cwd, path).split(/[\\/]/).join('/');
+	const extras = [...extraPaths].map(toPosixRelative);
+	return (path, stats) => {
+		const relPath = toPosixRelative(path);
+		if (extras.includes(relPath)) return false;
+		if (!stats || stats.isDirectory()) {
+			if (extras.some((extra) => extra.startsWith(relPath + '/'))) return false;
+			return isInIgnoredProjectDirectory(relPath);
+		}
+		return shouldIgnoreProjectPath(relPath);
+	};
 }
 
 export interface FileWatcherOptions {
 	cwd: string;
 	debounceMs?: number;
-	ignored?: (path: string) => boolean;
+	/** Absolute paths under `cwd` that trigger a batch outside the file set. */
+	extraPaths?: string[];
 	onBatch: (paths: Set<string>) => void;
 }
 
@@ -74,12 +88,14 @@ export interface FileWatcher {
 
 export function createFileWatcher(options: FileWatcherOptions): FileWatcher {
 	const debounceMs = options.debounceMs ?? 2000;
-	const ignored = options.ignored ?? defaultIgnoredFn;
 
 	const batcher = createDebouncedBatcher<string>(debounceMs, options.onBatch);
 
 	const watcher = chokidar.watch(options.cwd, {
-		ignored,
+		ignored: projectIgnoredFn(options.cwd, new Set(options.extraPaths)),
+		// With lstat, a symlink is an entry of its own and never a directory
+		// to walk: a link to `~` or `/` stays out of the watched tree.
+		followSymlinks: false,
 		ignoreInitial: true,
 		persistent: true,
 	});

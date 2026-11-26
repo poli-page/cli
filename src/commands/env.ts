@@ -10,7 +10,7 @@ import {
 import { getSessionToken } from '../credentials.js';
 import { assertEnvironmentName } from '../environment-name.js';
 import { UsageError, errorToExitCode } from '../exit-codes.js';
-import { readManifestIfPresent, type PoliPageManifest } from '../manifest.js';
+import { readCloudLink } from '../manifest.js';
 import { shouldEmitJson } from '../output.js';
 import { findOrganization, type Organization } from './link.js';
 import { shortBundleHash } from './publish.js';
@@ -19,11 +19,6 @@ import { inputPrompt } from '../template-prompt.js';
 type EnvListResult =
 	| { scope: 'project'; org: string; project: string; environments: ProjectEnvironmentState[] }
 	| { scope: 'organization'; org: string; environments: EnvironmentInfo[] };
-
-/** The manifest's `cloud` block, or `undefined` when the folder has no poli-page.json. */
-async function readLinkedProject(cwd: string): Promise<PoliPageManifest['cloud']> {
-	return (await readManifestIfPresent(cwd))?.cloud;
-}
 
 function selectOrganization(
 	orgs: Organization[],
@@ -51,7 +46,7 @@ function selectOrganization(
 async function executeEnvList(orgFlag: string | undefined): Promise<EnvListResult> {
 	const session = await getSessionToken();
 	const client = createApiClient();
-	const linked = await readLinkedProject(process.cwd());
+	const linked = await readCloudLink(process.cwd());
 
 	const orgs = await client.getOrganizations(session);
 	const org = selectOrganization(orgs, orgFlag, linked?.orgSlug);
@@ -126,7 +121,7 @@ async function executeEnvRemoveProject(
 		'`draft` is not an environment: a project cannot be removed from its draft.'
 	);
 	const session = await getSessionToken();
-	const linked = await readLinkedProject(process.cwd());
+	const linked = await readCloudLink(process.cwd());
 	if (!linked) {
 		throw new Error('This folder is not linked to a project. Run `poli link` first.');
 	}

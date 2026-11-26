@@ -47,13 +47,18 @@ export async function readProjectManifestJson(projectDir: string): Promise<unkno
 	try {
 		return await readManifestJson(projectDir);
 	} catch (err) {
-		if (err instanceof Error && /ENOENT/.test(err.message)) {
+		if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
 			throw new Error(
 				`No ${MANIFEST_FILENAME} found in ${projectDir}. Are you in a Poli Page project?`
 			);
 		}
 		throw err;
 	}
+}
+
+/** The manifest's `cloud` block, or `undefined` when the folder has no poli-page.json. */
+export async function readCloudLink(projectDir: string): Promise<PoliPageManifest['cloud']> {
+	return (await readManifestIfPresent(projectDir))?.cloud;
 }
 
 /**

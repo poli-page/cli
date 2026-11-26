@@ -296,6 +296,8 @@ export interface ApiClient {
 	): Promise<{ user: UserInfo; session: string }>;
 	deviceRequest(): Promise<DeviceRequestResult>;
 	devicePoll(deviceCode: string): Promise<DevicePollResult>;
+	/** `POST /api/auth/sign-out`: revokes the session server-side. */
+	signOut(session: string): Promise<void>;
 	getOrganizations(session: string): Promise<Array<{ id: string; name: string; slug: string }>>;
 	listProjects(
 		session: string,
@@ -450,6 +452,13 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				body: JSON.stringify({ deviceCode }),
 			});
 			return response.json() as Promise<DevicePollResult>;
+		},
+
+		async signOut(session) {
+			await request('/api/auth/sign-out', {
+				method: 'POST',
+				headers: { Authorization: `Bearer ${session}` },
+			});
 		},
 
 		async getOrganizations(session) {
