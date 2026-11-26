@@ -1,22 +1,51 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MANIFEST_FILENAME } from './constants.js';
-import { parseManifest, type PoliPageManifest } from './manifest.schema.js';
+import {
+	ManifestValidationError,
+	parseManifest,
+	type PoliPageManifest,
+} from './manifest.schema.js';
 
 export type { PoliPageManifest } from './manifest.schema.js';
 export { ManifestValidationError, type ManifestValidationIssue } from './manifest.schema.js';
 
 export async function readManifest(projectDir: string): Promise<PoliPageManifest> {
+	return parseManifest(await readManifestJson(projectDir));
+}
+
+/** `readManifest`, or `undefined` when the folder has no poli-page.json; an invalid one still throws. */
+export async function readManifestIfPresent(
+	projectDir: string
+): Promise<PoliPageManifest | undefined> {
+	try {
+		return await readManifest(projectDir);
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+		throw err;
+	}
+}
+
+async function readManifestJson(projectDir: string): Promise<unknown> {
 	const manifestPath = join(projectDir, MANIFEST_FILENAME);
 	const content = await readFile(manifestPath, 'utf-8');
-	const raw = JSON.parse(content);
-	return parseManifest(raw);
+	try {
+		return JSON.parse(content);
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		throw new ManifestValidationError(`Invalid poli-page.json — ${message}`, []);
+	}
 }
 
 /** `readManifest`, reporting a missing file as "not in a Poli Page project". */
 export async function readProjectManifest(projectDir: string): Promise<PoliPageManifest> {
+	return parseManifest(await readProjectManifestJson(projectDir));
+}
+
+/** The unvalidated JSON of `poli-page.json`, a missing file reported as in `readProjectManifest`. */
+export async function readProjectManifestJson(projectDir: string): Promise<unknown> {
 	try {
-		return await readManifest(projectDir);
+		return await readManifestJson(projectDir);
 	} catch (err) {
 		if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
 			throw new Error(
@@ -29,12 +58,7 @@ export async function readProjectManifest(projectDir: string): Promise<PoliPageM
 
 /** The manifest's `cloud` block, or `undefined` when the folder has no poli-page.json. */
 export async function readCloudLink(projectDir: string): Promise<PoliPageManifest['cloud']> {
-	try {
-		return (await readManifest(projectDir)).cloud;
-	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-		throw err;
-	}
+	return (await readManifestIfPresent(projectDir))?.cloud;
 }
 
 /**

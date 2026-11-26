@@ -70,6 +70,15 @@ describe('api-client publish', () => {
 		expect('X-Poli-Org-Id' in headers).toBe(false);
 	});
 
+	it.each(['.', '..'])('refuses %j as the project slug without a request', async (project) => {
+		const fetchMock = mockFetchOnce(200, {});
+		const client = createApiClient('https://api.poli.page');
+		await expect(
+			client.publish('Bearer sess-tok', 'org_1', project, { environment: 'live', files: [] })
+		).rejects.toThrow('Invalid project ID.');
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 	it('encodes the project slug in the path', async () => {
 		const fetchMock = mockFetchOnce(200, {});
 		const client = createApiClient('https://api.poli.page');

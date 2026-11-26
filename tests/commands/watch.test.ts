@@ -16,8 +16,12 @@ import { createFakeApiClient } from '../helpers/fake-api-client.js';
 
 function makeStubClient(overrides: Partial<ApiClient> = {}): ApiClient {
 	return createFakeApiClient({
-		getOrganizations: async () => [{ id: 'org_1', name: 'Acme', slug: 'acme' }],
-		listProjects: async () => [{ id: 'proj_1', name: 'Invoices', slug: 'invoices' }],
+		getOrganizations: async () => [
+			{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme', slug: 'acme' },
+		],
+		listProjects: async () => [
+			{ id: '8274f64d-4ea2-4f96-b596-5727a7b17268', name: 'Invoices', slug: 'invoices' },
+		],
 		...overrides,
 	});
 }
@@ -53,7 +57,7 @@ function createManualWatcherFactory(): {
 
 async function setupLinkedProject(tempDir: string, fakeHome: string): Promise<void> {
 	await setupClonedProject(tempDir, fakeHome);
-	await recordLink(tempDir, 'proj_1', fakeHome);
+	await recordLink(tempDir, '8274f64d-4ea2-4f96-b596-5727a7b17268', fakeHome);
 }
 
 /** A linked manifest as a clone brings it: no confirmed link on this machine. */
@@ -64,9 +68,9 @@ async function setupClonedProject(tempDir: string, fakeHome: string): Promise<vo
 			project: { name: 'demo' },
 			cloud: {
 				orgSlug: 'acme',
-				orgId: 'org_1',
+				orgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
 				projectSlug: 'invoices',
-				projectId: 'proj_1',
+				projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268',
 			},
 			templates: [],
 		})
@@ -184,13 +188,19 @@ describe('executeWatch', () => {
 
 			expect(confirmLink).toHaveBeenCalledTimes(1);
 			expect(confirmLink).toHaveBeenCalledWith({
-				org: { id: 'org_1', name: 'Acme', slug: 'acme' },
-				project: { id: 'proj_1', name: 'Invoices', slug: 'invoices' },
+				org: { id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme', slug: 'acme' },
+				project: {
+					id: '8274f64d-4ea2-4f96-b596-5727a7b17268',
+					name: 'Invoices',
+					slug: 'invoices',
+				},
 			});
 			const links = JSON.parse(
 				await readFile(join(fakeHome, '.polipage', 'links.json'), 'utf-8')
 			);
-			expect(links.links[await realpath(tempDir)]).toBe('proj_1');
+			expect(links.links[await realpath(tempDir)]).toBe(
+				'8274f64d-4ea2-4f96-b596-5727a7b17268'
+			);
 		});
 
 		it('does not sync and records nothing when the user declines', async () => {
@@ -236,7 +246,11 @@ describe('executeWatch', () => {
 			apiClient: makeStubClient({
 				patchFiles,
 				listProjects: async () => [
-					{ id: 'proj_1', name: 'Payroll', slug: 'payroll' },
+					{
+						id: '8274f64d-4ea2-4f96-b596-5727a7b17268',
+						name: 'Payroll',
+						slug: 'payroll',
+					},
 					{ id: 'proj_2', name: 'Invoices', slug: 'invoices' },
 				],
 			}),

@@ -51,8 +51,12 @@ function fakePdf(label: string): Buffer {
  */
 function makeStubClient(options: StubOptions = {}): ApiClient {
 	return createFakeApiClient({
-		getOrganizations: async () => [{ id: 'org_1', name: 'Acme', slug: 'acme' }],
-		listProjects: async () => [{ id: 'proj_1', name: 'Demo', slug: 'demo' }],
+		getOrganizations: async () => [
+			{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme', slug: 'acme' },
+		],
+		listProjects: async () => [
+			{ id: '8274f64d-4ea2-4f96-b596-5727a7b17268', name: 'Demo', slug: 'demo' },
+		],
 		patchFiles: async (_session, _orgId, _projectId, body) => {
 			options.patchBodies?.push(body);
 			if (options.patchImpl) return options.patchImpl(body);
@@ -164,9 +168,9 @@ async function setupLinkedProject(projectDir: string, fakeHome: string): Promise
 			project: { name: 'demo' },
 			cloud: {
 				orgSlug: 'acme',
-				orgId: 'org_1',
+				orgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
 				projectSlug: 'demo',
-				projectId: 'proj_1',
+				projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268',
 			},
 			templates: [],
 		})
@@ -179,7 +183,7 @@ async function setupLinkedProject(projectDir: string, fakeHome: string): Promise
 		},
 		fakeHome
 	);
-	await recordLink(projectDir, 'proj_1', fakeHome);
+	await recordLink(projectDir, '8274f64d-4ea2-4f96-b596-5727a7b17268', fakeHome);
 }
 
 describe('poli dev', () => {
@@ -321,7 +325,7 @@ describe('poli dev', () => {
 			// The draft renders through the signed-in session only: the body
 			// names no environment and no version.
 			expect(draftCalls[0].authorization).toBe('Bearer sess-tok');
-			expect(draftCalls[0].orgIdHeader).toBe('org_1');
+			expect(draftCalls[0].orgIdHeader).toBe('0e89d99e-1516-4b48-baa1-f49e660ad1c1');
 			expect(draftCalls[0].payload).toEqual({
 				project: 'demo',
 				template: 'invoice',
@@ -488,7 +492,9 @@ describe('poli dev', () => {
 
 			expect(confirmLink).toHaveBeenCalledTimes(1);
 			expect(patchBodies).toHaveLength(1);
-			expect(await isLinkConfirmed(projectDir, 'proj_1', fakeHome)).toBe(true);
+			expect(
+				await isLinkConfirmed(projectDir, '8274f64d-4ea2-4f96-b596-5727a7b17268', fakeHome)
+			).toBe(true);
 		});
 
 		it('refuses a legacy block without projectSlug before asking to confirm it', async () => {
@@ -510,7 +516,9 @@ describe('poli dev', () => {
 				})
 			).rejects.toThrow(/isn't linked to a cloud project/);
 			expect(confirmLink).not.toHaveBeenCalled();
-			expect(await isLinkConfirmed(projectDir, 'proj_1', fakeHome)).toBe(false);
+			expect(
+				await isLinkConfirmed(projectDir, '8274f64d-4ea2-4f96-b596-5727a7b17268', fakeHome)
+			).toBe(false);
 		});
 
 		it('keeps rendering the verified project when the cloud block changes mid-session', async () => {
@@ -533,7 +541,7 @@ describe('poli dev', () => {
 
 		it('refuses a manifest whose orgId is not its orgSlug organization (exit 6)', async () => {
 			const manifest = await readManifest(projectDir);
-			manifest.cloud!.orgId = 'org_other';
+			manifest.cloud!.orgId = '11111111-2222-4333-8444-555555555555';
 			await writeManifest(projectDir, manifest);
 
 			const err = await startDevSession(undefined, {
@@ -545,7 +553,7 @@ describe('poli dev', () => {
 			}).catch((e) => e);
 
 			expect(err.exitCode).toBe(6);
-			expect(err.message).toMatch(/orgId "org_other"/);
+			expect(err.message).toMatch(/orgId "11111111-2222-4333-8444-555555555555"/);
 		});
 
 		it('rejects a legacy-linked manifest that has no projectSlug', async () => {

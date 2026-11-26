@@ -474,26 +474,32 @@ export function createApiClient(baseUrl?: string): ApiClient {
 		},
 
 		async listProjects(session, orgId) {
-			const response = await request(`/api/organizations/${orgId}/projects`, {
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${session}`,
-				},
-			});
+			const response = await request(
+				`/api/organizations/${idSegment(orgId, 'organization')}/projects`,
+				{
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${session}`,
+					},
+				}
+			);
 			return response.json() as Promise<
 				Array<{ id: string; name: string; slug: string }>
 			>;
 		},
 
 		async createProject(session, orgId, payload) {
-			const response = await request(`/api/organizations/${orgId}/projects`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${session}`,
-				},
-				body: JSON.stringify(payload),
-			});
+			const response = await request(
+				`/api/organizations/${idSegment(orgId, 'organization')}/projects`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${session}`,
+					},
+					body: JSON.stringify(payload),
+				}
+			);
 			return response.json() as Promise<{ id: string }>;
 		},
 
@@ -620,7 +626,7 @@ export function createApiClient(baseUrl?: string): ApiClient {
 
 		async patchFiles(session, orgId, projectId, body) {
 			const response = await request(
-				`/api/organizations/${orgId}/projects/${projectId}/files`,
+				`/api/organizations/${idSegment(orgId, 'organization')}/projects/${idSegment(projectId, 'project')}/files`,
 				{
 					method: 'PATCH',
 					headers: {
@@ -681,7 +687,7 @@ export function createApiClient(baseUrl?: string): ApiClient {
 				headers['X-Poli-Org-Id'] = orgIdHeader;
 			}
 			const response = await request(
-				`/v1/projects/${encodeURIComponent(project)}/publish`,
+				`/v1/projects/${idSegment(project, 'project')}/publish`,
 				{
 					method: 'POST',
 					headers,

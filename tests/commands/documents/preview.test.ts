@@ -44,6 +44,21 @@ describe('executeDocumentsPreview', () => {
 		}
 	});
 
+	it('reports an invalid poli-page.json instead of ignoring it', async () => {
+		await writeFile(
+			join(tempDir, 'poli-page.json'),
+			JSON.stringify({ project: { name: 'p' }, cloud: { orgSlug: 'acme', orgId: 'org_1' } }),
+			'utf-8'
+		);
+		await expect(
+			executeDocumentsPreview('doc_abc', {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				apiClient: makeStubClient(),
+			})
+		).rejects.toThrow('Invalid poli-page.json — cloud.orgId: must be a UUID');
+	});
+
 	it('writes HTML to ./output/documents/<id>.preview.html by default', async () => {
 		const result = await executeDocumentsPreview('doc_abc', {
 			cwd: tempDir,

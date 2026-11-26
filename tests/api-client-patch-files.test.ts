@@ -64,4 +64,36 @@ describe('api-client patchFiles', () => {
 		expect(body.deleted).toEqual([]);
 		expect(body.modified).toHaveLength(1);
 	});
+	// Both ids come from poli-page.json, which the user can edit.
+	it('encodes the organization and project ids in the path', async () => {
+		const fetchMock = mockFetchOnce(200, { syncedAt: '2026-05-06T10:00:00.000Z' });
+		const client = createApiClient('https://api.poli.page');
+		await client.patchFiles('sess-tok', 'o/../..', '../../../../api/anything?x=', {
+			added: [],
+			modified: [],
+			deleted: [],
+		});
+		expect(fetchMock.mock.calls[0][0]).toBe(
+			'https://api.poli.page/api/organizations/o%2F..%2F../projects/..%2F..%2F..%2F..%2Fapi%2Fanything%3Fx%3D/files'
+		);
+	});
+
+	it.each([
+		['..', 'proj_1', 'Invalid organization ID.'],
+		['org_1', '..', 'Invalid project ID.'],
+	])(
+		'refuses the dot segment in (%s, %s) without a request',
+		async (orgId, projectId, message) => {
+			const fetchMock = mockFetchOnce(200, {});
+			const client = createApiClient('https://api.poli.page');
+			await expect(
+				client.patchFiles('sess-tok', orgId, projectId, {
+					added: [],
+					modified: [],
+					deleted: [],
+				})
+			).rejects.toThrow(message);
+			expect(fetchMock).not.toHaveBeenCalled();
+		}
+	);
 });

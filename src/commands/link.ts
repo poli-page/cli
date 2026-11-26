@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import { readProjectManifest, writeManifest } from '../manifest.js';
+import { readProjectManifest, readProjectManifestJson, writeManifest } from '../manifest.js';
+import { parseManifestWithoutCloud } from '../manifest.schema.js';
 import { getSessionToken, readCredentials, sessionFor } from '../credentials.js';
 import { createApiClient, type ApiClient } from '../api-client.js';
 import { collectProjectPayload } from '../project-loader.js';
@@ -125,15 +126,16 @@ export interface UnlinkOptions {
 export async function executeUnlink(options: UnlinkOptions = {}): Promise<void> {
 	const cwd = options.cwd ?? process.cwd();
 
-	const manifest = await readProjectManifest(cwd);
+	// The block being removed may be the invalid part: it must not block its own removal.
+	const raw = await readProjectManifestJson(cwd);
+	const manifest = parseManifestWithoutCloud(raw);
 
-	if (!manifest.cloud) {
+	if ((raw as Record<string, unknown>).cloud === undefined) {
 		throw new Error('Project is not linked to any organization.');
 	}
 
 	// Forget first: once the cloud block is gone, `poli unlink` cannot be retried.
 	await forgetLink(cwd, options.homeDir);
-	delete manifest.cloud;
 	await writeManifest(cwd, manifest);
 }
 

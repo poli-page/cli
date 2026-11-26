@@ -35,7 +35,12 @@ describe('poli dev / poli watch on a folder whose link is not confirmed', () => 
 			join(projectDir, MANIFEST_FILENAME),
 			JSON.stringify({
 				project: { name: 'demo' },
-				cloud: { orgSlug: 'acme', orgId: 'org_1', projectSlug: 'demo', projectId: 'proj_1' },
+				cloud: {
+					orgSlug: 'acme',
+					orgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
+					projectSlug: 'demo',
+					projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268',
+				},
 				templates: [],
 			})
 		);
@@ -51,10 +56,17 @@ describe('poli dev / poli watch on a folder whose link is not confirmed', () => 
 			'fetch',
 			vi.fn(async (url: string) => {
 				if (url === `${API_URL}/api/organizations`) {
-					return jsonResponse([{ id: 'org_1', name: 'Acme', slug: 'acme' }]);
+					return jsonResponse([
+						{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme', slug: 'acme' },
+					]);
 				}
-				if (url === `${API_URL}/api/organizations/org_1/projects`) {
-					return jsonResponse([{ id: 'proj_1', name: 'Demo', slug: 'demo' }]);
+				if (
+					url ===
+					`${API_URL}/api/organizations/0e89d99e-1516-4b48-baa1-f49e660ad1c1/projects`
+				) {
+					return jsonResponse([
+						{ id: '8274f64d-4ea2-4f96-b596-5727a7b17268', name: 'Demo', slug: 'demo' },
+					]);
 				}
 				return new Response('unexpected', { status: 500 });
 			})
@@ -177,14 +189,21 @@ describe('poli link when the organization already has the project', () => {
 			'fetch',
 			vi.fn(async (url: string, init?: RequestInit) => {
 				if (url === `${API_URL}/api/organizations`) {
-					return jsonResponse([{ id: 'org_1', name: 'Acme', slug: 'acme' }]);
+					return jsonResponse([
+						{ id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme', slug: 'acme' },
+					]);
 				}
-				if (url === `${API_URL}/api/organizations/org_1/projects`) {
+				if (
+					url ===
+					`${API_URL}/api/organizations/0e89d99e-1516-4b48-baa1-f49e660ad1c1/projects`
+				) {
 					if (init?.method === 'POST') {
 						createCalled = true;
 						return jsonResponse({ id: 'proj_new' });
 					}
-					return jsonResponse([{ id: 'proj_1', name: 'Demo', slug: 'demo' }]);
+					return jsonResponse([
+						{ id: '8274f64d-4ea2-4f96-b596-5727a7b17268', name: 'Demo', slug: 'demo' },
+					]);
 				}
 				return new Response('unexpected', { status: 500 });
 			})
@@ -243,7 +262,7 @@ describe('poli link when the organization already has the project', () => {
 		await poliLink();
 
 		expect(process.exitCode).toBeUndefined();
-		expect((await readCloud()).projectId).toBe('proj_1');
+		expect((await readCloud()).projectId).toBe('8274f64d-4ea2-4f96-b596-5727a7b17268');
 	});
 
 	it.each([
@@ -269,7 +288,7 @@ describe('poli link when the organization already has the project', () => {
 
 		expect(confirmMock).not.toHaveBeenCalled();
 		expect(process.exitCode).toBeUndefined();
-		expect((await readCloud()).projectId).toBe('proj_1');
+		expect((await readCloud()).projectId).toBe('8274f64d-4ea2-4f96-b596-5727a7b17268');
 		expect(createCalled).toBe(false);
 	});
 });

@@ -260,7 +260,7 @@ Before syncing, `poli watch` and `poli dev` also check with the API that the man
 
 #### `poli unlink`
 
-Removes the `cloud:` section from `poli-page.json` and forgets the folder's [confirmed link](#confirmed-links), so a `cloud:` block that comes back later (a pull, a checkout) is asked about again. Local files are preserved.
+Removes the `cloud:` section from `poli-page.json`, even one whose ids are invalid, and forgets the folder's [confirmed link](#confirmed-links), so a `cloud:` block that comes back later (a pull, a checkout) is asked about again. Local files are preserved.
 
 #### `poli watch`
 
@@ -567,6 +567,8 @@ Each `templates[]` entry is checked when the manifest is read, and a bad value f
 
 The `cloud:` block is written by `poli link`, removed by `poli unlink`. **No API keys here** — the credentials file (or `POLI_PAGE_API_KEY`) carries the secret.
 
+`cloud.orgId` and `cloud.projectId` must be UUIDs (8-4-4-4-12 hex digits): any other value makes the manifest invalid (`Invalid poli-page.json — cloud.projectId: must be a UUID`, from every command that reads it), so a hand-edited id cannot change the API path the CLI calls with your session. `poli unlink` still removes such a block, and `poli init --starter` ignores the starter's own `cloud:` block. A `cloud.projectSlug` of `.` or `..` is refused by `poli publish` (`Invalid project ID.`).
+
 A manifest from before environments may still carry `project.version` or `cloud.track`. Both are ignored, and dropped the next time the CLI writes the file (`poli link`, `poli unlink`, `poli new`).
 
 ---
@@ -619,7 +621,7 @@ Imperative commands (`init` without `--starter`, `new`, `link`, `unlink`, `logou
 | `3`  | Network / API error (timeout, 5xx, unspecified 4xx)                                                    |
 | `4`  | Not authenticated — run `poli login` or set `POLI_PAGE_API_KEY`                                        |
 | `5`  | Not authorized (insufficient role, protected environment, `THUMBNAILS_NOT_AVAILABLE`)                  |
-| `6`  | Invalid local state (no project, project not linked, empty folder where required)                      |
+| `6`  | Invalid local state (no project, invalid `poli-page.json`, project not linked, empty folder where required) |
 
 These map to the centralised `ExitCode` constants in `src/exit-codes.ts`. Every handler routes errors through `errorToExitCode(err)`.
 

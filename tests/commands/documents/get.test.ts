@@ -15,8 +15,8 @@ import { testApiKey } from '../../helpers/api-key.js';
 
 const fakeDoc: DocumentDescriptor = {
 	documentId: 'doc_abc',
-	organizationId: 'org_1',
-	projectId: 'proj_1',
+	organizationId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
+	projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268',
 	projectSlug: 'invoices',
 	templateId: 'tpl_1',
 	templateSlug: 'invoice',
@@ -55,6 +55,21 @@ describe('executeDocumentsGet', () => {
 		}
 	});
 
+	it('reports an invalid poli-page.json instead of ignoring it', async () => {
+		await writeFile(
+			join(tempDir, 'poli-page.json'),
+			JSON.stringify({ project: { name: 'p' }, cloud: { orgSlug: 'acme', orgId: 'org_1' } }),
+			'utf-8'
+		);
+		await expect(
+			executeDocumentsGet('doc_abc', {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				apiClient: createFakeApiClient({}),
+			})
+		).rejects.toThrow('Invalid poli-page.json — cloud.orgId: must be a UUID');
+	});
+
 	it('returns the descriptor when authenticated via api-key (no manifest)', async () => {
 		process.env.POLI_PAGE_API_KEY = testApiKey('live');
 
@@ -87,9 +102,9 @@ describe('executeDocumentsGet', () => {
 				project: { name: 'demo' },
 				cloud: {
 					orgSlug: 'acme',
-					orgId: 'org_1',
+					orgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
 					projectSlug: 'invoices',
-					projectId: 'proj_1',
+					projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268',
 				},
 				templates: [],
 			})
@@ -119,7 +134,7 @@ describe('executeDocumentsGet', () => {
 
 		expect(captured).toEqual({
 			authorization: 'Bearer sess-tok',
-			orgIdHeader: 'org_1',
+			orgIdHeader: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
 		});
 	});
 

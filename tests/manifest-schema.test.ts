@@ -4,6 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ManifestValidationError, readManifest, writeManifest } from '../src/manifest.js';
 import { MANIFEST_FILENAME } from '../src/constants.js';
+import { parseManifestWithoutCloud } from '../src/manifest.schema.js';
+
+const ORG_ID = '0e89d99e-1516-4b48-baa1-f49e660ad1c1';
+const PROJECT_ID = '8274f64d-4ea2-4f96-b596-5727a7b17268';
 
 describe('manifest schema validation', () => {
 	let dir: string;
@@ -43,15 +47,15 @@ describe('manifest schema validation', () => {
 				],
 				cloud: {
 					orgSlug: 'acme',
-					orgId: 'org_uuid',
+					orgId: ORG_ID,
 					projectSlug: 'p',
-					projectId: 'proj_1',
+					projectId: PROJECT_ID,
 				},
 			});
 			const m = await readManifest(dir);
 			expect(m.project.name).toBe('p');
 			expect(m.fonts?.[0].family).toBe('Inter');
-			expect(m.cloud?.orgId).toBe('org_uuid');
+			expect(m.cloud?.orgId).toBe(ORG_ID);
 		});
 
 		it('parses a minimal manifest (only project)', async () => {
@@ -65,21 +69,46 @@ describe('manifest schema validation', () => {
 		it('loads a manifest that still carries project.version and cloud.track, whatever their values', async () => {
 			await writeRaw({
 				project: { name: 'p', version: 1 },
-				cloud: { orgSlug: 'acme', projectId: 'proj_1', track: 'not-a-family' },
+				cloud: { orgSlug: 'acme', projectId: PROJECT_ID, track: 'not-a-family' },
 			});
 			const m = await readManifest(dir);
 			expect(m.project.name).toBe('p');
-			expect(m.cloud?.projectId).toBe('proj_1');
+			expect(m.cloud?.projectId).toBe(PROJECT_ID);
 		});
 
 		it('accepts a legacy cloud section with only orgSlug + projectId (compat)', async () => {
 			await writeRaw({
 				project: { name: 'p' },
-				cloud: { orgSlug: 'acme', projectId: 'proj_1' },
+				cloud: { orgSlug: 'acme', projectId: PROJECT_ID },
 			});
 			const m = await readManifest(dir);
 			expect(m.cloud?.orgSlug).toBe('acme');
 			expect(m.cloud?.orgId).toBeUndefined();
+		});
+
+		// The check guards the path, not how the server generates its ids.
+		it('accepts any id of the UUID shape, whatever its version digit', async () => {
+			const id = '00000000-0000-0000-0000-000000000001';
+			await writeRaw({
+				project: { name: 'p' },
+				cloud: { orgSlug: 'acme', orgId: id, projectId: id },
+			});
+			const m = await readManifest(dir);
+			expect(m.cloud?.projectId).toBe(id);
+		});
+	});
+
+	describe('parseManifestWithoutCloud', () => {
+		it('ignores an invalid cloud block and drops it', () => {
+			const m = parseManifestWithoutCloud({
+				project: { name: 'p' },
+				cloud: { projectId: 'proj_1' },
+			});
+			expect(m).toEqual({ project: { name: 'p' } });
+		});
+
+		it.each([null, 'text'])('reports %j as an invalid manifest', (raw) => {
+			expect(() => parseManifestWithoutCloud(raw)).toThrow(/^Invalid poli-page\.json/);
 		});
 	});
 
@@ -113,9 +142,22 @@ describe('manifest schema validation', () => {
 		it('throws with the field path when cloud.orgSlug is the wrong type', async () => {
 			await writeRaw({
 				project: { name: 'p' },
-				cloud: { orgSlug: 42, projectId: 'proj_1' },
+				cloud: { orgSlug: 42, projectId: PROJECT_ID },
 			});
 			await expect(readManifest(dir)).rejects.toThrow(/cloud\.orgSlug/);
+		});
+
+		// Both ids become URL path segments of the session's API calls.
+		it.each([
+			['projectId', { orgSlug: 'acme', projectId: '../../../../api/anything?x=' }],
+			['projectId', { orgSlug: 'acme', projectId: 'proj_1' }],
+			['orgId', { orgSlug: 'acme', orgId: '..', projectId: PROJECT_ID }],
+			['orgId', { orgSlug: 'acme', orgId: 'org_1', projectId: PROJECT_ID }],
+		])('rejects a cloud.%s that is not a UUID', async (field, cloud) => {
+			await writeRaw({ project: { name: 'p' }, cloud });
+			await expect(readManifest(dir)).rejects.toThrow(
+				`Invalid poli-page.json — cloud.${field}: must be a UUID`
+			);
 		});
 
 		const validTemplate = {
@@ -186,7 +228,7 @@ describe('manifest schema validation', () => {
 
 		it('throws when JSON is malformed', async () => {
 			await writeFile(join(dir, MANIFEST_FILENAME), '{ "project": invalid }', 'utf-8');
-			await expect(readManifest(dir)).rejects.toThrow();
+			await expect(readManifest(dir)).rejects.toThrow(/^Invalid poli-page\.json — /);
 		});
 	});
 
@@ -218,7 +260,7 @@ describe('manifest schema validation', () => {
 				templates: [],
 				cloud: {
 					orgSlug: 'a',
-					projectId: 'pp',
+					projectId: PROJECT_ID,
 					track: '1.0',
 					apiUrl: 'http://localhost:3000',
 				},
@@ -229,7 +271,7 @@ describe('manifest schema validation', () => {
 			expect(raw).toEqual({
 				project: { name: 'p', author: 'Xavier' },
 				templates: [],
-				cloud: { orgSlug: 'a', projectId: 'pp', apiUrl: 'http://localhost:3000' },
+				cloud: { orgSlug: 'a', projectId: PROJECT_ID, apiUrl: 'http://localhost:3000' },
 			});
 		});
 
@@ -240,9 +282,9 @@ describe('manifest schema validation', () => {
 				templates: [],
 				cloud: {
 					orgSlug: 'a',
-					orgId: 'o',
+					orgId: ORG_ID,
 					projectSlug: 'p',
-					projectId: 'pp',
+					projectId: PROJECT_ID,
 				},
 			});
 			const m = await readManifest(dir);

@@ -28,8 +28,8 @@ const DRAFT_PDF = Buffer.from('%PDF-1.7 draft pdf bytes');
 function makeFakeDescriptor(overrides: Partial<RenderResult> = {}): RenderResult {
 	return {
 		documentId: 'doc_abc',
-		organizationId: 'org_uuid_acme',
-		projectId: 'proj_1',
+		organizationId: '3b241101-e2bb-4255-8caf-4136c566a962',
+		projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268',
 		projectSlug: 'test-project',
 		templateId: 'tpl_1',
 		templateSlug: 'invoice',
@@ -170,9 +170,9 @@ describe('poli render', () => {
 		const manifest = await readManifest(projectDir);
 		manifest.cloud = {
 			orgSlug: 'acme',
-			orgId: 'org_uuid_acme',
+			orgId: '3b241101-e2bb-4255-8caf-4136c566a962',
 			projectSlug: 'test-project',
-			projectId: 'proj_1',
+			projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268',
 		};
 		await writeManifest(projectDir, manifest);
 
@@ -212,7 +212,7 @@ describe('poli render', () => {
 			expect(calls).toHaveLength(1);
 			expect(calls[0].route).toBe('renderDraft');
 			expect(calls[0].authorization).toBe('Bearer mock-session-token');
-			expect(calls[0].orgIdHeader).toBe('org_uuid_acme');
+			expect(calls[0].orgIdHeader).toBe('3b241101-e2bb-4255-8caf-4136c566a962');
 		});
 
 		it('sends project, template, data, format and orientation; no environment, no version', async () => {
@@ -313,7 +313,7 @@ describe('poli render', () => {
 			expect(calls).toHaveLength(1);
 			expect(calls[0].route).toBe('render');
 			expect(calls[0].authorization).toBe('Bearer mock-session-token');
-			expect(calls[0].orgIdHeader).toBe('org_uuid_acme');
+			expect(calls[0].orgIdHeader).toBe('3b241101-e2bb-4255-8caf-4136c566a962');
 			expect(calls[0].payload).toMatchObject({
 				project: 'test-project',
 				template: 'invoice',

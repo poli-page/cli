@@ -31,6 +31,22 @@ describe('executeDocumentsDelete', () => {
 		}
 	});
 
+	it('reports an invalid poli-page.json instead of ignoring it', async () => {
+		await writeFile(
+			join(tempDir, 'poli-page.json'),
+			JSON.stringify({ project: { name: 'p' }, cloud: { orgSlug: 'acme', orgId: 'org_1' } }),
+			'utf-8'
+		);
+		await expect(
+			executeDocumentsDelete('doc_abc', {
+				cwd: tempDir,
+				homeDir: fakeHome,
+				apiClient: createFakeApiClient({}),
+				yes: true,
+			})
+		).rejects.toThrow('Invalid poli-page.json — cloud.orgId: must be a UUID');
+	});
+
 	it('calls deleteDocument when --yes is set (skip prompt)', async () => {
 		process.env.POLI_PAGE_API_KEY = testApiKey('live');
 		const deleteSpy = vi.fn().mockResolvedValue(undefined);
@@ -91,9 +107,9 @@ describe('executeDocumentsDelete', () => {
 				project: { name: 'demo' },
 				cloud: {
 					orgSlug: 'acme',
-					orgId: 'org_1',
+					orgId: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
 					projectSlug: 'invoices',
-					projectId: 'proj_1',
+					projectId: '8274f64d-4ea2-4f96-b596-5727a7b17268',
 				},
 				templates: [],
 			})
@@ -123,7 +139,7 @@ describe('executeDocumentsDelete', () => {
 
 		expect(captured).toEqual({
 			authorization: 'Bearer sess-tok',
-			orgIdHeader: 'org_1',
+			orgIdHeader: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
 		});
 	});
 

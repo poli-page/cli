@@ -32,6 +32,19 @@ describe('project-loader', () => {
 			expect(project.projectDir).toBe(projectDir);
 		});
 
+		it('reports an invalid manifest as invalid, not as missing', async () => {
+			await writeFile(
+				join(projectDir, 'poli-page.json'),
+				JSON.stringify({
+					project: { name: 'p' },
+					cloud: { orgSlug: 'acme', projectId: 'proj_1' },
+				})
+			);
+			await expect(loadProject(projectDir)).rejects.toThrow(
+				'Invalid poli-page.json — cloud.projectId: must be a UUID'
+			);
+		});
+
 		it('should throw if no manifest found', async () => {
 			await expect(loadProject(tempDir + '/nonexistent')).rejects.toThrow(
 				/poli-page\.json/
