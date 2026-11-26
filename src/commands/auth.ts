@@ -10,7 +10,7 @@ import {
 import { readCloudLink } from '../manifest.js';
 import { resolveAuth } from '../auth.js';
 import { createApiClient, type ApiClient, type MeResponse } from '../api-client.js';
-import { apiOrigin, assertTrustedApiOrigin, assertVerificationUrl, getLoginApiUrl } from '../api-origin.js';
+import { apiOrigin, assertTrustedApiOrigin, DEFAULT_API_URL, assertVerificationUrl, getLoginApiUrl } from '../api-origin.js';
 import { errorToExitCode, ExitCode, UsageError } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 
@@ -144,8 +144,41 @@ export async function executeDeviceLogin(
 	}
 }
 
-export async function executeLogout(homeDir?: string): Promise<void> {
-	await clearCredentials(homeDir);
+export interface LogoutOptions {
+	homeDir?: string;
+	apiClient?: ApiClient;
+}
+
+export type LogoutResult =
+	| { status: 'not-logged-in' }
+	| { status: 'revoked'; origin: string }
+	| { status: 'revoke-failed'; origin: string; reason: string };
+
+/**
+ * Revokes the stored session, then deletes the credentials file whatever the
+ * revoke did: a copy of the file must not outlive the logout.
+ */
+export async function executeLogout(options: LogoutOptions = {}): Promise<LogoutResult> {
+	try {
+		const credentials = await readCredentials(options.homeDir);
+		if (!credentials?.session) return { status: 'not-logged-in' };
+		// Revoked where it was issued: sending it to the API this run targets
+		// would hand the token to another origin.
+		const origin = credentials.origin ?? DEFAULT_API_URL;
+		try {
+			const client = options.apiClient ?? createApiClient(origin);
+			await client.signOut(credentials.session);
+			return { status: 'revoked', origin };
+		} catch (error) {
+			return {
+				status: 'revoke-failed',
+				origin,
+				reason: error instanceof Error ? error.message : String(error),
+			};
+		}
+	} finally {
+		await clearCredentials(options.homeDir);
+	}
 }
 
 export interface WhoamiOptions {
@@ -255,11 +288,22 @@ export function registerAuthCommands(program: Command) {
 
 	program
 		.command('logout')
-		.description('Clear local credentials')
+		.description('Revoke the session and clear local credentials')
 		.action(async () => {
 			const { default: chalk } = await import('chalk');
-			await executeLogout();
-			console.log(chalk.green('Logged out.'));
+			const result = await executeLogout();
+			if (result.status === 'revoke-failed') {
+				console.error(
+					chalk.yellow(
+						`Warning: the session was not revoked on ${result.origin} (${result.reason}): it stays valid until it expires.`
+					)
+				);
+				console.log(chalk.green('Logged out: local credentials removed.'));
+			} else if (result.status === 'revoked') {
+				console.log(chalk.green(`Logged out. Session revoked on ${result.origin}.`));
+			} else {
+				console.log(chalk.green('Logged out.'));
+			}
 		});
 
 	program

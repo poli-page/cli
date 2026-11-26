@@ -438,23 +438,158 @@ describe('auth commands', () => {
 	});
 
 	describe('executeLogout', () => {
-		it('clears stored credentials', async () => {
+		async function storeSession(origin?: string) {
 			await writeCredentials(
 				{
+					...(origin ? { origin } : {}),
 					session: 'token',
 					user: { id: '1', name: 'X', email: 'x@x.com' },
 					orgs: {},
 				},
 				fakeHome
 			);
+		}
 
-			await executeLogout(fakeHome);
-			const result = await readCredentials(fakeHome);
-			expect(result).toBeNull();
+		it('revokes the stored session, then removes the credentials file', async () => {
+			await storeSession();
+			const revoked: Array<{ session: string; fileStillThere: boolean }> = [];
+			const apiClient = createFakeApiClient({
+				signOut: async (session) => {
+					revoked.push({ session, fileStillThere: (await readCredentials(fakeHome)) !== null });
+				},
+			});
+
+			const result = await executeLogout({ homeDir: fakeHome, apiClient });
+
+			expect(revoked).toEqual([{ session: 'token', fileStillThere: true }]);
+			expect(result).toEqual({ status: 'revoked', origin: 'https://api.poli.page' });
+			expect(await readCredentials(fakeHome)).toBeNull();
 		});
 
-		it('does not throw if no credentials exist', async () => {
-			await expect(executeLogout(fakeHome)).resolves.not.toThrow();
+		it('removes the credentials file when the revoke fails, and says why', async () => {
+			await storeSession();
+			const apiClient = createFakeApiClient({
+				signOut: async () => {
+					throw new Error('HTTP 503');
+				},
+			});
+
+			const result = await executeLogout({ homeDir: fakeHome, apiClient });
+
+			expect(result).toEqual({
+				status: 'revoke-failed',
+				origin: 'https://api.poli.page',
+				reason: 'HTTP 503',
+			});
+			expect(await readCredentials(fakeHome)).toBeNull();
+		});
+
+		it('makes no API call when no credentials exist', async () => {
+			const apiClient = createFakeApiClient({});
+			await expect(executeLogout({ homeDir: fakeHome, apiClient })).resolves.toEqual({
+				status: 'not-logged-in',
+			});
+		});
+	});
+
+	describe('poli logout', () => {
+		let logs: string[];
+		let errors: string[];
+		let fetched: Array<{ url: string; authorization?: string }>;
+		let signOutStatus: number;
+		let savedExitCode: typeof process.exitCode;
+
+		beforeEach(() => {
+			vi.stubEnv('HOME', fakeHome);
+			vi.stubEnv('USERPROFILE', fakeHome);
+			vi.stubEnv('POLI_API_URL', '');
+			vi.stubEnv('POLI_ALLOW_INSECURE_API', '');
+			fetched = [];
+			signOutStatus = 200;
+			vi.stubGlobal(
+				'fetch',
+				vi.fn(async (url: string, init: RequestInit = {}) => {
+					const headers = init.headers as Record<string, string>;
+					fetched.push({ url, authorization: headers.Authorization });
+					return new Response('{}', {
+						status: signOutStatus,
+						headers: { 'Content-Type': 'application/json' },
+					});
+				})
+			);
+			logs = [];
+			errors = [];
+			vi.spyOn(console, 'log').mockImplementation((msg: unknown = '') => {
+				logs.push(stripVTControlCharacters(String(msg)));
+			});
+			vi.spyOn(console, 'error').mockImplementation((msg: unknown = '') => {
+				errors.push(stripVTControlCharacters(String(msg)));
+			});
+			savedExitCode = process.exitCode;
+			process.exitCode = undefined;
+		});
+
+		afterEach(() => {
+			process.exitCode = savedExitCode;
+			vi.unstubAllGlobals();
+			vi.restoreAllMocks();
+		});
+
+		async function storeSession(origin: string) {
+			await writeCredentials(
+				{ origin, session: 'tok', user: { id: 'u', name: 'X', email: 'x@test.com' }, orgs: {} },
+				fakeHome
+			);
+		}
+
+		it('revokes the session at the origin that issued it and says so', async () => {
+			await storeSession('https://api-develop.poli.page');
+
+			await createProgram().parseAsync(['logout'], { from: 'user' });
+
+			expect(fetched).toEqual([
+				{ url: 'https://api-develop.poli.page/api/auth/sign-out', authorization: 'Bearer tok' },
+			]);
+			expect(logs).toEqual(['Logged out. Session revoked on https://api-develop.poli.page.']);
+			expect(errors).toEqual([]);
+			expect(process.exitCode).toBeUndefined();
+			expect(await readCredentials(fakeHome)).toBeNull();
+		});
+
+		it('warns when the revoke fails, still removes the file and exits 0', async () => {
+			await storeSession('https://api.poli.page');
+			signOutStatus = 503;
+
+			await createProgram().parseAsync(['logout'], { from: 'user' });
+
+			expect(errors).toHaveLength(1);
+			expect(errors[0]).toMatch(
+				/^Warning: the session was not revoked on https:\/\/api\.poli\.page \(.+\): it stays valid until it expires\.$/
+			);
+			expect(logs).toEqual(['Logged out: local credentials removed.']);
+			expect(process.exitCode).toBeUndefined();
+			expect(await readCredentials(fakeHome)).toBeNull();
+		});
+
+		it('sends nothing to an origin the CLI does not trust, still removes the file and exits 0', async () => {
+			await storeSession('not a url');
+
+			await createProgram().parseAsync(['logout'], { from: 'user' });
+
+			expect(fetched).toEqual([]);
+			expect(errors).toEqual([
+				expect.stringMatching(/^Warning: the session was not revoked on not a url \(Invalid API URL/),
+			]);
+			expect(process.exitCode).toBeUndefined();
+			expect(await readCredentials(fakeHome)).toBeNull();
+		});
+
+		it('says logged out with nothing to revoke when no session is stored', async () => {
+			await createProgram().parseAsync(['logout'], { from: 'user' });
+
+			expect(fetched).toEqual([]);
+			expect(logs).toEqual(['Logged out.']);
+			expect(process.exitCode).toBeUndefined();
 		});
 	});
 

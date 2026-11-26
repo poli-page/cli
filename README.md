@@ -98,7 +98,7 @@ The CLI supports two authentication modes. Both flow through the same internal r
 ```bash
 poli login    # device authorization flow — opens your browser
 poli whoami   # show the current session and active org
-poli logout   # clear ~/.polipage/credentials.json
+poli logout   # revoke the session, then delete ~/.polipage/credentials
 ```
 
 After `poli login`, the session token is stored at `~/.polipage/credentials.json` and used by every command that needs it (while `POLI_PAGE_API_KEY` is set, the commands that accept a key use the key instead: see [Precedence](#precedence)).
@@ -215,7 +215,7 @@ It first prints the API host it logs into. The browser opens only an `https` pag
 
 #### `poli logout`
 
-Clears the local credentials file.
+Revokes the stored session on the API origin that issued it (`POST /api/auth/sign-out`), then deletes the local credentials file. If the revoke fails (network error, API error, an origin the CLI does not trust), the file is still deleted and a warning says the session stays valid until it expires; the exit code is `0` either way.
 
 #### `poli whoami`
 
