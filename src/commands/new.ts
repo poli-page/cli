@@ -14,7 +14,7 @@ import {
 	promptForStarterTemplate,
 	type TemplatePromptResult,
 } from '../template-prompt.js';
-import { errorToExitCode } from '../exit-codes.js';
+import { errorToExitCode, UsageError } from '../exit-codes.js';
 import { resolveFormat } from '../format-resolver.js';
 
 function toKebabCase(name: string): string {
@@ -51,7 +51,7 @@ export async function executeNew(name: string, options: NewOptions = {}): Promis
 	try {
 		await readManifest(cwd);
 	} catch (err) {
-		if (err instanceof Error && /ENOENT/.test(err.message)) {
+		if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
 			throw new Error(`No ${MANIFEST_FILENAME} found in ${cwd}. Run "poli init" first.`);
 		}
 		throw err;
@@ -59,7 +59,11 @@ export async function executeNew(name: string, options: NewOptions = {}): Promis
 
 	// The manifest refuses an unknown value, so it must never be written.
 	if (options.format || options.orientation) {
-		resolveFormat(options.format ?? 'A4', options.orientation ?? 'portrait');
+		try {
+			resolveFormat(options.format ?? 'A4', options.orientation ?? 'portrait');
+		} catch (err) {
+			throw new UsageError((err as Error).message);
+		}
 	}
 
 	const source =

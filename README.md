@@ -203,7 +203,7 @@ Flags:
 - `--from-template <ref>` — collection/template. Skips the interactive prompt.
 - `--source <repo>` — override the source
 - `--no-cache` — bypass cache
-- `--format <format>`, `--orientation <orientation>` — set the template's page format and orientation (see [Manifest format](#manifest-format)); an unknown value exits before anything is imported
+- `--format <format>`, `--orientation <orientation>` — set the template's page format and orientation (see [Manifest format](#manifest-format)); an unknown value exits `2` before anything is imported
 
 ### Authentication commands
 

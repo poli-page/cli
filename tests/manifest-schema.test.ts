@@ -132,6 +132,8 @@ describe('manifest schema validation', () => {
 			['template', '../../../etc/passwd'],
 			['template', '/etc/passwd'],
 			['template', 'sub/./invoice.html'],
+			// The template importer's rule: a segment starts with a letter or digit.
+			['template', '_invoice.html'],
 			['mock', '../../../home/.polipage/credentials'],
 			['mock', 'x?/../../mock.json'],
 			['format', 'A4/../../..'],

@@ -18,7 +18,7 @@ export async function readProjectManifest(projectDir: string): Promise<PoliPageM
 	try {
 		return await readManifest(projectDir);
 	} catch (err) {
-		if (err instanceof Error && /ENOENT/.test(err.message)) {
+		if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
 			throw new Error(
 				`No ${MANIFEST_FILENAME} found in ${projectDir}. Are you in a Poli Page project?`
 			);

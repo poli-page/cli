@@ -49,6 +49,15 @@ describe('project-loader', () => {
 
 			await expect(loadProject(projectDir)).rejects.toThrow(/templates\[0\]\.mock/);
 		});
+
+		it('keeps the validation error when the refused value contains "ENOENT"', async () => {
+			const manifestPath = join(projectDir, 'poli-page.json');
+			const manifest = JSON.parse(await readFile(manifestPath, 'utf-8'));
+			manifest.templates[0].mock = 'ENOENT/../invoice.json';
+			await writeFile(manifestPath, JSON.stringify(manifest), 'utf-8');
+
+			await expect(loadProject(projectDir)).rejects.toThrow(/templates\[0\]\.mock/);
+		});
 	});
 
 	describe('findTemplate', () => {
