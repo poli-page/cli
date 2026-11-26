@@ -30,7 +30,7 @@ function getCredentialsPath(homeDir?: string): string {
 	return join(home, CREDENTIALS_DIR, CREDENTIALS_FILENAME);
 }
 
-function getCredentialsDir(homeDir?: string): string {
+export function getCredentialsDir(homeDir?: string): string {
 	const home = homeDir ?? homedir();
 	return join(home, CREDENTIALS_DIR);
 }
@@ -49,20 +49,30 @@ export async function writeCredentials(
 	credentials: StoredCredentials,
 	homeDir?: string
 ): Promise<void> {
+	await writePrivateFile(
+		CREDENTIALS_FILENAME,
+		JSON.stringify(credentials, null, '\t') + '\n',
+		homeDir
+	);
+}
+
+/** Writes `~/.polipage/<filename>` readable by the user only (dir 0700, file 0600). */
+export async function writePrivateFile(
+	filename: string,
+	content: string,
+	homeDir?: string
+): Promise<void> {
 	const dir = getCredentialsDir(homeDir);
-	const path = getCredentialsPath(homeDir);
+	const path = join(dir, filename);
 	// mkdir/writeFile modes only apply on creation and go through the umask:
 	// chmod both so an existing or umask-widened dir/file ends up 0700/0600.
 	await mkdir(dir, { recursive: true, mode: 0o700 });
 	await chmod(dir, 0o700);
-	// Tighten an existing file before the new secrets go in; fail closed if we can't.
+	// Tighten an existing file before the new content goes in; fail closed if we can't.
 	await chmod(path, 0o600).catch((error: NodeJS.ErrnoException) => {
 		if (error.code !== 'ENOENT') throw error;
 	});
-	await writeFile(path, JSON.stringify(credentials, null, '\t') + '\n', {
-		encoding: 'utf-8',
-		mode: 0o600,
-	});
+	await writeFile(path, content, { encoding: 'utf-8', mode: 0o600 });
 	await chmod(path, 0o600);
 }
 
