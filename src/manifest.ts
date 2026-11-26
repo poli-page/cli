@@ -27,6 +27,16 @@ export async function readProjectManifest(projectDir: string): Promise<PoliPageM
 	}
 }
 
+/** The manifest's `cloud` block, or `undefined` when the folder has no poli-page.json. */
+export async function readCloudLink(projectDir: string): Promise<PoliPageManifest['cloud']> {
+	try {
+		return (await readManifest(projectDir)).cloud;
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+		throw err;
+	}
+}
+
 /**
  * Writes `poli-page.json`. `project.version` and `cloud.track` went away
  * with versions (F3), but the passthrough schema keeps them on read, so

@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { resolveAuth } from '../../auth.js';
-import { readManifest } from '../../manifest.js';
+import { readCloudLink } from '../../manifest.js';
 import { createApiClient, type ApiClient, type DocumentDescriptor } from '../../api-client.js';
 import { errorToExitCode } from '../../exit-codes.js';
 import { shouldEmitJson } from '../../output.js';
@@ -17,13 +17,7 @@ export async function executeDocumentsGet(
 ): Promise<DocumentDescriptor> {
 	const cwd = options.cwd ?? process.cwd();
 
-	let manifestOrgId: string | undefined;
-	try {
-		const manifest = await readManifest(cwd);
-		manifestOrgId = manifest.cloud?.orgId;
-	} catch {
-		// Not in a project — leave undefined; resolveAuth handles the friendly error.
-	}
+	const manifestOrgId = (await readCloudLink(cwd))?.orgId;
 
 	let auth;
 	try {

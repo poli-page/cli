@@ -227,6 +227,47 @@ describe('poli init', () => {
 			expect(manifest.templates[0].name).toBe('welcome');
 		});
 
+		it('kebab-cases the source template name when no --template-name is given', async () => {
+			const files = Object.fromEntries(
+				Object.entries(SOURCE_FILES).map(([path, content]) => [
+					path.replace('templates/invoice/', 'templates/Invoice_v2/'),
+					content,
+				])
+			);
+			files['index.json'] = JSON.stringify({
+				...INDEX,
+				collections: {
+					showcase: {
+						...INDEX.collections.showcase,
+						templates: [{ name: 'Invoice_v2', description: 'Invoice' }],
+					},
+				},
+			});
+			const projectDir = await executeInit('billing', {
+				cwd: tempDir,
+				withTemplate: 'showcase/Invoice_v2',
+				homeDir: fakeHome,
+				fetcher: makeFetcher(files),
+			});
+
+			await stat(join(projectDir, 'templates', 'invoice-v2', 'invoice-v2.html'));
+			const manifest = JSON.parse(await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8'));
+			expect(manifest.templates[0].name).toBe('invoice-v2');
+		});
+
+		it('refuses a --template-name with no letter or digit before creating the project', async () => {
+			await expect(
+				executeInit('billing', {
+					cwd: tempDir,
+					withTemplate: 'showcase/invoice',
+					templateName: '___',
+					homeDir: fakeHome,
+					fetcher: makeFetcher(SOURCE_FILES),
+				})
+			).rejects.toThrow(/Invalid template name/);
+			await expect(stat(join(tempDir, 'billing'))).rejects.toMatchObject({ code: 'ENOENT' });
+		});
+
 		it('throws if the template ref is malformed', async () => {
 			await expect(
 				executeInit('billing', {
