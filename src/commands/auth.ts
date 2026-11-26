@@ -300,7 +300,7 @@ export function registerAuthCommands(program: Command) {
 				// The reason can span lines (an unreachable API, an HTML error page).
 				console.error(
 					chalk.yellow(
-						`Warning: the session was not revoked on ${result.origin}: it stays valid until it expires.\n  ${result.reason}`
+						`Warning: the session was not revoked on ${result.origin}: it stays valid until it expires.\n  ${result.reason.replace(/\n/g, '\n  ')}`
 					)
 				);
 			}

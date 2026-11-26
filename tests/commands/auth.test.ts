@@ -12,6 +12,7 @@ import { ExitCode } from '../../src/exit-codes.js';
 import type { ApiClient, MeResponse } from '../../src/api-client.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
 import { testApiKey } from '../helpers/api-key.js';
+import { readOnlyDirBlocksUnlink } from '../helpers/dir-permissions.js';
 
 const openBrowser = vi.hoisted(() => vi.fn(async (_url: string) => {}));
 vi.mock('open', () => ({ default: openBrowser }));
@@ -485,7 +486,7 @@ describe('auth commands', () => {
 			expect(await readCredentials(fakeHome)).toBeNull();
 		});
 
-		it('still revokes the session when the file cannot be removed, and says the file is kept', async () => {
+		it.skipIf(!readOnlyDirBlocksUnlink)('still revokes the session when the file cannot be removed, and says the file is kept', async () => {
 			await storeSession();
 			const revoked: string[] = [];
 			const apiClient = createFakeApiClient({
@@ -626,11 +627,31 @@ describe('auth commands', () => {
 				'Warning: the session was not revoked on https://api.poli.page: it stays valid until it expires.'
 			);
 			expect(rest.length).toBeGreaterThan(1);
-			for (const line of rest) expect(line).toMatch(/^ {2}\S/);
+			for (const line of rest) expect(line).toMatch(/^ {2,}\S/);
 			expect(logs).toEqual(['Logged out: local credentials removed.']);
 		});
 
-		it('fails with exit 6 and keeps quiet about removal when the file cannot be deleted', async () => {
+		it('indents every line of a multi-line reason (an HTML error page)', async () => {
+			await storeSession('https://api.poli.page');
+			vi.stubGlobal(
+				'fetch',
+				vi.fn(
+					async () =>
+						new Response('<html>\n<body>Bad Gateway</body>\n</html>', {
+							status: 502,
+							headers: { 'Content-Type': 'text/html' },
+						})
+				)
+			);
+
+			await createProgram().parseAsync(['logout'], { from: 'user' });
+
+			expect(errors).toHaveLength(1);
+			const [, ...rest] = errors[0].split('\n');
+			expect(rest).toEqual(['  <html>', '  <body>Bad Gateway</body>', '  </html>']);
+		});
+
+		it.skipIf(!readOnlyDirBlocksUnlink)('fails with exit 6 and keeps quiet about removal when the file cannot be deleted', async () => {
 			await storeSession('https://api.poli.page');
 			const dir = join(fakeHome, CREDENTIALS_DIR);
 			await chmod(dir, 0o500);

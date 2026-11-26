@@ -12,6 +12,7 @@ import {
 	type StoredCredentials,
 } from '../src/credentials.js';
 import { CREDENTIALS_DIR, CREDENTIALS_FILENAME } from '../src/constants.js';
+import { readOnlyDirBlocksUnlink } from './helpers/dir-permissions.js';
 
 describe('credentials', () => {
 	let fakeHome: string;
@@ -96,7 +97,7 @@ describe('credentials', () => {
 			await expect(clearCredentials(fakeHome)).resolves.not.toThrow();
 		});
 
-		it('throws when the file is there but cannot be removed', async () => {
+		it.skipIf(!readOnlyDirBlocksUnlink)('throws when the file is there but cannot be removed', async () => {
 			await writeCredentials(mockCredentials, fakeHome);
 			const dir = join(fakeHome, CREDENTIALS_DIR);
 			await chmod(dir, 0o500);
