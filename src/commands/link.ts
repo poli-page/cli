@@ -3,7 +3,13 @@ import { readProjectManifest, writeManifest } from '../manifest.js';
 import { getSessionToken, readCredentials, sessionFor } from '../credentials.js';
 import { createApiClient, type ApiClient } from '../api-client.js';
 import { collectProjectPayload } from '../project-loader.js';
-import { forgetLink, recordLink } from '../cloud-link.js';
+import {
+	confirmExistingProjectPrompt,
+	forgetLink,
+	recordLink,
+	UnconfirmedLinkError,
+	type LinkTarget,
+} from '../cloud-link.js';
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
 
 export interface LinkOptions {
@@ -11,6 +17,10 @@ export interface LinkOptions {
 	orgSlug: string;
 	apiClient?: ApiClient;
 	homeDir?: string;
+	/** Link to a project of the same slug without asking (`--existing`). */
+	existing?: boolean;
+	/** Asks before linking to a project of the same slug; absent when nobody can answer. */
+	confirmExisting?: (target: LinkTarget) => Promise<boolean>;
 }
 
 function toKebabCase(name: string): string {
@@ -73,6 +83,18 @@ export async function executeLink(options: LinkOptions): Promise<void> {
 
 	let projectId: string;
 	if (existing) {
+		// Another project of that slug is someone's draft: every later sync overwrites it.
+		if (!options.existing) {
+			const target = { org, project: existing };
+			if (!options.confirmExisting) {
+				throw new UnconfirmedLinkError(
+					`Organization "${org.slug}" already has a project "${existing.name}" (${existing.slug}). Re-run with \`--existing\` to link this folder to it, or in a terminal to be asked.`
+				);
+			}
+			if (!(await options.confirmExisting(target))) {
+				throw new Error('Link cancelled: the folder was left unlinked.');
+			}
+		}
 		projectId = existing.id;
 	} else {
 		// The API expects the full project bundle (manifest + templates +
@@ -119,7 +141,11 @@ export function registerLinkCommands(program: Command) {
 	program
 		.command('link')
 		.description('Link the current project to a cloud organization')
-		.action(async () => {
+		.option(
+			'--existing',
+			'Link to the project of the same name if the organization already has one, without asking'
+		)
+		.action(async (opts: { existing?: boolean }) => {
 			const { default: chalk } = await import('chalk');
 			const { default: ora } = await import('ora');
 
@@ -146,7 +172,18 @@ export function registerLinkCommands(program: Command) {
 				const orgSlug = await promptForOrganization(orgs);
 
 				spinner = ora('Linking project...').start();
-				await executeLink({ orgSlug, apiClient: client });
+				const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+				await executeLink({
+					orgSlug,
+					apiClient: client,
+					existing: opts.existing,
+					confirmExisting: interactive
+						? (target) => {
+								spinner?.stop();
+								return confirmExistingProjectPrompt(target);
+							}
+						: undefined,
+				});
 				spinner.succeed(chalk.green(`Project linked to ${orgSlug}`));
 			} catch (error) {
 				const msg = error instanceof Error ? error.message : 'Link failed';

@@ -7,6 +7,7 @@ import { executeLink, executeUnlink } from '../../src/commands/link.js';
 import { writeCredentials } from '../../src/credentials.js';
 import { isLinkConfirmed, recordLink } from '../../src/cloud-link.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
+import { errorToExitCode } from '../../src/exit-codes.js';
 import type { ApiClient } from '../../src/api-client.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
 
@@ -125,29 +126,121 @@ describe('poli link / unlink', () => {
 			expect(manifest.project.name).toBe('test-project');
 		});
 
-		it('reuses an existing project on the server (re-link)', async () => {
-			let createCalled = false;
-			const client = createMockApiClient({
-				listProjects: async () => [
-					{ id: 'existing_proj_id', name: 'Test Project', slug: 'test-project' },
-				],
-				createProject: async () => {
-					createCalled = true;
-					return { id: 'NEW_id_should_not_be_used' };
-				},
+		describe('when the organization already has a project with the same slug', () => {
+			let createCalled: boolean;
+			let client: ApiClient;
+
+			beforeEach(() => {
+				createCalled = false;
+				client = createMockApiClient({
+					listProjects: async () => [
+						{ id: 'existing_proj_id', name: 'Test Project', slug: 'test-project' },
+					],
+					createProject: async () => {
+						createCalled = true;
+						return { id: 'NEW_id_should_not_be_used' };
+					},
+				});
 			});
+
+			async function readCloud() {
+				const manifest = JSON.parse(
+					await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
+				);
+				return manifest.cloud;
+			}
+
+			it('links to it with existing: true (re-link)', async () => {
+				await executeLink({
+					cwd: projectDir,
+					orgSlug: 'acme-corp',
+					apiClient: client,
+					homeDir: fakeHome,
+					existing: true,
+				});
+
+				expect(createCalled).toBe(false);
+				expect((await readCloud()).projectId).toBe('existing_proj_id');
+				expect(await isLinkConfirmed(projectDir, 'existing_proj_id', fakeHome)).toBe(true);
+			});
+
+			it('refuses with exit 2 and writes nothing when nobody can be asked', async () => {
+				const error = await executeLink({
+					cwd: projectDir,
+					orgSlug: 'acme-corp',
+					apiClient: client,
+					homeDir: fakeHome,
+				}).catch((e: unknown) => e);
+
+				expect(error).toBeInstanceOf(Error);
+				expect((error as Error).message).toMatch(/--existing/);
+				expect(errorToExitCode(error)).toBe(2);
+				expect(createCalled).toBe(false);
+				expect(await readCloud()).toBeUndefined();
+				expect(await isLinkConfirmed(projectDir, 'existing_proj_id', fakeHome)).toBe(false);
+			});
+
+			it('asks, naming the project and organization, and links on yes', async () => {
+				const confirmExisting = vi.fn(async () => true);
+				await executeLink({
+					cwd: projectDir,
+					orgSlug: 'acme-corp',
+					apiClient: client,
+					homeDir: fakeHome,
+					confirmExisting,
+				});
+
+				expect(confirmExisting).toHaveBeenCalledWith({
+					org: { id: 'org_1', name: 'Acme Corp', slug: 'acme-corp' },
+					project: { id: 'existing_proj_id', name: 'Test Project', slug: 'test-project' },
+				});
+				expect(createCalled).toBe(false);
+				expect((await readCloud()).projectId).toBe('existing_proj_id');
+			});
+
+			it('leaves the folder unlinked on no', async () => {
+				const error = await executeLink({
+					cwd: projectDir,
+					orgSlug: 'acme-corp',
+					apiClient: client,
+					homeDir: fakeHome,
+					confirmExisting: async () => false,
+				}).catch((e: unknown) => e);
+
+				expect((error as Error).message).toMatch(/Link cancelled/);
+				expect(errorToExitCode(error)).toBe(1);
+				expect(createCalled).toBe(false);
+				expect(await readCloud()).toBeUndefined();
+				expect(await isLinkConfirmed(projectDir, 'existing_proj_id', fakeHome)).toBe(false);
+			});
+
+			it('does not ask with existing: true', async () => {
+				const confirmExisting = vi.fn(async () => false);
+				await executeLink({
+					cwd: projectDir,
+					orgSlug: 'acme-corp',
+					apiClient: client,
+					homeDir: fakeHome,
+					existing: true,
+					confirmExisting,
+				});
+
+				expect(confirmExisting).not.toHaveBeenCalled();
+				expect((await readCloud()).projectId).toBe('existing_proj_id');
+			});
+		});
+
+		it('does not ask when the project is new', async () => {
+			const confirmExisting = vi.fn(async () => false);
 			await executeLink({
 				cwd: projectDir,
 				orgSlug: 'acme-corp',
-				apiClient: client,
+				apiClient: createMockApiClient(),
 				homeDir: fakeHome,
+				confirmExisting,
 			});
 
-			expect(createCalled).toBe(false);
-			const manifest = JSON.parse(
-				await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8')
-			);
-			expect(manifest.cloud.projectId).toBe('existing_proj_id');
+			expect(confirmExisting).not.toHaveBeenCalled();
 		});
 
 		it('should throw if not logged in', async () => {

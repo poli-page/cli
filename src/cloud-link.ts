@@ -135,3 +135,10 @@ export function confirmLinkPrompt(target: LinkTarget): Promise<boolean> {
 		default: false,
 	});
 }
+
+export function confirmExistingProjectPrompt(target: LinkTarget): Promise<boolean> {
+	return confirmPrompt({
+		message: `Link this folder to the existing ${describeTarget(target)}? Each sync overwrites that project's cloud draft.`,
+		default: false,
+	});
+}
