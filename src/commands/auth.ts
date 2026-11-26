@@ -163,7 +163,7 @@ function errorMessage(error: unknown): string {
 /**
  * Deletes the credentials file, then revokes the session it held: the file
  * must not outlive a logout that is killed while the revoke is in flight.
- * A file that cannot be deleted still gets its session revoked.
+ * A file that cannot be deleted does not stop the revoke.
  */
 export async function executeLogout(options: LogoutOptions = {}): Promise<LogoutResult> {
 	const credentials = await readCredentials(options.homeDir);

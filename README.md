@@ -215,7 +215,7 @@ It first prints the API host it logs into. The browser opens only an `https` pag
 
 #### `poli logout`
 
-Deletes the local credentials file, then revokes the session it held on the API origin that issued it (`POST /api/auth/sign-out`), so the file is gone even if the revoke hangs or is interrupted. If the revoke fails (network error, API error, an origin the CLI does not trust), a warning says the session stays valid until it expires; the exit code is `0` either way. If the file cannot be deleted (for example a read-only `~/.polipage`), the session is still revoked, an error asks you to delete the file by hand, and the exit code is `6`.
+Deletes the local credentials file, then revokes the session it held on the API origin that issued it (`POST /api/auth/sign-out`), so the file is gone even if the revoke hangs or is interrupted. If the revoke fails (network error, API error, an origin the CLI does not trust), a warning says the session stays valid until it expires; the exit code is `0` either way. If the file cannot be deleted (for example a read-only `~/.polipage`), the CLI still tries to revoke the session (a failed revoke gets the same warning), an error asks you to delete the file by hand, and the exit code is `6`.
 
 #### `poli whoami`
 
