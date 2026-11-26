@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -94,6 +94,18 @@ describe('credentials', () => {
 
 		it('should not throw if no credentials file', async () => {
 			await expect(clearCredentials(fakeHome)).resolves.not.toThrow();
+		});
+
+		it('throws when the file is there but cannot be removed', async () => {
+			await writeCredentials(mockCredentials, fakeHome);
+			const dir = join(fakeHome, CREDENTIALS_DIR);
+			await chmod(dir, 0o500);
+			try {
+				await expect(clearCredentials(fakeHome)).rejects.toMatchObject({ code: 'EACCES' });
+			} finally {
+				await chmod(dir, 0o700);
+			}
+			expect(await readCredentials(fakeHome)).not.toBeNull();
 		});
 	});
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
@@ -7,6 +7,7 @@ import { executeLogout, executeWhoami, executeDeviceLogin } from '../../src/comm
 import { readCredentials, writeCredentials } from '../../src/credentials.js';
 import { writeManifest } from '../../src/manifest.js';
 import { createProgram } from '../../src/program.js';
+import { CREDENTIALS_DIR } from '../../src/constants.js';
 import { ExitCode } from '../../src/exit-codes.js';
 import type { ApiClient, MeResponse } from '../../src/api-client.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
@@ -484,6 +485,30 @@ describe('auth commands', () => {
 			expect(await readCredentials(fakeHome)).toBeNull();
 		});
 
+		it('still revokes the session when the file cannot be removed, and says the file is kept', async () => {
+			await storeSession();
+			const revoked: string[] = [];
+			const apiClient = createFakeApiClient({
+				signOut: async (session) => {
+					revoked.push(session);
+				},
+			});
+			const dir = join(fakeHome, CREDENTIALS_DIR);
+			await chmod(dir, 0o500);
+			try {
+				const result = await executeLogout({ homeDir: fakeHome, apiClient });
+				expect(result).toEqual({
+					status: 'revoked',
+					origin: 'https://api.poli.page',
+					fileError: expect.stringContaining('EACCES'),
+				});
+			} finally {
+				await chmod(dir, 0o700);
+			}
+			expect(revoked).toEqual(['token']);
+			expect(await readCredentials(fakeHome)).not.toBeNull();
+		});
+
 		it('makes no API call when no credentials exist', async () => {
 			const apiClient = createFakeApiClient({});
 			await expect(executeLogout({ homeDir: fakeHome, apiClient })).resolves.toEqual({
@@ -564,7 +589,7 @@ describe('auth commands', () => {
 
 			expect(errors).toHaveLength(1);
 			expect(errors[0]).toMatch(
-				/^Warning: the session was not revoked on https:\/\/api\.poli\.page \(.+\): it stays valid until it expires\.$/
+				/^Warning: the session was not revoked on https:\/\/api\.poli\.page: it stays valid until it expires\.\n {2}\S/
 			);
 			expect(logs).toEqual(['Logged out: local credentials removed.']);
 			expect(process.exitCode).toBeUndefined();
@@ -578,10 +603,52 @@ describe('auth commands', () => {
 
 			expect(fetched).toEqual([]);
 			expect(errors).toEqual([
-				expect.stringMatching(/^Warning: the session was not revoked on not a url \(Invalid API URL/),
+				expect.stringMatching(/^Warning: the session was not revoked on not a url: it stays valid until it expires\.\n {2}Invalid API URL/),
 			]);
 			expect(process.exitCode).toBeUndefined();
 			expect(await readCredentials(fakeHome)).toBeNull();
+		});
+
+		it('puts a multi-line reason (API unreachable) after the one-line warning', async () => {
+			await storeSession('https://api.poli.page');
+			vi.stubGlobal(
+				'fetch',
+				vi.fn(async () => {
+					throw new TypeError('fetch failed');
+				})
+			);
+
+			await createProgram().parseAsync(['logout'], { from: 'user' });
+
+			expect(errors).toHaveLength(1);
+			const [first, ...rest] = errors[0].split('\n');
+			expect(first).toBe(
+				'Warning: the session was not revoked on https://api.poli.page: it stays valid until it expires.'
+			);
+			expect(rest.length).toBeGreaterThan(1);
+			for (const line of rest) expect(line).toMatch(/^ {2}\S/);
+			expect(logs).toEqual(['Logged out: local credentials removed.']);
+		});
+
+		it('fails with exit 6 and keeps quiet about removal when the file cannot be deleted', async () => {
+			await storeSession('https://api.poli.page');
+			const dir = join(fakeHome, CREDENTIALS_DIR);
+			await chmod(dir, 0o500);
+			try {
+				await createProgram().parseAsync(['logout'], { from: 'user' });
+			} finally {
+				await chmod(dir, 0o700);
+			}
+
+			expect(fetched).toEqual([
+				{ url: 'https://api.poli.page/api/auth/sign-out', authorization: 'Bearer tok' },
+			]);
+			expect(logs).toEqual(['Session revoked on https://api.poli.page.']);
+			expect(errors).toEqual([
+				expect.stringMatching(/^Could not remove the local credentials file \(.*EACCES.*\)\. Delete it by hand\.$/s),
+			]);
+			expect(process.exitCode).toBe(ExitCode.INVALID_LOCAL_STATE);
+			expect(await readCredentials(fakeHome)).not.toBeNull();
 		});
 
 		it('says logged out with nothing to revoke when no session is stored', async () => {

@@ -149,32 +149,39 @@ export interface LogoutOptions {
 	apiClient?: ApiClient;
 }
 
-export type LogoutResult =
+/** `fileError` is set when the credentials file could not be deleted and is still on disk. */
+export type LogoutResult = (
 	| { status: 'not-logged-in' }
 	| { status: 'revoked'; origin: string }
-	| { status: 'revoke-failed'; origin: string; reason: string };
+	| { status: 'revoke-failed'; origin: string; reason: string }
+) & { fileError?: string };
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
 
 /**
  * Deletes the credentials file, then revokes the session it held: the file
  * must not outlive a logout that is killed while the revoke is in flight.
+ * A file that cannot be deleted still gets its session revoked.
  */
 export async function executeLogout(options: LogoutOptions = {}): Promise<LogoutResult> {
 	const credentials = await readCredentials(options.homeDir);
-	await clearCredentials(options.homeDir);
-	if (!credentials?.session) return { status: 'not-logged-in' };
+	const fileError = await clearCredentials(options.homeDir).then(
+		() => undefined,
+		(error: unknown) => errorMessage(error)
+	);
+	const kept = fileError === undefined ? {} : { fileError };
+	if (!credentials?.session) return { status: 'not-logged-in', ...kept };
 	// Revoked where it was issued: sending it to the API this run targets
 	// would hand the token to another origin.
 	const origin = credentials.origin ?? DEFAULT_API_URL;
 	try {
 		const client = options.apiClient ?? createApiClient(origin);
 		await client.signOut(credentials.session);
-		return { status: 'revoked', origin };
+		return { status: 'revoked', origin, ...kept };
 	} catch (error) {
-		return {
-			status: 'revoke-failed',
-			origin,
-			reason: error instanceof Error ? error.message : String(error),
-		};
+		return { status: 'revoke-failed', origin, reason: errorMessage(error), ...kept };
 	}
 }
 
@@ -290,11 +297,24 @@ export function registerAuthCommands(program: Command) {
 			const { default: chalk } = await import('chalk');
 			const result = await executeLogout();
 			if (result.status === 'revoke-failed') {
+				// The reason can span lines (an unreachable API, an HTML error page).
 				console.error(
 					chalk.yellow(
-						`Warning: the session was not revoked on ${result.origin} (${result.reason}): it stays valid until it expires.`
+						`Warning: the session was not revoked on ${result.origin}: it stays valid until it expires.\n  ${result.reason}`
 					)
 				);
+			}
+			if (result.fileError !== undefined) {
+				if (result.status === 'revoked') {
+					console.log(chalk.green(`Session revoked on ${result.origin}.`));
+				}
+				console.error(
+					chalk.red(
+						`Could not remove the local credentials file (${result.fileError}). Delete it by hand.`
+					)
+				);
+				process.exitCode = ExitCode.INVALID_LOCAL_STATE;
+			} else if (result.status === 'revoke-failed') {
 				console.log(chalk.green('Logged out: local credentials removed.'));
 			} else if (result.status === 'revoked') {
 				console.log(chalk.green(`Logged out. Session revoked on ${result.origin}.`));
