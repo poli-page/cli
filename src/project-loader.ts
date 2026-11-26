@@ -3,7 +3,11 @@ import { join } from 'node:path';
 import { readProjectManifest, type PoliPageManifest } from './manifest.js';
 import { MANIFEST_FILENAME } from './constants.js';
 import { resolveInside } from './security/paths.js';
-import { readAllProjectFiles } from './project-sync.js';
+import {
+	IGNORED_DIRECTORY_NAMES,
+	isInIgnoredProjectDirectory,
+	readAllProjectFiles,
+} from './project-sync.js';
 import { toProjectFileEntries } from './project-files.js';
 
 export interface TemplateEntry {
@@ -125,6 +129,11 @@ export async function collectProjectPayload(
 		for (const fileName of [tpl.template, tpl.mock]) {
 			const key = `templates/${tpl.name}/${fileName}`;
 			const content = files.get(key);
+			if (content === undefined && isInIgnoredProjectDirectory(key)) {
+				throw new Error(
+					`${key} is under a folder no project command reads (${[...IGNORED_DIRECTORY_NAMES].join(', ')}): rename it.`
+				);
+			}
 			if (content === undefined) {
 				throw new Error(
 					`${key} is not a file of the project (missing, symlinked, or not .html, .json or .css).`

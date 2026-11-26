@@ -248,7 +248,7 @@ Flag: `--json` to dump the raw `/v1/me` payload (or, in `session-no-org` mode, `
 
 Interactively select an organization, create the cloud project, and write the `cloud:` section into `poli-page.json` with the four fields the API needs (`orgSlug`, `orgId`, `projectSlug`, `projectId`). No API key is stored in the manifest — the file is safe to commit. It also records the folder as a [confirmed link](#confirmed-links) on this machine, so `poli watch` and `poli dev` sync it without asking.
 
-The new cloud project is created from the files [`poli publish`](#poli-publish) would send (regular files only, never a symlink), restricted to the templates and mocks the manifest names, `tailwind.css`, and the image and font files under `assets/images/`, `assets/icons/` and `assets/fonts/`; partials and other files reach the project on the first sync or publish. A template or mock file the manifest names that is not in that set (missing, symlinked, or outside `templates/<name>/`) fails the link before the project is created.
+The new cloud project is created from the files [`poli publish`](#poli-publish) would send (regular files only, never a symlink), restricted to the templates and mocks the manifest names, `tailwind.css`, and the image and font files under `assets/images/`, `assets/icons/` and `assets/fonts/`; partials and other files reach the project on the first sync or publish. A template or mock file the manifest names that is not in that set (missing, symlinked, outside `templates/<name>/`, or under a `node_modules`, `.git`, `output`, `dist` or `.poli` folder, e.g. a template named `output`) fails the link before the project is created.
 
 #### Confirmed links
 

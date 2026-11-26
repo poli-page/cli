@@ -264,6 +264,21 @@ describe('project-loader', () => {
 			);
 		});
 
+		it('refuses a template under a folder the file set skips, naming that folder', async () => {
+			await cp(join(projectDir, 'templates', 'invoice'), join(projectDir, 'templates', 'output'), {
+				recursive: true,
+			});
+			const { manifest } = await loadProject(projectDir);
+			manifest.templates![0].name = 'output';
+
+			const error = await collectProjectPayload(projectDir, manifest).catch((e: Error) => e);
+
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error).message).toBe(
+				'templates/output/invoice.html is under a folder no project command reads (node_modules, .git, output, dist, .poli): rename it.'
+			);
+		});
+
 		it('refuses a template folder symlinked outside the project', async () => {
 			const outside = join(tempDir, 'elsewhere');
 			await cp(join(projectDir, 'templates', 'invoice'), outside, { recursive: true });

@@ -9,7 +9,7 @@ import {
 } from './project-files.js';
 import { computeDelta, hashContent, syncWithRetry } from './sync-engine.js';
 
-const IGNORED_DIRECTORY_NAMES = new Set(['node_modules', '.git', 'output', 'dist', '.poli']);
+export const IGNORED_DIRECTORY_NAMES = new Set(['node_modules', '.git', 'output', 'dist', '.poli']);
 
 /**
  * `true` when a segment of `relPath` names a directory the sync never
