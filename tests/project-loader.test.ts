@@ -219,16 +219,20 @@ describe('project-loader', () => {
 			]);
 		});
 
-		it('refuses a template path that leaves its template folder, without reading it', async () => {
+		it('refuses a template path that leaves its template folder', async () => {
 			await mkdir(join(projectDir, 'templates', 'other'), { recursive: true });
 			await writeFile(join(projectDir, 'templates', 'other', 'secret.html'), 's3cret', 'utf-8');
 			const { manifest } = await loadProject(projectDir);
 			// The schema refuses `..`; the payload must not depend on it.
 			manifest.templates![0].template = '../other/secret.html';
 
-			await expect(collectProjectPayload(projectDir, manifest)).rejects.toThrow(
+			const error = await collectProjectPayload(projectDir, manifest).catch((e: Error) => e);
+
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error).message).toContain(
 				'templates/invoice/../other/secret.html is not a file of the project'
 			);
+			expect((error as Error).message).not.toContain('s3cret');
 		});
 
 		it.each(['template', 'mock'] as const)(

@@ -248,6 +248,8 @@ Flag: `--json` to dump the raw `/v1/me` payload (or, in `session-no-org` mode, `
 
 Interactively select an organization, create the cloud project, and write the `cloud:` section into `poli-page.json` with the four fields the API needs (`orgSlug`, `orgId`, `projectSlug`, `projectId`). No API key is stored in the manifest — the file is safe to commit. It also records the folder as a [confirmed link](#confirmed-links) on this machine, so `poli watch` and `poli dev` sync it without asking.
 
+The new cloud project gets the same file set as [`poli publish`](#poli-publish) (regular files only, never a symlink): its templates and mocks, `tailwind.css`, and the assets under `assets/images/`, `assets/icons/` and `assets/fonts/`. A template or mock file the manifest names that is not in that set (missing, symlinked, or outside `templates/<name>/`) fails the link before the project is created.
+
 #### Confirmed links
 
 A `cloud:` block can come with a cloned repository, and every sync overwrites the cloud draft of the project it names. So `poli watch` and `poli dev` sync only a folder whose link you confirmed on this machine. The confirmed links are kept per user in `~/.polipage/links.json` (mode `0600`), keyed by the folder's real path and the project id; `poli link` and `poli init --starter` (when it links) write them, `poli unlink` removes the folder's. The first time you run `poli watch` or `poli dev` in a folder that is not there, or whose `projectId` changed, the command names the organization and project and asks once; a yes is recorded, a no stops the command before any sync. Without a terminal to ask in (stdin or stdout not a TTY), it refuses with exit `2`.
