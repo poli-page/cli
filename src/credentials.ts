@@ -78,12 +78,10 @@ export async function writePrivateFile(
 
 export async function clearCredentials(homeDir?: string): Promise<void> {
 	const path = getCredentialsPath(homeDir);
-	try {
-		const { unlink } = await import('node:fs/promises');
-		await unlink(path);
-	} catch {
-		// Already gone — that's fine
-	}
+	const { unlink } = await import('node:fs/promises');
+	await unlink(path).catch((error: NodeJS.ErrnoException) => {
+		if (error.code !== 'ENOENT') throw error;
+	});
 }
 
 export async function updateOrgKeys(
