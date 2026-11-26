@@ -174,6 +174,8 @@ describe('poli new', () => {
 	it.each([
 		[{ format: 'A4/../..' }, /Unknown page format/],
 		[{ orientation: 'sideways' }, /Unknown orientation/],
+		[{ orientation: 'constructor' }, /Unknown orientation/],
+		[{ orientation: '__proto__' }, /Unknown orientation/],
 	])('refuses %j before importing anything', async (override, message) => {
 		await expect(
 			executeNew('certificate', {

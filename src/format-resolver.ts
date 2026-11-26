@@ -75,18 +75,16 @@ export function resolveFormat(format: string, orientation: string): PageFormat {
 	const formatKey = format.toUpperCase();
 	const orientationKey = orientation.toLowerCase();
 
-	const orientations = FORMAT_MAP[formatKey];
-	if (!orientations) {
+	if (!isPageFormat(format)) {
 		const available = PAGE_FORMATS.join(', ');
 		throw new Error(`Unknown page format "${format}". Available: ${available}`);
 	}
 
-	const pageFormat = orientations[orientationKey];
-	if (!pageFormat) {
+	if (!isOrientation(orientation)) {
 		throw new Error(`Unknown orientation "${orientation}". Use "portrait" or "landscape".`);
 	}
 
-	return pageFormat;
+	return FORMAT_MAP[formatKey][orientationKey];
 }
 
 /**
