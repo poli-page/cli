@@ -407,7 +407,7 @@ describe('poli link choosing the organization', () => {
 			{ session: 'sess', user: { id: 'u', name: 'X', email: 'x@x.com' }, orgs: {} },
 			fakeHome
 		);
-		vi.stubEnv('HOME', fakeHome);
+		stubHome(fakeHome);
 		vi.stubEnv('POLI_API_URL', API_URL);
 		vi.stubEnv('POLI_PAGE_API_KEY', '');
 		vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
@@ -476,6 +476,16 @@ describe('poli link choosing the organization', () => {
 		expect(errors.join('')).toContain(
 			'Organization "initech" not found. Available: acme, globex'
 		);
+		expect(await readCloud()).toBeUndefined();
+	});
+
+	it('refuses an empty --org with exit 2 instead of picking the only organization', async () => {
+		serveOrganizations([GLOBEX]);
+
+		await poliLink('--org', '');
+
+		expect(process.exitCode).toBe(2);
+		expect(errors.join('')).toContain('Organization "" not found. Available: globex');
 		expect(await readCloud()).toBeUndefined();
 	});
 

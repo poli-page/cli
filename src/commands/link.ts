@@ -179,7 +179,7 @@ export function registerLinkCommands(program: Command) {
 
 				const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
 				let orgSlug = opts.org;
-				if (orgSlug) {
+				if (orgSlug !== undefined) {
 					try {
 						findOrganization(orgs, orgSlug);
 					} catch (err) {
