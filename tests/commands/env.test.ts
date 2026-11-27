@@ -254,7 +254,7 @@ describe('poli env list', () => {
 			);
 			await poli();
 			expect(logs[3]).toBe(
-				'  sandbox      no         no         yes        succeeded  2026-10-26 10:00 UTC  Ada Lovelace  0123456789ab  fix   live   yes [2J '
+				'  sandbox      no         no         yes        succeeded  2026-10-26 10:00 UTC  Ada Lovelace  0123456789ab  fix   live   yes [2J'
 			);
 
 			logs = [];

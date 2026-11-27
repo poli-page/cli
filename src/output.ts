@@ -35,5 +35,5 @@ export function shouldEmitJson(
  * escape sequence in it would split or rewrite what the user sees.
  */
 export function oneLine(text: string): string {
-	return text.replace(/\p{Cc}+/gu, ' ');
+	return text.replace(/\p{Cc}+/gu, ' ').trim();
 }

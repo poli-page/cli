@@ -227,7 +227,7 @@ describe('api-client error mapping', () => {
 					'the detail',
 					500,
 					envelope('INTERNAL_ERROR', 'Database\nunavailable\u001b[2J\u0007'),
-					'Database unavailable [2J ',
+					'Database unavailable [2J',
 				],
 				[
 					'the issues',
@@ -240,8 +240,8 @@ describe('api-client error mapping', () => {
 				],
 				['a detail-less code', 403, envelope('NOT_A\nMEMBER'), '403 NOT_A MEMBER'],
 				['the Better Auth message', 422, { code: 'X', message: 'User\r\nexists' }, 'User exists'],
-				['a bare { message }', 503, { message: 'Service\u001b]0;pwned\u0007' }, 'Service ]0;pwned '],
-				['a non-JSON body', 502, '<html>\n<body>Bad\tGateway</body>\n</html>\n', '<html> <body>Bad Gateway</body> </html> '],
+				['a bare { message }', 503, { message: 'Service\u001b]0;pwned\u0007' }, 'Service ]0;pwned'],
+				['a non-JSON body', 502, '<html>\n<body>Bad\tGateway</body>\n</html>\n', '<html> <body>Bad Gateway</body> </html>'],
 			];
 			it.each(cases)('%s', async (_name, status, body, message) => {
 				mockFetchOnce(status, body);

@@ -639,7 +639,7 @@ describe('auth commands', () => {
 			expect(logs).toEqual(['Logged out: local credentials removed.']);
 		});
 
-		it('indents every line of a multi-line reason (an HTML error page)', async () => {
+		it('prints an HTML error page reason on one indented line', async () => {
 			await storeSession('https://api.poli.page');
 			vi.stubGlobal(
 				'fetch',
@@ -656,7 +656,7 @@ describe('auth commands', () => {
 
 			expect(errors).toHaveLength(1);
 			const [, ...rest] = errors[0].split('\n');
-			expect(rest).toEqual(['  <html>', '  <body>Bad Gateway</body>', '  </html>']);
+			expect(rest).toEqual(['  <html> <body>Bad Gateway</body> </html>']);
 		});
 
 		it.skipIf(!readOnlyDirBlocksUnlink)('fails with exit 6 and keeps quiet about removal when the file cannot be deleted', async () => {

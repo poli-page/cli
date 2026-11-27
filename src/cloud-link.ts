@@ -4,6 +4,7 @@ import type { ApiClient } from './api-client.js';
 import { getCredentialsDir, writePrivateFile } from './credentials.js';
 import { LINKS_FILENAME } from './constants.js';
 import { ExitCode } from './exit-codes.js';
+import { oneLine } from './output.js';
 import type { PoliPageManifest } from './manifest.schema.js';
 import { confirmPrompt } from './template-prompt.js';
 
@@ -23,7 +24,7 @@ export class UnconfirmedLinkError extends Error {
 }
 
 function describeTarget({ org, project }: LinkTarget): string {
-	return `project "${project.name}" (${project.slug}) of organization "${org.name}" (${org.slug})`;
+	return `project "${oneLine(project.name)}" (${oneLine(project.slug)}) of organization "${oneLine(org.name)}" (${oneLine(org.slug)})`;
 }
 
 function mismatch(detail: string): CloudLinkMismatchError {

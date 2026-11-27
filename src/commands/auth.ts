@@ -297,7 +297,7 @@ export function registerAuthCommands(program: Command) {
 			const { default: chalk } = await import('chalk');
 			const result = await executeLogout();
 			if (result.status === 'revoke-failed') {
-				// The reason can span lines (an unreachable API, an HTML error page).
+				// The reason can span lines (an unreachable API).
 				console.error(
 					chalk.yellow(
 						`Warning: the session was not revoked on ${result.origin}: it stays valid until it expires.\n  ${result.reason.replace(/\n/g, '\n  ')}`

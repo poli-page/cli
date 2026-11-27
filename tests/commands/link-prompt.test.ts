@@ -254,6 +254,70 @@ describe('poli link when the organization already has the project', () => {
 		expect(createCalled).toBe(false);
 	});
 
+	it('shows server names on one line in the organization picker and the question', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) => {
+				if (url === `${API_URL}/api/organizations`) {
+					return jsonResponse([
+						{
+							id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
+							name: 'Ac\nme\u001b[2J',
+							slug: 'ac\rme',
+						},
+					]);
+				}
+				return jsonResponse([
+					{
+						id: '8274f64d-4ea2-4f96-b596-5727a7b17268',
+						name: 'De\nmo\u0007',
+						slug: 'demo',
+					},
+				]);
+			})
+		);
+		process.stdin.isTTY = true;
+		process.stdout.isTTY = true;
+		selectMock.mockResolvedValue('ac\rme');
+		confirmMock.mockResolvedValue(false);
+
+		await poliLink();
+
+		expect(selectMock.mock.calls[0][0].choices).toEqual([
+			{ name: 'Ac me [2J (ac me)', value: 'ac\rme' },
+		]);
+		expect(confirmMock.mock.calls[0][0].message).toMatch(
+			/^Link this folder to the existing project "De mo" \(demo\) of organization "Ac me \[2J" \(ac me\)\? [^\p{Cc}]+$/u
+		);
+	});
+
+	it('names a server slug with control characters on one line once linked', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string, init?: RequestInit) => {
+				if (url === `${API_URL}/api/organizations`) {
+					return jsonResponse([
+						{
+							id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
+							name: 'Acme',
+							slug: 'ac\nme\u001b[2J',
+						},
+					]);
+				}
+				return jsonResponse(init?.method === 'POST' ? { id: 'proj_new' } : []);
+			})
+		);
+		const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+		selectMock.mockResolvedValue('ac\nme\u001b[2J');
+
+		await poliLink();
+
+		expect(process.exitCode).toBeUndefined();
+		const written = stderr.mock.calls.map(([chunk]) => String(chunk)).join('');
+		expect(written).toContain('Project linked to ac me [2J');
+		expect(written).not.toMatch(/ac\nme|\u001b\[2J/);
+	});
+
 	it('links on yes', async () => {
 		process.stdin.isTTY = true;
 		process.stdout.isTTY = true;
