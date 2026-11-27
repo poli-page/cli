@@ -13,6 +13,7 @@ import {
 	type LinkTarget,
 } from '../cloud-link.js';
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
+import { oneLine } from '../output.js';
 
 export interface LinkOptions {
 	cwd?: string;
@@ -42,8 +43,8 @@ export interface Organization {
 export function findOrganization(orgs: Organization[], slug: string): Organization {
 	const org = orgs.find((o) => o.slug === slug);
 	if (!org) {
-		const available = orgs.map((o) => o.slug).join(', ') || 'none';
-		throw new Error(`Organization "${slug}" not found. Available: ${available}`);
+		const available = orgs.map((o) => oneLine(o.slug)).join(', ') || 'none';
+		throw new Error(`Organization "${oneLine(slug)}" not found. Available: ${available}`);
 	}
 	return org;
 }
@@ -57,7 +58,7 @@ export async function promptForOrganization(
 	return select({
 		message,
 		choices: orgs.map((org) => ({
-			name: `${org.name} (${org.slug})`,
+			name: `${oneLine(org.name)} (${oneLine(org.slug)})`,
 			value: org.slug,
 		})),
 	});
@@ -93,7 +94,7 @@ export async function executeLink(options: LinkOptions): Promise<void> {
 			const target = { org, project: existing };
 			if (!options.confirmExisting) {
 				throw new UnconfirmedLinkError(
-					`Organization "${org.slug}" already has a project "${existing.name}" (${existing.slug}). Re-run with \`--existing\` to link this folder to it, or in a terminal to be asked.`
+					`Organization "${oneLine(org.slug)}" already has a project "${oneLine(existing.name)}" (${existing.slug}). Re-run with \`--existing\` to link this folder to it, or in a terminal to be asked.`
 				);
 			}
 			if (!(await options.confirmExisting(target))) {
@@ -190,7 +191,7 @@ export function registerLinkCommands(program: Command) {
 							}
 						: undefined,
 				});
-				spinner.succeed(chalk.green(`Project linked to ${orgSlug}`));
+				spinner.succeed(chalk.green(`Project linked to ${oneLine(orgSlug)}`));
 			} catch (error) {
 				const msg = error instanceof Error ? error.message : 'Link failed';
 				if (spinner) {

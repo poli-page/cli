@@ -199,6 +199,34 @@ describe('poli link / unlink', () => {
 				expect(await isLinkConfirmed(projectDir, 'existing_proj_id', fakeHome)).toBe(false);
 			});
 
+			it('names a server project and organization with control characters on one line', async () => {
+				const error = await executeLink({
+					cwd: projectDir,
+					orgSlug: 'acme\u0007corp',
+					apiClient: createMockApiClient({
+						getOrganizations: async () => [
+							{
+								id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1',
+								name: 'Acme',
+								slug: 'acme\u0007corp',
+							},
+						],
+						listProjects: async () => [
+							{
+								id: 'existing_proj_id',
+								name: 'Test\nProject\u001b[2J',
+								slug: 'test-project',
+							},
+						],
+					}),
+					homeDir: fakeHome,
+				}).catch((e: unknown) => e);
+
+				expect((error as Error).message).toMatch(
+					/^Organization "acme corp" already has a project "Test Project \[2J" \(test-project\)\. [^\p{Cc}]+$/u
+				);
+			});
+
 			it('asks, naming the project and organization, and links on yes', async () => {
 				const confirmExisting = vi.fn(async () => true);
 				await executeLink({

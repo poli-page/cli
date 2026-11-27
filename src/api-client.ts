@@ -1,5 +1,6 @@
 import type { UserInfo } from './credentials.js';
 import { apiOrigin, assertTrustedApiOrigin } from './api-origin.js';
+import { oneLine } from './output.js';
 
 export class ApiError extends Error {
 	constructor(
@@ -702,7 +703,9 @@ export function createApiClient(baseUrl?: string): ApiClient {
 async function buildApiError(response: Response): Promise<ApiError> {
 	const text = await response.text();
 	const retryAfter = parseRetryAfter(response.headers.get('Retry-After'));
-	const { code, message } = parseErrorBody(text, response.status);
+	const { code, message: serverText } = parseErrorBody(text, response.status);
+	// Command error handlers print the message to stderr as is.
+	const message = oneLine(serverText);
 
 	const typed = code ? TYPED_ERROR_REGISTRY[code] : undefined;
 	if (typed) {
