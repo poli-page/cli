@@ -9,17 +9,38 @@ import { MANIFEST_FILENAME } from './constants.js';
  *
  * Accepted: `poli-page.json` and `tailwind.css` at the root; `.html`,
  * `.json` and `.css` files at any depth under `templates/{slug}/`; `.html`
- * files at any depth under `partials/`; any file under `assets/images/` or
- * `assets/icons/`; `.woff2`, `.woff`, `.ttf` and `.otf` files under
- * `assets/fonts/`. Paths are POSIX, relative to the project root.
+ * files at any depth under `partials/`; `.png`, `.jpg`, `.jpeg`, `.gif`,
+ * `.webp` and `.svg` files under `assets/images/` or `assets/icons/`;
+ * `.woff2`, `.woff`, `.ttf` and `.otf` files under `assets/fonts/`.
+ * Extensions match in any letter case. Paths are POSIX, relative to the
+ * project root.
  */
 export const TEMPLATE_SLUG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 const TEMPLATE_FILE_EXTENSIONS = new Set(['html', 'json', 'css']);
 const FONT_EXTENSIONS = new Set(['woff2', 'woff', 'ttf', 'otf']);
+/** The image types the engine renders, as the API's list (poli-page/poli-page#1267). */
+export const IMAGE_EXTENSIONS: ReadonlySet<string> = new Set([
+	'png',
+	'jpg',
+	'jpeg',
+	'gif',
+	'webp',
+	'svg',
+]);
 
 function extensionOf(fileName: string): string {
 	const dot = fileName.lastIndexOf('.');
 	return dot === -1 ? '' : fileName.slice(dot + 1).toLowerCase();
+}
+
+/** A file path inside `assets/images/` or `assets/icons/`, accepted or not. */
+export function isImageFolderPath(path: string): boolean {
+	const segments = path.split('/');
+	return (
+		segments.length >= 3 &&
+		segments[0] === 'assets' &&
+		(segments[1] === 'images' || segments[1] === 'icons')
+	);
 }
 
 export function isAcceptedProjectPath(path: string): boolean {
@@ -35,8 +56,8 @@ export function isAcceptedProjectPath(path: string): boolean {
 		return TEMPLATE_SLUG_RE.test(folder) && TEMPLATE_FILE_EXTENSIONS.has(extension);
 	}
 	if (root === 'partials') return extension === 'html';
+	if (isImageFolderPath(path)) return IMAGE_EXTENSIONS.has(extension);
 	if (root === 'assets' && segments.length >= 3) {
-		if (folder === 'images' || folder === 'icons') return true;
 		return folder === 'fonts' && FONT_EXTENSIONS.has(extension);
 	}
 	return false;

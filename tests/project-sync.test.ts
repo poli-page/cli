@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -150,6 +150,41 @@ describe('createProjectSyncer', () => {
 			'tailwind.css',
 			'templates/invoice/invoice.html',
 		]);
+	});
+
+	it('leaves out a non-image file of assets/images or assets/icons and names it once', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		await mkdir(join(dir, 'assets', 'images'), { recursive: true });
+		await mkdir(join(dir, 'assets', 'icons'), { recursive: true });
+		await writeFile(join(dir, 'assets', 'images', 'x.sqlite'), 'db');
+		await writeFile(join(dir, 'assets', 'images', 'logo.PNG'), 'png');
+		for (const junk of ['.DS_Store', '.gitkeep', '.keep', 'Thumbs.db', 'desktop.ini']) {
+			await writeFile(join(dir, 'assets', 'images', junk), '');
+		}
+		await writeFile(join(dir, 'templates', 'invoice', 'notes.md'), '# notes');
+		await writeFile(join(dir, 'assets', 'icons', 'x.sh'), 'echo hi');
+		await writeFile(join(dir, 'assets', 'icons', 'x\u001b[2J.sh'), 'echo hi');
+
+		try {
+			const files = await readAllProjectFiles(dir);
+			await readAllProjectFiles(dir);
+
+			expect([...files.keys()].sort()).toEqual([
+				'assets/images/logo.PNG',
+				'tailwind.css',
+				'templates/invoice/invoice.html',
+			]);
+			const messages = warn.mock.calls.map(([msg]) => String(msg));
+			expect(messages.join('\n')).not.toContain('\u001b');
+			expect(messages).toEqual([
+				expect.stringContaining('assets/icons/x [2J.sh is not'),
+				expect.stringContaining('assets/icons/x.sh is not'),
+				expect.stringContaining('assets/images/x.sqlite is not'),
+			]);
+			expect(messages[0]).toContain('png, jpg, jpeg, gif, webp, svg');
+		} finally {
+			warn.mockRestore();
+		}
 	});
 
 	it('syncAll() pushes the whole tree as modified and reseeds the snapshot', async () => {

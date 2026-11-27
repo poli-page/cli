@@ -5,8 +5,11 @@ import type { ApiClient, PatchFilesBody } from './api-client.js';
 import type { CloudContext } from './cloud-context.js';
 import { MANIFEST_FILENAME } from './constants.js';
 import { UsageError } from './exit-codes.js';
+import { oneLine } from './output.js';
 import {
+	IMAGE_EXTENSIONS,
 	isAcceptedProjectPath,
+	isImageFolderPath,
 	projectFileEncoding,
 	toProjectFileEntries,
 } from './project-files.js';
@@ -24,6 +27,18 @@ export function isInIgnoredProjectDirectory(relPath: string): boolean {
 	return relPath.split(/[\\/]/).some((segment) => IGNORED_DIRECTORY_NAMES.has(segment));
 }
 
+/**
+ * OS metadata and the placeholders that keep an empty folder in git (`poli
+ * init` creates an empty `assets/images/`).
+ */
+const JUNK_FILE_NAMES = new Set(['.DS_Store', '.gitkeep', '.keep', 'Thumbs.db', 'desktop.ini']);
+
+/** Files no project means to sync, left out without a warning. */
+function isJunkProjectPath(path: string): boolean {
+	const name = path.slice(path.lastIndexOf('/') + 1);
+	return isInIgnoredProjectDirectory(path) || JUNK_FILE_NAMES.has(name) || path.endsWith('.log');
+}
+
 export function shouldIgnoreProjectPath(relPath: string): boolean {
 	// Callers pass the raw output of `relative()`, which is
 	// backslash-separated on Windows. Normalise here, at the public
@@ -31,10 +46,27 @@ export function shouldIgnoreProjectPath(relPath: string): boolean {
 	// `templates\\inv\\inv.html` is in the file set, and
 	// `templates\\inv\\node_modules\\x.json` is not.
 	const normalized = relPath.split(/[\\/]/).join('/');
-	if (isInIgnoredProjectDirectory(normalized)) return true;
-	if (normalized.endsWith('.DS_Store')) return true;
-	if (normalized.endsWith('.log')) return true;
-	return !isAcceptedProjectPath(normalized);
+	return isJunkProjectPath(normalized) || !isAcceptedProjectPath(normalized);
+}
+
+/**
+ * Absolute paths already named by `warnNotAnImage`: `poli watch` and
+ * `poli dev` list the project on every sync, and the user needs to read
+ * each one once.
+ */
+const namedNotImages = new Set<string>();
+
+/**
+ * Anywhere else a file outside the set is plainly not a project file, but
+ * one in `assets/images/` or `assets/icons/` was likely meant to upload.
+ */
+function warnNotAnImage(cwd: string, path: string): void {
+	const key = join(cwd, path);
+	if (namedNotImages.has(key)) return;
+	namedNotImages.add(key);
+	console.warn(
+		`⚠ ${oneLine(path)} is not an image the engine renders (${[...IMAGE_EXTENSIONS].join(', ')}); it is left out of the project files.`
+	);
 }
 
 /**
@@ -114,8 +146,10 @@ export async function listProjectFiles(cwd: string): Promise<ProjectFileStat[]> 
 			const stats = await lstatIfExists(join(cwd, path));
 			if (stats?.isDirectory()) {
 				if (!isInIgnoredProjectDirectory(path)) await walk(path);
-			} else if (stats?.isFile() && !shouldIgnoreProjectPath(path)) {
-				add(path, stats.size);
+			} else if (stats?.isFile()) {
+				if (!shouldIgnoreProjectPath(path)) add(path, stats.size);
+				else if (isImageFolderPath(path) && !isJunkProjectPath(path))
+					warnNotAnImage(cwd, path);
 			}
 		}
 	}
