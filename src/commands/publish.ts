@@ -214,7 +214,7 @@ async function publishWithApiKey(
 			? `organization "${org.name}" (${org.slug}, ${org.id})`
 			: 'no known organization';
 		throw new UsageError(
-			`This API key belongs to ${keyOrg}, but this folder is linked to organization "${cloud.orgSlug}" (${cloud.orgId}). Use a key of "${cloud.orgSlug}", or run \`poli link\` again.`
+			`This API key belongs to ${keyOrg}, but this folder is linked to organization "${cloud.orgSlug}" (${cloud.orgId}). Use a key of "${cloud.orgSlug}", or run \`poli unlink\`, then \`poli link\`.`
 		);
 	}
 	if (key.environment !== environment) {

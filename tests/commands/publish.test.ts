@@ -605,7 +605,7 @@ describe('poli publish', () => {
 			};
 			const err = await run({ env: 'staging' }, keyClient(calls, me)).catch((e) => e);
 			expect(err.message).toBe(
-				'This API key belongs to organization "Globex" (globex, 5b1f1c1e-9a43-4a8e-bb3a-0f6c2d9e7a10), but this folder is linked to organization "acme" (0e89d99e-1516-4b48-baa1-f49e660ad1c1). Use a key of "acme", or run `poli link` again.'
+				'This API key belongs to organization "Globex" (globex, 5b1f1c1e-9a43-4a8e-bb3a-0f6c2d9e7a10), but this folder is linked to organization "acme" (0e89d99e-1516-4b48-baa1-f49e660ad1c1). Use a key of "acme", or run `poli unlink`, then `poli link`.'
 			);
 			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
 			expect(order).toEqual([`getMe Bearer ${SERVICE_KEY} undefined`]);
