@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+	IMAGE_EXTENSIONS,
 	isAcceptedProjectPath,
 	projectFileEncoding,
 	toProjectFileEntries,
@@ -20,6 +21,12 @@ describe('isAcceptedProjectPath — the file set the API accepts', () => {
 		'assets/images/logo.png',
 		'assets/images/brand/logo.svg',
 		'assets/icons/check.svg',
+		'assets/images/photo.jpg',
+		'assets/images/photo.JPEG',
+		'assets/images/anim.Gif',
+		'assets/icons/check.WEBP',
+		'assets/icons/check.PNG',
+		'assets/images/LOGO.SVG',
 		'assets/fonts/dm-sans.woff2',
 		'assets/fonts/inter/inter-400.woff',
 		'assets/fonts/a.ttf',
@@ -48,12 +55,25 @@ describe('isAcceptedProjectPath — the file set the API accepts', () => {
 		'assets/fonts/readme.txt',
 		'assets/fonts/inter.css',
 		'assets/videos/intro.mp4',
+		'assets/images/notes.sqlite',
+		'assets/images/brand/logo.ai',
+		'assets/images/png',
+		'assets/icons/x.sh',
+		'assets/icons/check.svg.exe',
 		'output/invoice/a4-portrait/invoice.pdf',
 		'node_modules/pkg/index.html',
 		'sub/poli-page.json',
 		'sub/tailwind.css',
 	])('refuses %s', (path) => {
 		expect(isAcceptedProjectPath(path)).toBe(false);
+	});
+});
+
+describe('IMAGE_EXTENSIONS', () => {
+	// The API's list (electron/image-paths.ts, poli-page/poli-page#1267): the
+	// image types the engine renders. Change both together.
+	it('is the image list of the API', () => {
+		expect([...IMAGE_EXTENSIONS]).toEqual(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']);
 	});
 });
 

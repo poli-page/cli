@@ -143,10 +143,10 @@ export async function collectProjectPayload(
 		}
 	}
 
-	// Assets go by their path under `assets/`, already base64. In the file
-	// set only assets carry these extensions.
+	// Assets go by their path under `assets/`, already base64: the file set
+	// holds only image and font files there.
 	const imageFiles = toProjectFileEntries(files)
-		.filter((file) => /\.(png|jpg|jpeg|gif|svg|webp|woff2|woff|ttf|otf)$/i.test(file.path))
+		.filter((file) => file.encoding === 'base64')
 		.map((file) => ({ path: file.path.slice('assets/'.length), data: file.content }));
 
 	const tailwindCss = files.get('tailwind.css');

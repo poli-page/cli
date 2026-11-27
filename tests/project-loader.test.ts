@@ -144,7 +144,7 @@ describe('project-loader', () => {
 			await mkdir(join(projectDir, 'assets', 'fonts'), { recursive: true });
 			await writeFile(join(projectDir, 'assets', 'images', 'logo.png'), Buffer.from([1, 2, 3]));
 			await writeFile(join(projectDir, 'assets', 'fonts', 'inter-400.woff2'), Buffer.from([4, 5]));
-			// In the file set, but never part of the link payload.
+			// Not an image: left out of the file set, so of the link payload.
 			await writeFile(join(projectDir, 'assets', 'images', 'notes.txt'), 'notes', 'utf-8');
 		}
 
