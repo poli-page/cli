@@ -12,6 +12,7 @@ import type {
 } from '../../src/api-client.js';
 import { ExitCode } from '../../src/exit-codes.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
+import { stubHome } from '../helpers/fake-home.js';
 
 const { inputMock } = vi.hoisted(() => ({ inputMock: vi.fn() }));
 vi.mock('@inquirer/prompts', () => ({ input: inputMock }));
@@ -151,7 +152,7 @@ beforeEach(async () => {
 		},
 		fakeHome
 	);
-	vi.stubEnv('HOME', fakeHome);
+	stubHome(fakeHome);
 	vi.stubEnv('POLI_API_URL', API_URL);
 	vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
 	orgs = [ACME];

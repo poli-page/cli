@@ -19,6 +19,7 @@ import { createProgram } from '../src/program.js';
 import { ExitCode } from '../src/exit-codes.js';
 import { createFakeApiClient } from './helpers/fake-api-client.js';
 import { testApiKey } from './helpers/api-key.js';
+import { stubHome } from './helpers/fake-home.js';
 
 interface Received {
 	method?: string;
@@ -325,8 +326,7 @@ describe('poli commands and the API URL', () => {
 	beforeEach(async () => {
 		fakeHome = await mkdtemp(join(tmpdir(), 'poli-origin-home-'));
 		projectDir = await mkdtemp(join(tmpdir(), 'poli-origin-proj-'));
-		vi.stubEnv('HOME', fakeHome);
-		vi.stubEnv('USERPROFILE', fakeHome);
+		stubHome(fakeHome);
 		vi.stubEnv('POLI_API_URL', '');
 		vi.stubEnv('POLI_ALLOW_INSECURE_API', '');
 		vi.stubEnv('POLI_PAGE_API_KEY', '');

@@ -10,6 +10,7 @@ import { MANIFEST_FILENAME } from '../../src/constants.js';
 import type { ApiClient } from '../../src/api-client.js';
 import type { Fetcher } from '../../src/template-importer.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
+import { stubHome } from '../helpers/fake-home.js';
 
 const STARTER_MANIFEST = {
 	project: { name: 'getting-started', version: '1.0.0', description: 'The starter' },
@@ -608,7 +609,7 @@ describe('poli init --starter: command output', () => {
 		beforeEach(async () => {
 			tempDir = await mkdtemp(join(tmpdir(), 'poli-init-starter-json-'));
 			fakeHome = await mkdtemp(join(tmpdir(), 'poli-home-'));
-			vi.stubEnv('HOME', fakeHome);
+			stubHome(fakeHome);
 			vi.stubGlobal('fetch', makeFetcher([]));
 			logs = [];
 			vi.spyOn(console, 'log').mockImplementation((msg: unknown = '') => {

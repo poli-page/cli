@@ -13,6 +13,7 @@ import type { ApiClient, MeResponse } from '../../src/api-client.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
 import { testApiKey } from '../helpers/api-key.js';
 import { readOnlyDirBlocksUnlink } from '../helpers/dir-permissions.js';
+import { stubHome } from '../helpers/fake-home.js';
 
 const openBrowser = vi.hoisted(() => vi.fn(async (_url: string) => {}));
 vi.mock('open', () => ({ default: openBrowser }));
@@ -323,8 +324,7 @@ describe('auth commands', () => {
 
 		beforeEach(async () => {
 			projectDir = await mkdtemp(join(tmpdir(), 'poli-login-cmd-'));
-			vi.stubEnv('HOME', fakeHome);
-			vi.stubEnv('USERPROFILE', fakeHome);
+			stubHome(fakeHome);
 			vi.stubEnv('POLI_API_URL', '');
 			vi.stubEnv('POLI_ALLOW_INSECURE_API', '');
 			vi.stubEnv('POLI_PAGE_API_KEY', '');
@@ -534,8 +534,7 @@ describe('auth commands', () => {
 		let savedExitCode: typeof process.exitCode;
 
 		beforeEach(() => {
-			vi.stubEnv('HOME', fakeHome);
-			vi.stubEnv('USERPROFILE', fakeHome);
+			stubHome(fakeHome);
 			vi.stubEnv('POLI_API_URL', '');
 			vi.stubEnv('POLI_ALLOW_INSECURE_API', '');
 			fetched = [];
@@ -932,8 +931,7 @@ describe('auth commands', () => {
 
 		beforeEach(async () => {
 			projectDir = await mkdtemp(join(tmpdir(), 'poli-whoami-cmd-'));
-			vi.stubEnv('HOME', fakeHome);
-			vi.stubEnv('USERPROFILE', fakeHome);
+			stubHome(fakeHome);
 			vi.stubEnv('POLI_API_URL', API_URL);
 			vi.stubEnv('POLI_PAGE_API_KEY', '');
 			vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
