@@ -261,4 +261,61 @@ describe('project file set walk and limits', () => {
 			lstatSpy.mockImplementation(actual.lstat as never);
 		}
 	});
+
+	it('refuses files that add up past the total limit by the time they are read', async () => {
+		await plantImagesOverTotalLimit(dir);
+		const images = join(dir, 'assets', 'images');
+		const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+		// The listing saw them small; they grew since.
+		lstatSpy.mockImplementation(async (path, ...rest) => {
+			const stats = await actual.lstat(path, ...(rest as []));
+			if (String(path).startsWith(images) && stats.isFile()) {
+				Object.defineProperty(stats, 'size', { value: 1 });
+			}
+			return stats;
+		});
+		try {
+			const err = await readAllProjectFiles(dir).catch((e) => e);
+			expect(err.message).toContain('add up to more than');
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
+		} finally {
+			lstatSpy.mockReset();
+			lstatSpy.mockImplementation(actual.lstat as never);
+		}
+	});
+
+	it('reads no more than the per-file limit of a file that grew after it was opened', async () => {
+		const grown = join(dir, 'assets', 'images', 'grown.png');
+		await writeFile(grown, '');
+		await truncate(grown, PROJECT_FILE_MAX_BYTES + 1024 * 1024);
+		const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+		// Both the listing and the open file's stat saw it small.
+		lstatSpy.mockImplementation(async (path, ...rest) => {
+			const stats = await actual.lstat(path, ...(rest as []));
+			if (String(path) === grown) Object.defineProperty(stats, 'size', { value: 1 });
+			return stats;
+		});
+		openSpy.mockImplementation(async (path, ...rest) => {
+			const handle = await actual.open(path, ...(rest as []));
+			if (String(path) === grown) {
+				const stat = handle.stat.bind(handle);
+				handle.stat = (async (...args: []) => {
+					const stats = await stat(...args);
+					Object.defineProperty(stats, 'size', { value: 1 });
+					return stats;
+				}) as typeof handle.stat;
+			}
+			return handle;
+		});
+		try {
+			const err = await readAllProjectFiles(dir).catch((e) => e);
+			expect(err.message).toContain('assets/images/grown.png');
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
+		} finally {
+			lstatSpy.mockReset();
+			lstatSpy.mockImplementation(actual.lstat as never);
+			openSpy.mockReset();
+			openSpy.mockImplementation(actual.open as never);
+		}
+	});
 });

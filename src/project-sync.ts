@@ -67,6 +67,12 @@ function tooLarge(path: string, size: number): UsageError {
 	);
 }
 
+function tooManyBytes(path: string): UsageError {
+	return new UsageError(
+		`The project files add up to more than ${mebibytes(PROJECT_MAX_TOTAL_BYTES)} (at ${path}), the most a publish may carry. Shrink or remove large assets.`
+	);
+}
+
 async function lstatIfExists(path: string): Promise<Stats | null> {
 	try {
 		return await lstat(path);
@@ -97,11 +103,7 @@ export async function listProjectFiles(cwd: string): Promise<ProjectFileStat[]> 
 			);
 		}
 		totalBytes += size;
-		if (totalBytes > PROJECT_MAX_TOTAL_BYTES) {
-			throw new UsageError(
-				`The project files add up to more than ${mebibytes(PROJECT_MAX_TOTAL_BYTES)} (at ${path}), the most a publish may carry. Shrink or remove large assets.`
-			);
-		}
+		if (totalBytes > PROJECT_MAX_TOTAL_BYTES) throw tooManyBytes(path);
 		files.push({ path, size });
 	}
 
@@ -135,13 +137,25 @@ const READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0);
 /**
  * Read one listed file. The open does not follow a symlink and the size is
  * checked again on the open file: either may have changed since the listing.
+ * The file may still grow after that check, so at most one byte past the
+ * limit is read.
  */
 async function readListedFile(cwd: string, file: ProjectFileStat): Promise<Buffer> {
 	const handle = await open(join(cwd, file.path), READ_FLAGS);
 	try {
 		const stats = await handle.stat();
 		if (stats.size > PROJECT_FILE_MAX_BYTES) throw tooLarge(file.path, stats.size);
-		return await handle.readFile();
+		const chunks: Buffer[] = [];
+		for await (const chunk of handle.createReadStream({
+			start: 0,
+			end: PROJECT_FILE_MAX_BYTES,
+			autoClose: false,
+		})) {
+			chunks.push(chunk as Buffer);
+		}
+		const buffer = Buffer.concat(chunks);
+		if (buffer.length > PROJECT_FILE_MAX_BYTES) throw tooLarge(file.path, buffer.length);
+		return buffer;
 	} finally {
 		await handle.close();
 	}
@@ -149,7 +163,8 @@ async function readListedFile(cwd: string, file: ProjectFileStat): Promise<Buffe
 
 /**
  * Read every file of the project file set (`listProjectFiles`, with its
- * limits) into a `path → content` map.
+ * limits) into a `path → content` map. The total is checked again on the
+ * bytes read: files may have grown since the listing.
  *
  * Paths are project-relative and POSIX-normalised so the wire format
  * matches the comparisons performed by the API regardless of host OS.
@@ -158,8 +173,11 @@ async function readListedFile(cwd: string, file: ProjectFileStat): Promise<Buffe
  */
 export async function readAllProjectFiles(cwd: string): Promise<Map<string, string>> {
 	const out = new Map<string, string>();
+	let totalBytes = 0;
 	for (const file of await listProjectFiles(cwd)) {
 		const buffer = await readListedFile(cwd, file);
+		totalBytes += buffer.length;
+		if (totalBytes > PROJECT_MAX_TOTAL_BYTES) throw tooManyBytes(file.path);
 		out.set(
 			file.path,
 			buffer.toString(projectFileEncoding(file.path) === 'base64' ? 'base64' : 'utf-8')
