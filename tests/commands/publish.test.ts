@@ -612,6 +612,25 @@ describe('poli publish', () => {
 			expect(calls).toHaveLength(0);
 		});
 
+		it('refuses a key of another organization with a session stored, saying to unset the key to use the session', async () => {
+			await writeCredentials(
+				{
+					session: 'session-token',
+					user: { id: 'u1', name: 'X', email: 'x@x' },
+					orgs: { acme: {} },
+				},
+				fakeHome
+			);
+			const calls: PublishCall[] = [];
+			const me = { ...keyMe(), org: null };
+			const err = await run({ env: 'staging' }, keyClient(calls, me)).catch((e) => e);
+			expect(err.message).toMatch(
+				/, or run `poli unlink`, then `poli link`\. Your `poli login` session is not used while POLI_PAGE_API_KEY is set: unset it to use the session\.$/
+			);
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
+			expect(calls).toHaveLength(0);
+		});
+
 		it('refuses a key /v1/me names no organization for when cloud.orgId is set, exit 2', async () => {
 			const calls: PublishCall[] = [];
 			const me = { ...keyMe(), org: null };
