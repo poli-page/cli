@@ -179,7 +179,13 @@ export function registerLinkCommands(program: Command) {
 
 				const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
 				let orgSlug = opts.org;
-				if (!orgSlug) {
+				if (orgSlug) {
+					try {
+						findOrganization(orgs, orgSlug);
+					} catch (err) {
+						throw new UsageError((err as Error).message);
+					}
+				} else {
 					if (orgs.length === 1) orgSlug = orgs[0].slug;
 					else if (interactive) orgSlug = await promptForOrganization(orgs);
 					else {

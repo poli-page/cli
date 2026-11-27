@@ -248,7 +248,7 @@ Flag: `--json` to dump the raw `/v1/me` payload (or, in `session-no-org` mode, `
 
 Pick an organization, create the cloud project, and write the `cloud:` section into `poli-page.json` with the four fields the API needs (`orgSlug`, `orgId`, `projectSlug`, `projectId`). No API key is stored in the manifest — the file is safe to commit. It also records the folder as a [confirmed link](#confirmed-links) on this machine, so `poli watch` and `poli dev` sync it without asking.
 
-The organization is the one `--org <slug>` names; an unknown slug fails, listing your organizations. Without `--org`, an account with a single organization uses it, and one with several asks in a terminal; when it cannot ask (stdin or stdout not a TTY, e.g. in CI or a script), it exits `2`, listing the slugs, and tells you to pass `--org <slug>`.
+The organization is the one `--org <slug>` names; an unknown slug fails with exit `2`, listing your organizations. Without `--org`, an account with a single organization uses it, and one with several asks in a terminal; when it cannot ask (stdin or stdout not a TTY, e.g. in CI or a script), it exits `2`, listing the slugs, and tells you to pass `--org <slug>`.
 
 ```bash
 poli link --org acme

@@ -467,12 +467,11 @@ describe('poli link choosing the organization', () => {
 		expect((await readCloud()).orgSlug).toBe('acme');
 	});
 
-	it('refuses an unknown --org, listing the organizations, and writes nothing', async () => {
+	it('refuses an unknown --org with exit 2, listing the organizations, and writes nothing', async () => {
 		await poliLink('--org', 'initech');
 
 		expect(selectMock).not.toHaveBeenCalled();
-		expect(process.exitCode).not.toBe(0);
-		expect(process.exitCode).toBeDefined();
+		expect(process.exitCode).toBe(2);
 		expect(errors.join('')).toContain(
 			'Organization "initech" not found. Available: acme, globex'
 		);
