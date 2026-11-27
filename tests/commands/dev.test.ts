@@ -433,14 +433,30 @@ describe('poli dev', () => {
 
 		it('starts on the requested port and walks upwards when it is busy', async () => {
 			await setupTemplate(projectDir, 'invoice');
-			const blocker = createServer(() => {});
-			extraServers.push(blocker);
-			const busyPort = await new Promise<number>((resolve) => {
-				blocker.listen(0, '127.0.0.1', () => {
-					const address = blocker.address();
-					resolve(typeof address === 'object' && address ? address.port : 0);
+			const listen = (server: Server, port: number) =>
+				new Promise<number>((resolve, reject) => {
+					server.once('error', reject);
+					server.listen(port, '127.0.0.1', () => {
+						server.removeListener('error', reject);
+						const address = server.address();
+						resolve(typeof address === 'object' && address ? address.port : 0);
+					});
 				});
-			});
+			// Hold the busy port and the one above it, so no parallel test can take
+			// the expected port; the one above is released just before the session starts.
+			const reservePair = async (): Promise<{ busyPort: number; next: Server }> => {
+				for (;;) {
+					const blocker = createServer(() => {});
+					extraServers.push(blocker);
+					const port = await listen(blocker, 0);
+					const next = createServer(() => {});
+					extraServers.push(next);
+					const reserved = await listen(next, port + 1).then(() => true, () => false);
+					if (reserved) return { busyPort: port, next };
+				}
+			};
+			const { busyPort, next } = await reservePair();
+			await new Promise<void>((resolve) => next.close(() => resolve()));
 
 			const session = await start(undefined, {
 				apiClient: makeStubClient(),
