@@ -221,6 +221,36 @@ describe('api-client error mapping', () => {
 			expect(err.message).toMatch(/plain text body/);
 		});
 
+		describe('server text with control characters comes out on one clean line', () => {
+			const cases: Array<[string, number, unknown, string]> = [
+				[
+					'the detail',
+					500,
+					envelope('INTERNAL_ERROR', 'Database\nunavailable\u001b[2J\u0007'),
+					'Database unavailable [2J ',
+				],
+				[
+					'the issues',
+					400,
+					{
+						...envelope('VALIDATION_ERROR', 'Invalid'),
+						issues: { 'na\rme': ['Too\nshort'] },
+					},
+					'Invalid: na me: Too short',
+				],
+				['a detail-less code', 403, envelope('NOT_A\nMEMBER'), '403 NOT_A MEMBER'],
+				['the Better Auth message', 422, { code: 'X', message: 'User\r\nexists' }, 'User exists'],
+				['a bare { message }', 503, { message: 'Service\u001b]0;pwned\u0007' }, 'Service ]0;pwned '],
+				['a non-JSON body', 502, '<html>\n<body>Bad\tGateway</body>\n</html>\n', '<html> <body>Bad Gateway</body> </html> '],
+			];
+			it.each(cases)('%s', async (_name, status, body, message) => {
+				mockFetchOnce(status, body);
+				const err = await callAnyEndpoint().catch((e) => e);
+				expect(err).toBeInstanceOf(ApiError);
+				expect(err.message).toBe(message);
+			});
+		});
+
 		it('names the status when the body is empty', async () => {
 			mockFetchOnce(502, '');
 			const err = await callAnyEndpoint().catch((e) => e);

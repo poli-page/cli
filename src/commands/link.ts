@@ -12,6 +12,7 @@ import {
 	type LinkTarget,
 } from '../cloud-link.js';
 import { errorToExitCode, ExitCode } from '../exit-codes.js';
+import { oneLine } from '../output.js';
 
 export interface LinkOptions {
 	cwd?: string;
@@ -41,8 +42,8 @@ export interface Organization {
 export function findOrganization(orgs: Organization[], slug: string): Organization {
 	const org = orgs.find((o) => o.slug === slug);
 	if (!org) {
-		const available = orgs.map((o) => o.slug).join(', ') || 'none';
-		throw new Error(`Organization "${slug}" not found. Available: ${available}`);
+		const available = orgs.map((o) => oneLine(o.slug)).join(', ') || 'none';
+		throw new Error(`Organization "${oneLine(slug)}" not found. Available: ${available}`);
 	}
 	return org;
 }

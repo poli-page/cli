@@ -29,3 +29,11 @@ export function shouldEmitJson(
 		context.isTTY !== undefined ? context.isTTY : Boolean(process.stdout.isTTY);
 	return !isTTY;
 }
+
+/**
+ * Server-supplied text for human output, on one line: a newline or terminal
+ * escape sequence in it would split or rewrite what the user sees.
+ */
+export function oneLine(text: string): string {
+	return text.replace(/\p{Cc}+/gu, ' ');
+}
