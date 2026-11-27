@@ -593,6 +593,69 @@ describe('poli publish', () => {
 			expect(calls[0].body.environment).toBe('staging');
 		});
 
+		it("refuses a key of another organization than cloud.orgId before the publish call, naming both, exit 2", async () => {
+			const calls: PublishCall[] = [];
+			const me = keyMe();
+			me.org = {
+				id: '5b1f1c1e-9a43-4a8e-bb3a-0f6c2d9e7a10',
+				slug: 'globex',
+				name: 'Globex',
+				tier: 'free',
+				lifecycleStatus: 'active',
+			};
+			const err = await run({ env: 'staging' }, keyClient(calls, me)).catch((e) => e);
+			expect(err.message).toBe(
+				'This API key belongs to organization "Globex" (globex, 5b1f1c1e-9a43-4a8e-bb3a-0f6c2d9e7a10), but this folder is linked to organization "acme" (0e89d99e-1516-4b48-baa1-f49e660ad1c1). Use a key of "acme", or run `poli unlink`, then `poli link`.'
+			);
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
+			expect(order).toEqual([`getMe Bearer ${SERVICE_KEY} undefined`]);
+			expect(calls).toHaveLength(0);
+		});
+
+		it('refuses a key of another organization with a session stored, saying to unset the key to use the session', async () => {
+			await writeCredentials(
+				{
+					session: 'session-token',
+					user: { id: 'u1', name: 'X', email: 'x@x' },
+					orgs: { acme: {} },
+				},
+				fakeHome
+			);
+			const calls: PublishCall[] = [];
+			const me = { ...keyMe(), org: null };
+			const err = await run({ env: 'staging' }, keyClient(calls, me)).catch((e) => e);
+			expect(err.message).toMatch(
+				/, or run `poli unlink`, then `poli link`\. Your `poli login` session is not used while POLI_PAGE_API_KEY is set: unset it to use the session\.$/
+			);
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
+			expect(calls).toHaveLength(0);
+		});
+
+		it('refuses a key /v1/me names no organization for when cloud.orgId is set, exit 2', async () => {
+			const calls: PublishCall[] = [];
+			const me = { ...keyMe(), org: null };
+			const err = await run({ env: 'staging' }, keyClient(calls, me)).catch((e) => e);
+			expect(err.message).toMatch(
+				/^This API key belongs to no known organization, but this folder is linked to organization "acme" \(0e89d99e-1516-4b48-baa1-f49e660ad1c1\)\./
+			);
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
+			expect(calls).toHaveLength(0);
+		});
+
+		it('publishes as today when the manifest has no cloud.orgId', async () => {
+			const { orgId: _omitted, ...cloud } = MANIFEST.cloud;
+			await writeFile(
+				join(projectDir, MANIFEST_FILENAME),
+				JSON.stringify({ ...MANIFEST, cloud })
+			);
+			const calls: PublishCall[] = [];
+			const me = keyMe();
+			me.org = { ...me.org!, id: '5b1f1c1e-9a43-4a8e-bb3a-0f6c2d9e7a10', slug: 'globex' };
+			await run({ env: 'staging' }, keyClient(calls, me));
+			expect(calls).toHaveLength(1);
+			expect(calls[0].project).toBe('invoices');
+		});
+
 		it('still requires --env', async () => {
 			const err = await run({}, keyClient([], keyMe())).catch((e) => e);
 			expect(err.message).toMatch(/--env is required/);
