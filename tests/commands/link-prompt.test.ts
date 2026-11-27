@@ -265,6 +265,11 @@ describe('poli link when the organization already has the project', () => {
 							name: 'Ac\nme\u001b[2J',
 							slug: 'ac\rme',
 						},
+						{
+							id: '5b1f1c1e-9a43-4a8e-bb3a-0f6c2d9e7a10',
+							name: 'Globex',
+							slug: 'globex',
+						},
 					]);
 				}
 				return jsonResponse([
@@ -285,6 +290,7 @@ describe('poli link when the organization already has the project', () => {
 
 		expect(selectMock.mock.calls[0][0].choices).toEqual([
 			{ name: 'Ac me [2J (ac me)', value: 'ac\rme' },
+			{ name: 'Globex (globex)', value: 'globex' },
 		]);
 		expect(confirmMock.mock.calls[0][0].message).toMatch(
 			/^Link this folder to the existing project "De mo" \(demo\) of organization "Ac me \[2J" \(ac me\)\? [^\p{Cc}]+$/u
@@ -354,5 +360,177 @@ describe('poli link when the organization already has the project', () => {
 		expect(process.exitCode).toBeUndefined();
 		expect((await readCloud()).projectId).toBe('8274f64d-4ea2-4f96-b596-5727a7b17268');
 		expect(createCalled).toBe(false);
+	});
+});
+
+// `poli link` picks the organization from `--org`, the only one, or the prompt.
+describe('poli link choosing the organization', () => {
+	const ACME = { id: '0e89d99e-1516-4b48-baa1-f49e660ad1c1', name: 'Acme', slug: 'acme' };
+	const GLOBEX = { id: '5b1f1c1e-9a43-4a8e-bb3a-0f6c2d9e7a10', name: 'Globex', slug: 'globex' };
+	let projectDir: string;
+	let fakeHome: string;
+	let savedExitCode: typeof process.exitCode;
+	let savedTTY: { stdin: boolean | undefined; stdout: boolean | undefined };
+	let errors: string[];
+
+	function jsonResponse(body: unknown) {
+		return new Response(JSON.stringify(body), {
+			status: 200,
+			headers: { 'Content-Type': 'application/json' },
+		});
+	}
+
+	function serveOrganizations(orgs: (typeof ACME)[]) {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string, init?: RequestInit) => {
+				if (url === `${API_URL}/api/organizations`) return jsonResponse(orgs);
+				const projectsOf = orgs.map((o) => `${API_URL}/api/organizations/${o.id}/projects`);
+				if (projectsOf.includes(url)) {
+					const created = { id: '8274f64d-4ea2-4f96-b596-5727a7b17268' };
+					return jsonResponse(init?.method === 'POST' ? created : []);
+				}
+				return new Response('unexpected', { status: 500 });
+			})
+		);
+	}
+
+	beforeEach(async () => {
+		projectDir = await mkdtemp(join(tmpdir(), 'poli-link-org-'));
+		fakeHome = await mkdtemp(join(tmpdir(), 'poli-link-org-home-'));
+		await writeFile(
+			join(projectDir, MANIFEST_FILENAME),
+			JSON.stringify({ project: { name: 'demo' }, templates: [] })
+		);
+		await writeCredentials(
+			{ session: 'sess', user: { id: 'u', name: 'X', email: 'x@x.com' }, orgs: {} },
+			fakeHome
+		);
+		vi.stubEnv('HOME', fakeHome);
+		vi.stubEnv('POLI_API_URL', API_URL);
+		vi.stubEnv('POLI_PAGE_API_KEY', '');
+		vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
+		serveOrganizations([ACME, GLOBEX]);
+		errors = [];
+		vi.spyOn(console, 'error').mockImplementation((msg: unknown) => {
+			errors.push(String(msg));
+		});
+		vi.spyOn(console, 'log').mockImplementation(() => {});
+		vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
+			errors.push(String(chunk));
+			return true;
+		});
+		savedExitCode = process.exitCode;
+		process.exitCode = undefined;
+		savedTTY = { stdin: process.stdin.isTTY, stdout: process.stdout.isTTY };
+		process.stdin.isTTY = false as true;
+		process.stdout.isTTY = false as true;
+		confirmMock.mockReset();
+		selectMock.mockReset();
+	});
+
+	afterEach(async () => {
+		process.stdin.isTTY = savedTTY.stdin as true;
+		process.stdout.isTTY = savedTTY.stdout as true;
+		process.exitCode = savedExitCode;
+		vi.unstubAllEnvs();
+		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
+		await rm(projectDir, { recursive: true, force: true });
+		await rm(fakeHome, { recursive: true, force: true });
+	});
+
+	function poliLink(...args: string[]) {
+		return createProgram().parseAsync(['link', ...args], { from: 'user' });
+	}
+
+	async function readCloud() {
+		const manifest = JSON.parse(await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8'));
+		return manifest.cloud;
+	}
+
+	it('links to the --org organization without a prompt', async () => {
+		await poliLink('--org', 'globex');
+
+		expect(selectMock).not.toHaveBeenCalled();
+		expect(process.exitCode).toBeUndefined();
+		expect(await readCloud()).toMatchObject({ orgSlug: 'globex', orgId: GLOBEX.id });
+	});
+
+	it('does not prompt with --org in a terminal either', async () => {
+		process.stdin.isTTY = true;
+		process.stdout.isTTY = true;
+
+		await poliLink('--org', 'acme');
+
+		expect(selectMock).not.toHaveBeenCalled();
+		expect((await readCloud()).orgSlug).toBe('acme');
+	});
+
+	it('refuses an unknown --org, listing the organizations, and writes nothing', async () => {
+		await poliLink('--org', 'initech');
+
+		expect(selectMock).not.toHaveBeenCalled();
+		expect(process.exitCode).not.toBe(0);
+		expect(process.exitCode).toBeDefined();
+		expect(errors.join('')).toContain(
+			'Organization "initech" not found. Available: acme, globex'
+		);
+		expect(await readCloud()).toBeUndefined();
+	});
+
+	it('uses the only organization without a prompt', async () => {
+		serveOrganizations([GLOBEX]);
+
+		await poliLink();
+
+		expect(selectMock).not.toHaveBeenCalled();
+		expect(process.exitCode).toBeUndefined();
+		expect((await readCloud()).orgSlug).toBe('globex');
+	});
+
+	it.each([
+		['stdin', () => (process.stdout.isTTY = true)],
+		['stdout', () => (process.stdin.isTTY = true)],
+	])(
+		'refuses with exit 2, listing the slugs, with several organizations when %s is not a TTY',
+		async (_, otherIsTTY) => {
+			otherIsTTY();
+
+			await poliLink();
+
+			expect(selectMock).not.toHaveBeenCalled();
+			expect(process.exitCode).toBe(2);
+			expect(errors.join('')).toContain(
+				'You belong to several organizations (acme, globex). Pass `--org <slug>` to choose one.'
+			);
+			expect(await readCloud()).toBeUndefined();
+		}
+	);
+
+	it('names server slugs on one line when it refuses', async () => {
+		serveOrganizations([ACME, { ...GLOBEX, slug: 'glo\nbex\u001b[2J' }]);
+
+		await poliLink();
+
+		const written = errors.join('');
+		expect(written).toContain('(acme, glo bex [2J)');
+		expect(written).not.toMatch(/glo\nbex|\u001b\[2J/);
+	});
+
+	it('asks in a terminal with several organizations', async () => {
+		process.stdin.isTTY = true;
+		process.stdout.isTTY = true;
+		selectMock.mockResolvedValue('globex');
+
+		await poliLink();
+
+		expect(selectMock).toHaveBeenCalledTimes(1);
+		expect(selectMock.mock.calls[0][0].choices.map((c: { value: string }) => c.value)).toEqual([
+			'acme',
+			'globex',
+		]);
+		expect(process.exitCode).toBeUndefined();
+		expect((await readCloud()).orgSlug).toBe('globex');
 	});
 });

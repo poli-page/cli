@@ -12,7 +12,7 @@ import {
 	UnconfirmedLinkError,
 	type LinkTarget,
 } from '../cloud-link.js';
-import { errorToExitCode, ExitCode } from '../exit-codes.js';
+import { errorToExitCode, ExitCode, UsageError } from '../exit-codes.js';
 import { oneLine } from '../output.js';
 
 export interface LinkOptions {
@@ -148,11 +148,12 @@ export function registerLinkCommands(program: Command) {
 	program
 		.command('link')
 		.description('Link the current project to a cloud organization')
+		.option('--org <slug>', 'Organization to link to, without a prompt')
 		.option(
 			'--existing',
 			'Link to the project of the same name if the organization already has one, without asking'
 		)
-		.action(async (opts: { existing?: boolean }) => {
+		.action(async (opts: { org?: string; existing?: boolean }) => {
 			const { default: chalk } = await import('chalk');
 			const { default: ora } = await import('ora');
 
@@ -176,10 +177,20 @@ export function registerLinkCommands(program: Command) {
 					return;
 				}
 
-				const orgSlug = await promptForOrganization(orgs);
+				const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+				let orgSlug = opts.org;
+				if (!orgSlug) {
+					if (orgs.length === 1) orgSlug = orgs[0].slug;
+					else if (interactive) orgSlug = await promptForOrganization(orgs);
+					else {
+						const slugs = orgs.map((o) => oneLine(o.slug)).join(', ');
+						throw new UsageError(
+							`You belong to several organizations (${slugs}). Pass \`--org <slug>\` to choose one.`
+						);
+					}
+				}
 
 				spinner = ora('Linking project...').start();
-				const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
 				await executeLink({
 					orgSlug,
 					apiClient: client,

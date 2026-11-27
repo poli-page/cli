@@ -552,7 +552,7 @@ describe('poli init --starter: command output', () => {
 		expect(
 			describeUnlinked({ status: 'unlinked', reason: 'several-orgs' }, 'getting-started')
 		).toBe(
-			'Not linked: you belong to several organizations. Re-run with `--org <slug>`, or run `poli link` in the project.'
+			'Not linked: you belong to several organizations. Re-run with `--org <slug>`, or run `poli link --org <slug>` in the project.'
 		);
 		expect(
 			describeUnlinked(
