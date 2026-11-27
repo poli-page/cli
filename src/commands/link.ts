@@ -4,6 +4,7 @@ import { parseManifestWithoutCloud } from '../manifest.schema.js';
 import { getSessionToken, readCredentials, sessionFor } from '../credentials.js';
 import { createApiClient, type ApiClient } from '../api-client.js';
 import { collectProjectPayload } from '../project-loader.js';
+import { listProjectFiles } from '../project-sync.js';
 import {
 	confirmExistingProjectPrompt,
 	forgetLink,
@@ -74,6 +75,9 @@ export async function executeLink(options: LinkOptions): Promise<void> {
 			`Project is already linked to "${manifest.cloud.orgSlug}". Run "poli unlink" first.`
 		);
 	}
+
+	// The file set the payload is built from, checked against the limits before the first request.
+	await listProjectFiles(cwd);
 
 	const orgs = await client.getOrganizations(session);
 	const org = findOrganization(orgs, options.orgSlug);
