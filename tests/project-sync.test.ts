@@ -158,7 +158,9 @@ describe('createProjectSyncer', () => {
 		await mkdir(join(dir, 'assets', 'icons'), { recursive: true });
 		await writeFile(join(dir, 'assets', 'images', 'x.sqlite'), 'db');
 		await writeFile(join(dir, 'assets', 'images', 'logo.PNG'), 'png');
-		await writeFile(join(dir, 'assets', 'images', '.DS_Store'), '');
+		for (const junk of ['.DS_Store', '.gitkeep', '.keep', 'Thumbs.db', 'desktop.ini']) {
+			await writeFile(join(dir, 'assets', 'images', junk), '');
+		}
 		await writeFile(join(dir, 'templates', 'invoice', 'notes.md'), '# notes');
 		await writeFile(join(dir, 'assets', 'icons', 'x.sh'), 'echo hi');
 		await writeFile(join(dir, 'assets', 'icons', 'x\u001b[2J.sh'), 'echo hi');

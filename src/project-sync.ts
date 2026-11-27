@@ -27,9 +27,16 @@ export function isInIgnoredProjectDirectory(relPath: string): boolean {
 	return relPath.split(/[\\/]/).some((segment) => IGNORED_DIRECTORY_NAMES.has(segment));
 }
 
+/**
+ * OS metadata and the placeholders that keep an empty folder in git (`poli
+ * init` creates an empty `assets/images/`).
+ */
+const JUNK_FILE_NAMES = new Set(['.DS_Store', '.gitkeep', '.keep', 'Thumbs.db', 'desktop.ini']);
+
 /** Files no project means to sync, left out without a warning. */
 function isJunkProjectPath(path: string): boolean {
-	return isInIgnoredProjectDirectory(path) || path.endsWith('.DS_Store') || path.endsWith('.log');
+	const name = path.slice(path.lastIndexOf('/') + 1);
+	return isInIgnoredProjectDirectory(path) || JUNK_FILE_NAMES.has(name) || path.endsWith('.log');
 }
 
 export function shouldIgnoreProjectPath(relPath: string): boolean {
