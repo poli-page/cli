@@ -154,7 +154,12 @@ async function readListedFile(cwd: string, file: ProjectFileStat): Promise<Buffe
 			chunks.push(chunk as Buffer);
 		}
 		const buffer = Buffer.concat(chunks);
-		if (buffer.length > PROJECT_FILE_MAX_BYTES) throw tooLarge(file.path, buffer.length);
+		if (buffer.length > PROJECT_FILE_MAX_BYTES) {
+			// The read stops one byte past the limit, so the file's real size is unknown.
+			throw new UsageError(
+				`${file.path} is over ${mebibytes(PROJECT_FILE_MAX_BYTES)}, the most a project file may be (it grew while it was read). Shrink it or move it out of the project.`
+			);
+		}
 		return buffer;
 	} finally {
 		await handle.close();

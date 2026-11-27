@@ -287,7 +287,8 @@ describe('project file set walk and limits', () => {
 	it('reads no more than the per-file limit of a file that grew after it was opened', async () => {
 		const grown = join(dir, 'assets', 'images', 'grown.png');
 		await writeFile(grown, '');
-		await truncate(grown, PROJECT_FILE_MAX_BYTES + 1024 * 1024);
+		// One byte over: only the per-file cap can refuse it, the total stays under its limit.
+		await truncate(grown, PROJECT_FILE_MAX_BYTES + 1);
 		const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
 		// Both the listing and the open file's stat saw it small.
 		lstatSpy.mockImplementation(async (path, ...rest) => {
@@ -309,7 +310,10 @@ describe('project file set walk and limits', () => {
 		});
 		try {
 			const err = await readAllProjectFiles(dir).catch((e) => e);
-			expect(err.message).toContain('assets/images/grown.png');
+			expect(err.message).toMatch(
+				/^assets\/images\/grown\.png is over 4\.0 MiB, the most a project file may be \(it grew while it was read\)/
+			);
+			expect(err.message).not.toMatch(/add up to/);
 			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
 		} finally {
 			lstatSpy.mockReset();
