@@ -11,7 +11,7 @@ import { getSessionToken } from '../credentials.js';
 import { assertEnvironmentName } from '../environment-name.js';
 import { UsageError, errorToExitCode } from '../exit-codes.js';
 import { readCloudLink } from '../manifest.js';
-import { shouldEmitJson } from '../output.js';
+import { oneLine, shouldEmitJson } from '../output.js';
 import { findOrganization, type Organization } from './link.js';
 import { shortBundleHash } from './publish.js';
 import { inputPrompt } from '../template-prompt.js';
@@ -168,11 +168,6 @@ function yesNo(value: boolean): string {
 
 function formatTimestamp(iso: string): string {
 	return `${new Date(iso).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
-}
-
-/** Server text on one table line: a newline or escape sequence would forge rows. */
-function oneLine(text: string): string {
-	return text.replace(/\p{Cc}+/gu, ' ');
 }
 
 function formatLastPublish(entry: PublishLogEntry | null, chalk: ChalkLike): string {

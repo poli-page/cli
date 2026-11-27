@@ -254,7 +254,7 @@ describe('poli env list', () => {
 			);
 			await poli();
 			expect(logs[3]).toBe(
-				'  sandbox      no         no         yes        succeeded  2026-10-26 10:00 UTC  Ada Lovelace  0123456789ab  fix   live   yes [2J '
+				'  sandbox      no         no         yes        succeeded  2026-10-26 10:00 UTC  Ada Lovelace  0123456789ab  fix   live   yes [2J'
 			);
 
 			logs = [];
@@ -376,6 +376,13 @@ describe('poli env list', () => {
 			expect(requestedUrls()).toEqual([`${API_URL}/api/organizations`]);
 		});
 
+		it('an unknown --org: control characters in the slugs print as one clean line', async () => {
+			orgs = [ACME, { ...GLOBEX, slug: 'glo\nbex\u001b[2J' }];
+			await poli('--org', 'ini\rtech');
+			expect(process.exitCode).toBe(ExitCode.INVALID_USAGE);
+			expect(errors).toEqual(['Organization "ini tech" not found. Available: acme, glo bex [2J']);
+		});
+
 		it('an account without an organization: says so, exit 1', async () => {
 			orgs = [];
 			await poli();
@@ -416,6 +423,16 @@ describe('poli env list', () => {
 					requestId: 'req_1',
 				},
 				stderr: 'Database unavailable',
+				exitCode: ExitCode.NETWORK_OR_API_ERROR,
+			},
+			{
+				status: 500,
+				body: {
+					error: 'INTERNAL_ERROR',
+					detail: 'Database\nunavailable\u001b[2J',
+					requestId: 'req_1',
+				},
+				stderr: 'Database unavailable [2J',
 				exitCode: ExitCode.NETWORK_OR_API_ERROR,
 			},
 		];
