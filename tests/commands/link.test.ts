@@ -10,6 +10,7 @@ import { MANIFEST_FILENAME } from '../../src/constants.js';
 import { errorToExitCode } from '../../src/exit-codes.js';
 import type { ApiClient } from '../../src/api-client.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
+import { plantImagesOverTotalLimit } from '../helpers/over-limit-project.js';
 
 function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
 	return createFakeApiClient({
@@ -50,6 +51,22 @@ describe('poli link / unlink', () => {
 	});
 
 	describe('executeLink', () => {
+		it('refuses a project over the file limits before any request', async () => {
+			await plantImagesOverTotalLimit(projectDir);
+
+			const err = await executeLink({
+				cwd: projectDir,
+				orgSlug: 'acme-corp',
+				apiClient: createFakeApiClient({}),
+				homeDir: fakeHome,
+			}).catch((e) => e);
+
+			expect(err.message).toMatch(/add up to more than 5\.0 MiB/);
+			expect(errorToExitCode(err)).toBe(2);
+			const manifest = JSON.parse(await readFile(join(projectDir, MANIFEST_FILENAME), 'utf-8'));
+			expect(manifest.cloud).toBeUndefined();
+		});
+
 		it('writes the full cloud section to poli-page.json', async () => {
 			await executeLink({
 				cwd: projectDir,

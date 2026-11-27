@@ -6,7 +6,7 @@ import type { ApiClient } from '../api-client.js';
 import { resolveCloudContext } from '../cloud-context.js';
 import { confirmLinkPrompt, type LinkTarget } from '../cloud-link.js';
 import { createFileWatcher, type FileWatcher, type FileWatcherOptions } from '../file-watcher.js';
-import { createProjectSyncer } from '../project-sync.js';
+import { createProjectSyncer, listProjectFiles } from '../project-sync.js';
 import {
 	findTemplate,
 	loadProject,
@@ -222,6 +222,9 @@ export async function startDevSession(
 	if (!manifest.cloud?.projectSlug) {
 		throw new Error("This folder isn't linked to a cloud project. Run `poli link` first.");
 	}
+
+	// An over-limit file set fails before the first request, not after the server starts.
+	await listProjectFiles(cwd);
 
 	// Resolves the session token, the org and the confirmed link — throws
 	// the familiar "not logged in" errors before anything is served, so a

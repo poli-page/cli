@@ -13,6 +13,7 @@ import {
 import type { FileWatcher, FileWatcherOptions } from '../../src/file-watcher.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
+import { plantImagesOverTotalLimit } from '../helpers/over-limit-project.js';
 
 function makeStubClient(overrides: Partial<ApiClient> = {}): ApiClient {
 	return createFakeApiClient({
@@ -112,6 +113,21 @@ describe('executeWatch', () => {
 		expect(err).toBeInstanceOf(Error);
 		expect(err.exitCode).toBe(2);
 		expect(err.message).toMatch(/TTY/i);
+	});
+
+	it('refuses a project over the file limits before any request', async () => {
+		await setupLinkedProject(tempDir, fakeHome);
+		await plantImagesOverTotalLimit(tempDir);
+
+		const err = await executeWatch({
+			cwd: tempDir,
+			homeDir: fakeHome,
+			apiClient: createFakeApiClient({}),
+			isTTY: true,
+		}).catch((e) => e);
+
+		expect(err.exitCode).toBe(2);
+		expect(err.message).toMatch(/add up to more than 5\.0 MiB/);
 	});
 
 	it('throws a friendly error when the project is not linked', async () => {

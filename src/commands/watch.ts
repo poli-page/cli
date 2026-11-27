@@ -3,7 +3,7 @@ import type { ApiClient } from '../api-client.js';
 import { resolveCloudContext } from '../cloud-context.js';
 import { confirmLinkPrompt, type LinkTarget } from '../cloud-link.js';
 import { createFileWatcher, type FileWatcher, type FileWatcherOptions } from '../file-watcher.js';
-import { createProjectSyncer } from '../project-sync.js';
+import { createProjectSyncer, listProjectFiles } from '../project-sync.js';
 import { errorToExitCode } from '../exit-codes.js';
 
 export type WatchEventType = 'ready' | 'syncing' | 'synced' | 'error';
@@ -41,6 +41,9 @@ export async function executeWatch(options: WatchOptions): Promise<void> {
 	if (!isTTY) {
 		throw new TtyRequiredError();
 	}
+
+	// An over-limit file set fails before the first request, not after the link check.
+	await listProjectFiles(cwd);
 
 	const { client, ctx } = await resolveCloudContext({
 		cwd,

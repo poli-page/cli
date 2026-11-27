@@ -15,7 +15,7 @@ import { assertEnvironmentName } from '../environment-name.js';
 import { ExitCode, UsageError, errorToExitCode } from '../exit-codes.js';
 import { shouldEmitJson } from '../output.js';
 import { toProjectFileEntries } from '../project-files.js';
-import { readAllProjectFiles } from '../project-sync.js';
+import { PROJECT_MAX_TOTAL_BYTES, readAllProjectFiles } from '../project-sync.js';
 import { confirmPrompt } from '../template-prompt.js';
 import { verifyCloudLink, type CloudBlock } from '../cloud-link.js';
 
@@ -36,7 +36,7 @@ export interface PublishOutcome extends PublishResult {
 }
 
 const MESSAGE_MAX_LENGTH = 500;
-const BUNDLE_MAX_BYTES = 5 * 1024 * 1024;
+const BUNDLE_MAX_BYTES = PROJECT_MAX_TOTAL_BYTES;
 
 class PublishNotAuthorizedError extends Error {
 	readonly exitCode = ExitCode.NOT_AUTHORIZED;

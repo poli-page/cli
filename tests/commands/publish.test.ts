@@ -21,6 +21,7 @@ import { ExitCode, errorToExitCode } from '../../src/exit-codes.js';
 import { testApiKey } from '../helpers/api-key.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
+import { plantImagesOverTotalLimit } from '../helpers/over-limit-project.js';
 
 const { confirmMock } = vi.hoisted(() => ({ confirmMock: vi.fn() }));
 vi.mock('@inquirer/prompts', () => ({ confirm: confirmMock }));
@@ -242,6 +243,21 @@ describe('poli publish', () => {
 					content: '.x{}',
 				},
 			]);
+		});
+
+		it('refuses a project over the file limits before any request', async () => {
+			await plantImagesOverTotalLimit(projectDir);
+			const err = await run({ env: 'sandbox', yes: true }, createFakeApiClient({})).catch((e) => e);
+			expect(err.message).toMatch(/add up to more than 5\.0 MiB/);
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
+		});
+
+		it('refuses a project over the file limits with an API key, before any request', async () => {
+			await plantImagesOverTotalLimit(projectDir);
+			vi.stubEnv('POLI_PAGE_API_KEY', testApiKey('sandbox'));
+			const err = await run({ env: 'sandbox', yes: true }, createFakeApiClient({})).catch((e) => e);
+			expect(err.message).toMatch(/add up to more than 5\.0 MiB/);
+			expect(errorToExitCode(err)).toBe(ExitCode.INVALID_USAGE);
 		});
 
 		it('refuses a bundle over 5 MiB locally, exit 2, without calling the API', async () => {

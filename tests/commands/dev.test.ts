@@ -19,6 +19,7 @@ import { isLinkConfirmed, recordLink } from '../../src/cloud-link.js';
 import { readManifest, writeManifest } from '../../src/manifest.js';
 import { setupTemplate } from '../helpers/setup-template.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
+import { plantImagesOverTotalLimit } from '../helpers/over-limit-project.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import {
 	ApiError,
@@ -447,6 +448,15 @@ describe('poli dev', () => {
 				port: busyPort,
 			});
 			expect(session.port).toBe(busyPort + 1);
+		});
+
+		it('refuses a project over the file limits before any request or server', async () => {
+			await plantImagesOverTotalLimit(projectDir);
+			const onEvent = vi.fn();
+			await expect(
+				start(undefined, { apiClient: createFakeApiClient({}), onEvent })
+			).rejects.toMatchObject({ exitCode: 2, message: expect.stringMatching(/add up to more than 5\.0 MiB/) });
+			expect(onEvent).not.toHaveBeenCalled();
 		});
 
 		it('rejects when the project is not linked', async () => {
