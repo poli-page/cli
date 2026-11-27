@@ -127,4 +127,40 @@ describe('verifyCloudLink', () => {
 		expect((err as Error).message).toBe('Organization "other" not found.');
 		expect(errorToExitCode(err)).toBe(ExitCode.INVALID_LOCAL_STATE);
 	});
+
+	describe('prints manifest and server text on one line', () => {
+		const escClient = createFakeApiClient({
+			getOrganizations: async () => [{ id: 'org_1', name: 'Acme', slug: 'ac\u001bme' }],
+			listProjects: async () => [{ id: 'proj_1', name: 'Invoices', slug: 'inv\u001b[2Joices' }],
+		});
+		const messageOf = (cloud: Parameters<typeof verifyCloudLink>[2]) =>
+			verifyCloudLink(escClient, 'sess', cloud).then(
+				() => '',
+				(e: unknown) => (e as Error).message
+			);
+
+		it('in the orgSlug of an unknown organization', async () => {
+			expect(await messageOf({ orgSlug: 'ot\nher', projectId: 'proj_1' })).toBe(
+				'Organization "ot her" not found.'
+			);
+		});
+
+		it('in the organization slug of an orgId mismatch', async () => {
+			expect(
+				await messageOf({ orgSlug: 'ac\u001bme', orgId: 'org_2', projectId: 'proj_1' })
+			).toContain('orgId "org_2" is not organization "ac me" (org_1)');
+		});
+
+		it('in the organization slug of an unknown projectId', async () => {
+			expect(await messageOf({ orgSlug: 'ac\u001bme', projectId: 'proj_2' })).toContain(
+				'projectId "proj_2" is not a project of "ac me"'
+			);
+		});
+
+		it('in both slugs of a projectSlug mismatch', async () => {
+			expect(
+				await messageOf({ orgSlug: 'ac\u001bme', projectId: 'proj_1', projectSlug: 'x\ny' })
+			).toContain('projectSlug "x y" is not project "proj_1" (inv [2Joices)');
+		});
+	});
 });

@@ -46,20 +46,20 @@ export async function verifyCloudLink(
 	const orgs = await client.getOrganizations(session);
 	const org = orgs.find((o) => o.slug === cloud.orgSlug);
 	if (!org) {
-		throw new CloudLinkMismatchError(`Organization "${cloud.orgSlug}" not found.`);
+		throw new CloudLinkMismatchError(`Organization "${oneLine(cloud.orgSlug)}" not found.`);
 	}
 	if (cloud.orgId !== undefined && cloud.orgId !== org.id) {
-		throw mismatch(`orgId "${cloud.orgId}" is not organization "${org.slug}" (${org.id})`);
+		throw mismatch(`orgId "${cloud.orgId}" is not organization "${oneLine(org.slug)}" (${org.id})`);
 	}
 
 	const projects = await client.listProjects(session, org.id);
 	const project = projects.find((p) => p.id === cloud.projectId);
 	if (!project) {
-		throw mismatch(`projectId "${cloud.projectId}" is not a project of "${org.slug}"`);
+		throw mismatch(`projectId "${cloud.projectId}" is not a project of "${oneLine(org.slug)}"`);
 	}
 	if (cloud.projectSlug !== undefined && cloud.projectSlug !== project.slug) {
 		throw mismatch(
-			`projectSlug "${cloud.projectSlug}" is not project "${project.id}" (${project.slug})`
+			`projectSlug "${oneLine(cloud.projectSlug)}" is not project "${project.id}" (${oneLine(project.slug)})`
 		);
 	}
 	return { org, project };
