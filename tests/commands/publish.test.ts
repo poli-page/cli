@@ -22,6 +22,7 @@ import { testApiKey } from '../helpers/api-key.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
 import { createFakeApiClient } from '../helpers/fake-api-client.js';
 import { plantImagesOverTotalLimit } from '../helpers/over-limit-project.js';
+import { stubHome } from '../helpers/fake-home.js';
 
 const { confirmMock } = vi.hoisted(() => ({ confirmMock: vi.fn() }));
 vi.mock('@inquirer/prompts', () => ({ confirm: confirmMock }));
@@ -847,7 +848,7 @@ describe('poli publish', () => {
 		}
 
 		beforeEach(() => {
-			vi.stubEnv('HOME', fakeHome);
+			stubHome(fakeHome);
 			vi.stubEnv('POLI_API_URL', API_URL);
 			vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
 			publishAnswer = () => jsonResponse(200, RESULT);

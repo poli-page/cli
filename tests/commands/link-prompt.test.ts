@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { createProgram } from '../../src/program.js';
 import { writeCredentials } from '../../src/credentials.js';
 import { MANIFEST_FILENAME } from '../../src/constants.js';
+import { stubHome } from '../helpers/fake-home.js';
 
 const { confirmMock, selectMock } = vi.hoisted(() => ({
 	confirmMock: vi.fn(),
@@ -48,7 +49,7 @@ describe('poli dev / poli watch on a folder whose link is not confirmed', () => 
 			{ session: 'sess', user: { id: 'u', name: 'X', email: 'x@x.com' }, orgs: {} },
 			fakeHome
 		);
-		vi.stubEnv('HOME', fakeHome);
+		stubHome(fakeHome);
 		vi.stubEnv('POLI_API_URL', API_URL);
 		vi.stubEnv('POLI_PAGE_API_KEY', '');
 		vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
@@ -180,7 +181,7 @@ describe('poli link when the organization already has the project', () => {
 			{ session: 'sess', user: { id: 'u', name: 'X', email: 'x@x.com' }, orgs: {} },
 			fakeHome
 		);
-		vi.stubEnv('HOME', fakeHome);
+		stubHome(fakeHome);
 		vi.stubEnv('POLI_API_URL', API_URL);
 		vi.stubEnv('POLI_PAGE_API_KEY', '');
 		vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
