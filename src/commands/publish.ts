@@ -17,7 +17,7 @@ import { shouldEmitJson } from '../output.js';
 import { toProjectFileEntries } from '../project-files.js';
 import { readAllProjectFiles } from '../project-sync.js';
 import { confirmPrompt } from '../template-prompt.js';
-import { verifyCloudLink } from '../cloud-link.js';
+import { verifyCloudLink, type CloudBlock } from '../cloud-link.js';
 
 export interface PublishOptions {
 	cwd?: string;
@@ -147,7 +147,15 @@ export async function executePublish(options: PublishOptions): Promise<PublishOu
 	});
 	const client = options.apiClient ?? createApiClient();
 	if (auth.mode === 'api-key') {
-		const result = await publishWithApiKey(cwd, environment, options, client, auth, project);
+		const result = await publishWithApiKey(
+			cwd,
+			environment,
+			options,
+			client,
+			auth,
+			project,
+			cloud
+		);
 		return { ...result, credential: auth.mode };
 	}
 
@@ -176,7 +184,9 @@ export async function executePublish(options: PublishOptions): Promise<PublishOu
  * environment, the one its `pp_{environment}_…` text names (K1). `GET /v1/me`
  * tells a service key from a standard one, since both share that format. The
  * key carries the organization, so no org header and no environment list;
- * nothing prompts, and the API applies the protected-environment rule.
+ * the slug would resolve in the key's organization, so a key of another
+ * organization than the linked one is refused. Nothing prompts, and the API
+ * applies the protected-environment rule.
  */
 async function publishWithApiKey(
 	cwd: string,
@@ -184,18 +194,27 @@ async function publishWithApiKey(
 	options: PublishOptions,
 	client: ApiClient,
 	key: Extract<AuthContext, { mode: 'api-key' }>,
-	project: string
+	project: string,
+	cloud: CloudBlock
 ): Promise<PublishResult> {
 	const { authorization } = key;
 
 	const body = await buildPublishBody(cwd, environment, options.message);
 
-	const { auth } = await client.getMe(authorization);
+	const { auth, org } = await client.getMe(authorization);
 	if (auth.keyType !== 'service') {
 		throw new PublishNotAuthorizedError(
 			key.sessionIgnored
 				? `Standard API keys can only render. Use a service key. ${SESSION_IGNORED_HINT}`
 				: 'Standard API keys can only render. Use a service key or `poli login`.'
+		);
+	}
+	if (cloud.orgId !== undefined && org?.id !== cloud.orgId) {
+		const keyOrg = org
+			? `organization "${org.name}" (${org.slug}, ${org.id})`
+			: 'no known organization';
+		throw new UsageError(
+			`This API key belongs to ${keyOrg}, but this folder is linked to organization "${cloud.orgSlug}" (${cloud.orgId}). Use a key of "${cloud.orgSlug}", or run \`poli unlink\`, then \`poli link\`.${key.sessionIgnored ? ` ${SESSION_IGNORED_HINT}` : ''}`
 		);
 	}
 	if (key.environment !== environment) {
