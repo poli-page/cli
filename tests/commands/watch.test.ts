@@ -33,11 +33,13 @@ interface ManualWatcher {
 
 /**
  * `executeWatch` builds its watcher only after the initial snapshot, so tests
- * await `watcher()` instead of sleeping; `emit` resolves once the batch is synced.
+ * await `watcher(run)` instead of sleeping; `emit` resolves once the batch is synced.
+ * `watcher(run)` rejects as soon as `run` settles without a watcher, so a setup
+ * failure fails the test with its own error instead of a timeout.
  */
 function createManualWatcherFactory(): {
 	factory: (opts: FileWatcherOptions) => FileWatcher;
-	watcher: () => Promise<ManualWatcher>;
+	watcher: (run: Promise<void>) => Promise<ManualWatcher>;
 } {
 	let created!: (controller: ManualWatcher) => void;
 	const createdPromise = new Promise<ManualWatcher>((resolve) => {
@@ -58,7 +60,15 @@ function createManualWatcherFactory(): {
 			},
 		};
 	};
-	return { factory, watcher: () => createdPromise };
+	const watcher = (run: Promise<void>): Promise<ManualWatcher> => {
+		const returned = run.then(() => {
+			throw new Error('executeWatch returned before creating its watcher');
+		});
+		// Once the watcher exists the race is decided; the test awaits `run` itself.
+		returned.catch(() => {});
+		return Promise.race([createdPromise, returned]);
+	};
+	return { factory, watcher };
 }
 
 async function setupLinkedProject(tempDir: string, fakeHome: string): Promise<void> {
@@ -300,7 +310,7 @@ describe('executeWatch', () => {
 			onEvent: (e) => events.push(e),
 		});
 
-		const manual = await watcher();
+		const manual = await watcher(runPromise);
 
 		expect(events.some((e) => e.type === 'ready')).toBe(true);
 		expect(patchCalls).toHaveLength(0);
@@ -347,7 +357,7 @@ describe('executeWatch', () => {
 			onEvent: (e) => events.push(e),
 		});
 
-		const manual = await watcher();
+		const manual = await watcher(runPromise);
 		await writeFile(join(tempDir, 'partials', 'a.html'), 'change');
 		await manual.emit(['partials/a.html']);
 
@@ -391,7 +401,7 @@ describe('executeWatch', () => {
 			onEvent: (e) => events.push(e),
 		});
 
-		const manual = await watcher();
+		const manual = await watcher(runPromise);
 		// Re-emit without any actual content change
 		await manual.emit(['partials/a.html']);
 
@@ -438,7 +448,7 @@ describe('executeWatch', () => {
 				onEvent: (e) => events.push(e),
 			});
 
-			const manual = await watcher();
+			const manual = await watcher(runPromise);
 
 			// Replace the binary with byte-distinct content
 			await writeFile(join(tempDir, 'assets', 'images', 'logo.png'), updatedBytes);
@@ -481,7 +491,7 @@ describe('executeWatch', () => {
 				watcherFactory: factory,
 			});
 
-			const manual = await watcher();
+			const manual = await watcher(runPromise);
 			await writeFile(
 				join(tempDir, 'templates', 'inv', 'inv.html'),
 				'<h1>v2 — éléphant</h1>'
@@ -528,7 +538,7 @@ describe('executeWatch', () => {
 				watcherFactory: factory,
 			});
 
-			const manual = await watcher();
+			const manual = await watcher(runPromise);
 
 			// Font added AFTER watch started → must be picked up as `added`
 			await writeFile(join(tempDir, 'assets', 'fonts', 'inter.woff2'), fontBytes);

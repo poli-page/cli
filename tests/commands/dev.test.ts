@@ -442,8 +442,9 @@ describe('poli dev', () => {
 						resolve(typeof address === 'object' && address ? address.port : 0);
 					});
 				});
-			// Hold the busy port and the one above it, so no parallel test can take
-			// the expected port; the one above is released just before the session starts.
+			// Hold the busy port and the one above it while picking them, so another
+			// worker's `listen(0)` is unlikely to land on the expected port; the one
+			// above is released before `start()`, which still leaves a short window.
 			const reservePair = async (): Promise<{ busyPort: number; next: Server }> => {
 				for (;;) {
 					const blocker = createServer(() => {});
