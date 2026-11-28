@@ -32,28 +32,44 @@ interface ManualWatcher {
 	closed: boolean;
 }
 
+/**
+ * `executeWatch` builds its watcher only after the initial snapshot, so tests
+ * await `watcher(run)` instead of sleeping; `emit` resolves once the batch is synced.
+ * `watcher(run)` rejects as soon as `run` settles without a watcher, so a setup
+ * failure fails the test with its own error instead of a timeout.
+ */
 function createManualWatcherFactory(): {
 	factory: (opts: FileWatcherOptions) => FileWatcher;
-	getController: () => ManualWatcher;
+	watcher: (run: Promise<void>) => Promise<ManualWatcher>;
 } {
-	let controller: ManualWatcher | null = null;
+	let created!: (controller: ManualWatcher) => void;
+	const createdPromise = new Promise<ManualWatcher>((resolve) => {
+		created = resolve;
+	});
 	const factory = (opts: FileWatcherOptions): FileWatcher => {
 		const local: ManualWatcher = {
 			closed: false,
 			async emit(paths) {
-				opts.onBatch(new Set(paths));
-				// Allow the async onBatch handler to settle before the test continues.
-				await Promise.resolve();
+				// executeWatch passes an async handler; awaiting it waits for the sync.
+				await opts.onBatch(new Set(paths));
 			},
 		};
-		controller = local;
+		created(local);
 		return {
 			async close() {
 				local.closed = true;
 			},
 		};
 	};
-	return { factory, getController: () => controller! };
+	const watcher = (run: Promise<void>): Promise<ManualWatcher> => {
+		const returned = run.then(() => {
+			throw new Error('executeWatch returned before creating its watcher');
+		});
+		// Once the watcher exists the race is decided; the test awaits `run` itself.
+		returned.catch(() => {});
+		return Promise.race([createdPromise, returned]);
+	};
+	return { factory, watcher };
 }
 
 async function setupLinkedProject(tempDir: string, fakeHome: string): Promise<void> {
@@ -286,7 +302,7 @@ describe('executeWatch', () => {
 
 		const events: WatchEvent[] = [];
 		const controller = new AbortController();
-		const { factory, getController } = createManualWatcherFactory();
+		const { factory, watcher } = createManualWatcherFactory();
 
 		let patchCalls: Array<{ added: number; modified: number; deleted: number }> = [];
 		const client = makeStubClient({
@@ -310,16 +326,14 @@ describe('executeWatch', () => {
 			onEvent: (e) => events.push(e),
 		});
 
-		// Wait for the initial-snapshot 'ready' event to be emitted.
-		await new Promise((r) => setTimeout(r, 50));
+		const manual = await watcher(runPromise);
 
 		expect(events.some((e) => e.type === 'ready')).toBe(true);
 		expect(patchCalls).toHaveLength(0);
 
 		// Simulate a save event
 		await writeFile(join(tempDir, 'templates', 'inv', 'inv.html'), '<h1>v2</h1>');
-		await getController().emit(['templates/inv/inv.html']);
-		await new Promise((r) => setTimeout(r, 50));
+		await manual.emit(['templates/inv/inv.html']);
 
 		expect(patchCalls).toHaveLength(1);
 		expect(patchCalls[0]).toEqual({ added: 0, modified: 1, deleted: 0 });
@@ -328,7 +342,7 @@ describe('executeWatch', () => {
 
 		controller.abort();
 		await runPromise;
-		expect(getController().closed).toBe(true);
+		expect(manual.closed).toBe(true);
 	});
 
 	it('reports a typed API error and keeps watching', async () => {
@@ -338,7 +352,7 @@ describe('executeWatch', () => {
 
 		const events: WatchEvent[] = [];
 		const controller = new AbortController();
-		const { factory, getController } = createManualWatcherFactory();
+		const { factory, watcher } = createManualWatcherFactory();
 
 		let calls = 0;
 		const client = makeStubClient({
@@ -359,16 +373,16 @@ describe('executeWatch', () => {
 			onEvent: (e) => events.push(e),
 		});
 
-		await new Promise((r) => setTimeout(r, 50));
+		const manual = await watcher(runPromise);
 		await writeFile(join(tempDir, 'partials', 'a.html'), 'change');
-		await getController().emit(['partials/a.html']);
+		await manual.emit(['partials/a.html']);
 
 		await vi.waitFor(() =>
 			expect(events.find((e) => e.type === 'error')?.message).toBe('unsupported file type')
 		);
 
 		await writeFile(join(tempDir, 'partials', 'a.html'), 'change again');
-		await getController().emit(['partials/a.html']);
+		await manual.emit(['partials/a.html']);
 		await vi.waitFor(() => expect(events.at(-1)?.type).toBe('synced'));
 		expect(calls).toBe(2);
 
@@ -383,7 +397,7 @@ describe('executeWatch', () => {
 
 		const events: WatchEvent[] = [];
 		const controller = new AbortController();
-		const { factory, getController } = createManualWatcherFactory();
+		const { factory, watcher } = createManualWatcherFactory();
 
 		let patchCalled = 0;
 		const client = makeStubClient({
@@ -403,10 +417,9 @@ describe('executeWatch', () => {
 			onEvent: (e) => events.push(e),
 		});
 
-		await new Promise((r) => setTimeout(r, 50));
+		const manual = await watcher(runPromise);
 		// Re-emit without any actual content change
-		await getController().emit(['partials/a.html']);
-		await new Promise((r) => setTimeout(r, 50));
+		await manual.emit(['partials/a.html']);
 
 		expect(patchCalled).toBe(0);
 		expect(events.some((e) => e.type === 'synced')).toBe(true);
@@ -431,7 +444,7 @@ describe('executeWatch', () => {
 
 			const events: WatchEvent[] = [];
 			const controller = new AbortController();
-			const { factory, getController } = createManualWatcherFactory();
+			const { factory, watcher } = createManualWatcherFactory();
 
 			let lastBody: PatchFilesBody | null = null;
 			const client = makeStubClient({
@@ -451,12 +464,11 @@ describe('executeWatch', () => {
 				onEvent: (e) => events.push(e),
 			});
 
-			await new Promise((r) => setTimeout(r, 50));
+			const manual = await watcher(runPromise);
 
 			// Replace the binary with byte-distinct content
 			await writeFile(join(tempDir, 'assets', 'images', 'logo.png'), updatedBytes);
-			await getController().emit(['assets/images/logo.png']);
-			await new Promise((r) => setTimeout(r, 50));
+			await manual.emit(['assets/images/logo.png']);
 
 			expect(lastBody).not.toBeNull();
 			expect(lastBody!.modified).toHaveLength(1);
@@ -476,7 +488,7 @@ describe('executeWatch', () => {
 			await writeFile(join(tempDir, 'templates', 'inv', 'inv.html'), '<h1>v1</h1>');
 
 			const controller = new AbortController();
-			const { factory, getController } = createManualWatcherFactory();
+			const { factory, watcher } = createManualWatcherFactory();
 
 			let lastBody: PatchFilesBody | null = null;
 			const client = makeStubClient({
@@ -495,13 +507,12 @@ describe('executeWatch', () => {
 				watcherFactory: factory,
 			});
 
-			await new Promise((r) => setTimeout(r, 50));
+			const manual = await watcher(runPromise);
 			await writeFile(
 				join(tempDir, 'templates', 'inv', 'inv.html'),
 				'<h1>v2 — éléphant</h1>'
 			);
-			await getController().emit(['templates/inv/inv.html']);
-			await new Promise((r) => setTimeout(r, 50));
+			await manual.emit(['templates/inv/inv.html']);
 
 			expect(lastBody).not.toBeNull();
 			expect(lastBody!.modified).toHaveLength(1);
@@ -524,7 +535,7 @@ describe('executeWatch', () => {
 			]);
 
 			const controller = new AbortController();
-			const { factory, getController } = createManualWatcherFactory();
+			const { factory, watcher } = createManualWatcherFactory();
 
 			let lastBody: PatchFilesBody | null = null;
 			const client = makeStubClient({
@@ -543,12 +554,11 @@ describe('executeWatch', () => {
 				watcherFactory: factory,
 			});
 
-			await new Promise((r) => setTimeout(r, 50));
+			const manual = await watcher(runPromise);
 
 			// Font added AFTER watch started → must be picked up as `added`
 			await writeFile(join(tempDir, 'assets', 'fonts', 'inter.woff2'), fontBytes);
-			await getController().emit(['assets/fonts/inter.woff2']);
-			await new Promise((r) => setTimeout(r, 50));
+			await manual.emit(['assets/fonts/inter.woff2']);
 
 			expect(lastBody).not.toBeNull();
 			expect(lastBody!.added).toHaveLength(1);
