@@ -283,7 +283,7 @@ export function describeUnlinked(
 		case 'no-org':
 			return 'Not linked: your account has no organization yet. Create one in the dashboard, then run `poli link`.';
 		case 'several-orgs':
-			return 'Not linked: you belong to several organizations. Re-run with `--org <slug>`, or run `poli link` in the project.';
+			return 'Not linked: you belong to several organizations. Re-run with `--org <slug>`, or run `poli link --org <slug>` in the project.';
 		case 'no-project':
 			return `Not linked: organization "${link.orgSlug}" has no "${starter}" project. Run \`poli link\` in the project to link it.`;
 	}
